@@ -131,7 +131,21 @@ async function initApplication() {
 
 function showLoginOverlay() {
   const overlay = document.getElementById('loginOverlay');
-  if (overlay) overlay.style.display = 'flex';
+  if (overlay) {
+    overlay.style.display = 'flex';
+    const emailInput = document.getElementById('loginEmail');
+    const pwdInput = document.getElementById('loginPassword');
+    if (window.appStore && window.appStore.savedCredentials) {
+      if (emailInput && !emailInput.value) {
+        emailInput.value = window.appStore.savedCredentials.email || '';
+      }
+    }
+    if (pwdInput && !pwdInput.value && emailInput?.value) {
+      pwdInput.focus();
+    } else if (emailInput && !emailInput.value) {
+      emailInput.focus();
+    }
+  }
 }
 
 function hideLoginOverlay() {
@@ -4124,8 +4138,21 @@ function setupEventListeners() {
 
   // Logout
   document.getElementById('btnLogout')?.addEventListener('click', async () => {
-    if (confirm('Deseja realmente desconectar?')) {
+    if (confirm('Deseja realmente desconectar da sua conta?')) {
       await window.appStore.logout();
+
+      // Reset user profile in sidebar to neutral state
+      const nameEl = document.getElementById('userName');
+      const roleEl = document.getElementById('userRole');
+      const avatarEl = document.getElementById('userAvatar');
+      if (nameEl) nameEl.textContent = 'Não conectado';
+      if (roleEl) roleEl.textContent = 'Desconectado';
+      if (avatarEl) avatarEl.textContent = '--';
+
+      // Clear password field
+      const pwdInput = document.getElementById('loginPassword');
+      if (pwdInput) pwdInput.value = '';
+
       showLoginOverlay();
     }
   });
@@ -4140,6 +4167,15 @@ function setupEventListeners() {
       return;
     }
     doLogin(email, password, remember);
+  });
+
+  // Support pressing Enter inside login inputs
+  ['loginEmail', 'loginPassword'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btnLoginSubmit')?.click();
+      }
+    });
   });
 
   // Image Lightbox Close

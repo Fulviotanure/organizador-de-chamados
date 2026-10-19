@@ -524,11 +524,13 @@ class AppStore {
   async logout() {
     this.token = null;
     this.currentUser = null;
+    this.savedCredentials = null;
     window.conciliadorAPI.setToken(null);
     window.conciliadorAPI.setUser(null);
     if (window.electronAPI) {
       await window.electronAPI.saveStorage('token', null);
       await window.electronAPI.saveStorage('currentUser', null);
+      await window.electronAPI.saveStorage('savedCredentials', null);
     }
   }
 
