@@ -28,7 +28,8 @@
     "publish": {
       "provider": "github",
       "owner": "Fulviotanure",
-      "repo": "organizador-de-chamados"
+      "repo": "organizador-de-chamados",
+      "releaseType": "release"
     },
     "win": {
       "target": [
