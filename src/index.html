@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organizador de Chamados - Conciliador Contábil</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Frameless Window Title Bar -->
+  <header class="window-titlebar" id="windowTitlebar">
+    <div class="titlebar-brand">
+      <div class="brand-icon">CC</div>
+      <span>Organizador de Chamados</span>
+    </div>
+
+    <div class="titlebar-center">
+      <div class="sync-status-dot" id="syncDot" title="Sincronizado"></div>
+      <span id="syncText">Sincronizado</span>
+      <div id="updateBanner" style="display: none; align-items: center; gap: 8px; margin-left: 14px; font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35);">
+        <span id="updateBannerText" style="color: #38bdf8; font-weight: 500;"></span>
+        <button type="button" id="btnRestartUpdate" class="btn-primary" style="display: none; height: 20px; padding: 0 8px; font-size: 10px; line-height: 1; border-radius: 3px;">Reiniciar Agora</button>
+      </div>
+    </div>
+
+    <div class="titlebar-actions">
+      <button class="window-btn" id="btnMinimize" title="Minimizar">
+        <svg width="10" height="1" viewBox="0 0 10 1"><path fill="currentColor" d="M0 0h10v1H0z"/></svg>
+      </button>
+      <button class="window-btn" id="btnMaximize" title="Maximizar">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" d="M1.5 1.5h7v7h-7z"/></svg>
+      </button>
+      <button class="window-btn close-btn" id="btnClose" title="Fechar">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M1 0L0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4 4-4-1-1-4 4z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="app-container">
+    
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <!-- User profile card -->
+      <div class="sidebar-user-card">
+        <div class="user-info">
+          <div class="user-avatar" id="userAvatar">FT</div>
+          <div class="user-details">
+            <div class="user-name" id="userName">Fulvio Tanure</div>
+            <div class="user-role-badge">
+              <span class="user-role-dot"></span>
+              <span id="userRole">Suporte</span>
+            </div>
+          </div>
+        </div>
+        <button class="icon-btn-ghost" id="btnLogout" title="Desconectar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+
+      <!-- Fixed Filters Section -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">Filtros Fixos</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn-restore-filter" id="btnRestoreDefaultFilters" title="Restaurar filtros padrão apagados" style="display: none;">
+              <span>↺ Restaurar</span>
+            </button>
+            <button class="btn-add-filter" id="btnOpenNewFilterModal" title="Criar novo filtro fixo">
+              <span>+ Novo</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters List -->
+      <div class="filter-list" id="fixedFiltersList">
+        <!-- Rendered by store.js -->
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="sidebar-stats-row">
+          <span>Total de demandas:</span>
+          <span class="stat-chip" id="statTotalCount">0</span>
+        </div>
+        <div class="sidebar-stats-row">
+          <span>Auto-atualização:</span>
+          <select class="quick-select" id="selectAutoRefresh" style="height: 24px; font-size: 11px;">
+            <option value="0">Desativada</option>
+            <option value="1">A cada 1 min</option>
+            <option value="3" selected>A cada 3 min</option>
+            <option value="5">A cada 5 min</option>
+            <option value="10">A cada 10 min</option>
+          </select>
+        </div>
+        <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.0</span>
+          <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+            <span>🔄</span> Atualizar
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      
+      <!-- Top Action & Search Bar -->
+      <div class="top-bar">
+        <div class="top-bar-upper">
+          
+          <div class="active-view-header">
+            <span class="active-view-icon" id="activeFilterIcon">⚡</span>
+            <span class="active-view-title" id="activeFilterTitle">Todas as Demandas</span>
+            <span class="active-view-count" id="activeFilterCount">0</span>
+          </div>
+
+          <!-- Search Input -->
+          <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="inputSearch" placeholder="Buscar por nº, título, Movidesk, banco de dados ou responsável... (Ctrl+F)">
+          </div>
+
+          <!-- Controls -->
+          <div class="top-bar-controls">
+            <!-- View Mode Switcher -->
+            <div class="view-switcher">
+              <button class="view-btn active" id="btnViewTable" title="Visualização em Lista/Tabela">
+                <span>📋</span> Tabela
+              </button>
+              <button class="view-btn" id="btnViewKanban" title="Visualização em Quadro Kanban">
+                <span>📊</span> Kanban
+              </button>
+            </div>
+
+            <!-- New Ticket Button -->
+            <button class="btn-primary" id="btnOpenCreateTicketModal" title="Abrir Novo Chamado (Ctrl+N)">
+              <span>➕</span> Novo Chamado
+            </button>
+
+            <!-- Sync Button -->
+            <button class="btn-secondary" id="btnSyncNow" title="Sincronizar dados agora">
+              <span id="syncIcon">🔄</span> Sincronizar
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Filter Dropdowns Row -->
+        <div class="quick-filter-bar">
+          <select class="quick-select" id="quickSelectStatus">
+            <option value="all">Todas as Situações</option>
+            <option value="queued">Na Fila</option>
+            <option value="in_progress">Em Progresso</option>
+            <option value="review">Em Revisão</option>
+            <option value="waiting">Aguardando quem abriu</option>
+            <option value="done">✅ Concluídos</option>
+          </select>
+
+          <select class="quick-select" id="quickSelectType">
+            <option value="all">Todos os Tipos</option>
+            <option value="Novo Layout">Novo Layout</option>
+            <option value="Inclusao">Inclusão</option>
+            <option value="Erro">Erro</option>
+            <option value="Migração">Migração</option>
+          </select>
+
+          <select class="quick-select" id="quickSelectDev">
+            <option value="all">Qualquer Responsável</option>
+            <!-- Filled dynamically -->
+          </select>
+
+          <!-- Date Filter Dropdown -->
+          <select class="quick-select" id="quickSelectDate" title="Filtrar por data e prazo">
+            <option value="all">📅 Todas as Datas</option>
+            <option value="overdue">🔴 Atrasados (Vencidos)</option>
+            <option value="today">🟡 Para Hoje</option>
+            <option value="tomorrow">🟠 Para Amanhã</option>
+            <option value="week">📆 Esta Semana (7 dias)</option>
+            <option value="month">🗓️ Este Mês</option>
+            <option value="none">⚪ Sem Prazo Definido</option>
+          </select>
+
+          <!-- Sorting Dropdown -->
+          <select class="quick-select" id="quickSelectSort" title="Ordenar lista de demandas" style="font-weight: 600; color: #a5b4fc;">
+            <option value="deliveryDueDate_asc">⏰ Prazos mais próximos / Atrasados</option>
+            <option value="deliveryDueDate_desc">📅 Prazos mais distantes</option>
+            <option value="createdAt_desc">🕒 Criação: Mais recentes primeiro</option>
+            <option value="createdAt_asc">⏳ Criação: Mais antigos primeiro</option>
+            <option value="number_desc">🔢 Número (# decrescente)</option>
+            <option value="number_asc">🔢 Número (# crescente)</option>
+          </select>
+
+          <button class="icon-btn-ghost" id="btnClearQuickFilters" title="Apagar todos os filtros ativos e voltar a Todas as Demandas" style="font-size: 11px;">
+            ✖ Limpar Filtros
+          </button>
+
+          <button class="save-as-fixed-btn" id="btnSaveCurrentAsFixed" title="Salvar esses filtros como uma visualização fixa permanente">
+            <span>💾</span> Salvar como Filtro Fixo
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Content Body (Table or Kanban) -->
+      <div class="content-body" id="contentBody">
+        
+        <!-- Table View Container -->
+        <div class="table-wrapper" id="tableViewContainer">
+          <table class="demands-table">
+            <thead>
+              <tr>
+                <th style="width: 40px; text-align: center;">⭐</th>
+                <th class="sortable" data-sort="number" style="width: 75px;">Nº <span class="sort-indicator" id="sortInd_number"></span></th>
+                <th class="sortable" data-sort="layout" style="width: 85px;">Layout <span class="sort-indicator" id="sortInd_layout"></span></th>
+                <th>Título da Demanda</th>
+                <th style="width: 100px;">Movidesk</th>
+                <th style="width: 170px;">Banco / Cliente</th>
+                <th style="width: 115px;">Tipo</th>
+                <th style="width: 130px;">Situação</th>
+                <th style="width: 140px;">Responsável</th>
+                <th class="sortable" data-sort="deliveryDueDate" style="width: 130px;">Prazo de Entrega <span class="sort-indicator" id="sortInd_deliveryDueDate">▲</span></th>
+                <th class="sortable" data-sort="createdAt" style="width: 110px;">Criado em <span class="sort-indicator" id="sortInd_createdAt"></span></th>
+                <th style="width: 60px; text-align: right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="demandsTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Kanban View Container (Hidden initially) -->
+        <div class="kanban-board" id="kanbanViewContainer" style="display: none;">
+          <!-- Columns rendered via JS -->
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- Slide-over / Expanded Demand Details Workspace -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <aside class="demand-drawer" id="demandDrawer">
+    <!-- Header -->
+    <div class="drawer-header">
+      <div class="drawer-title-area">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div class="drawer-demand-number" id="drawerDemandNumber">#---</div>
+          <div style="display: flex; gap: 6px; align-items: center;" id="drawerBadges">
+            <!-- Badges -->
+          </div>
+        </div>
+        <div class="drawer-demand-title" id="drawerDemandTitle">Carregando chamado...</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button class="btn-primary" id="btnDrawerSaveTicket" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 14px; font-weight: 600;" title="Salvar todas as alterações da demanda">
+          <span>💾</span> Salvar Alterações
+        </button>
+        <button class="btn-external-link" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer">
+          🌐 Abrir no Importer
+        </button>
+        <button class="btn-external-link" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
+          🎫 Abrir no Movidesk
+        </button>
+        <button class="icon-btn-ghost btn-drawer-toggle-size" id="btnToggleDrawerExpand" title="Expandir visualização / Reduzir largura">
+          <span id="drawerExpandIcon">🗖</span>
+        </button>
+        <button class="icon-btn-ghost" id="btnCloseDrawer" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="drawer-tabs">
+      <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails">
+        <span>📄</span> Ficha & Edição
+      </button>
+      <button class="drawer-tab" data-tab="comments" id="drawerTabBtnComments">
+        <span>💬</span> Diálogo & Linha do Tempo <span class="tab-badge" id="drawerStreamCountBadge">0</span>
+      </button>
+      <button class="drawer-tab" data-tab="attachments" id="drawerTabBtnAttachments">
+        <span>📎</span> Anexos <span class="tab-badge" id="drawerAttachmentsCountBadge">0</span>
+      </button>
+      <button class="drawer-tab" data-tab="notes" id="drawerTabBtnNotes">
+        <span>📝</span> Minhas Anotações
+      </button>
+    </div>
+
+    <!-- Drawer Body -->
+    <div class="drawer-body">
+
+      <!-- TAB 1: DETAILS & EDIT -->
+      <div class="drawer-tab-pane active" id="drawerPaneDetails">
+        <!-- Quick Action Buttons -->
+        <div class="drawer-actions-row">
+          <button class="quick-action-btn" id="btnOpenWeb" title="Abrir chamado no Importer">
+            <span>🌐</span> Importer Ultra
+          </button>
+          <button class="quick-action-btn" id="btnOpenMovidesk" title="Abrir chamado no Movidesk">
+            <span>🎫</span> Movidesk
+          </button>
+          <button class="quick-action-btn" id="btnCopyDatabase">
+            <span>📋</span> Copiar Banco
+          </button>
+          <button class="quick-action-btn" id="btnToggleDrawerFavorite">
+            <span>⭐</span> Favorito
+          </button>
+          <button class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
+            <span>🚫</span> Ignorar Chamado
+          </button>
+          <button class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
+            <span>📦</span> Arquivar
+          </button>
+        </div>
+
+        <!-- Editable Title Field -->
+        <div class="form-group" style="margin-top: 4px;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Título da Demanda</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Editável</span>
+          </label>
+          <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14.5px; font-weight: 600;">
+        </div>
+
+        <!-- Structured Properties Cards (Ficha de Edição) -->
+        <div class="drawer-properties-cards">
+          <!-- Card 1: Situação & Atribuição -->
+          <div class="drawer-prop-card">
+            <div class="drawer-prop-card-header">
+              <span class="drawer-prop-card-title">📌 Situação & Atribuição</span>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Situação do Chamado</label>
+              <select class="form-select" id="drawerEditStatus">
+                <option value="triage">Triagem</option>
+                <option value="open">Na Fila (Aberto)</option>
+                <option value="in_progress">Em Progresso</option>
+                <option value="review">Em Revisão</option>
+                <option value="waiting">Aguardando Validação</option>
+                <option value="paused">Pausado</option>
+                <option value="closed">Concluído</option>
+              </select>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Responsável (Desenvolvedor)</label>
+              <select class="form-select" id="drawerEditAssignedTo">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Prioridade</label>
+              <select class="form-select priority-select" id="drawerEditPriority">
+                <option value="medium">● Normal</option>
+                <option value="high">● Alta</option>
+                <option value="urgent">● Urgente</option>
+                <option value="low">● Baixa</option>
+              </select>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Validador</label>
+              <div class="meta-value" id="drawerMetaReviewer" style="padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 12.5px;">-</div>
+            </div>
+          </div>
+
+          <!-- Card 2: Prazos com Calendários Integrados -->
+          <div class="drawer-prop-card">
+            <div class="drawer-prop-card-header">
+              <span class="drawer-prop-card-title">📅 Prazos de Entrega</span>
+            </div>
+            <div class="drawer-field-row" style="position: relative;" id="drawerDeliveryDateGroup">
+              <label class="drawer-field-label">
+                <span>Prazo de Entrega</span>
+                <span id="drawerDeliveryBadge" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
+              </label>
+              <div class="date-input-wrapper">
+                <input type="text" class="form-input" id="drawerEditDeliveryDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #38bdf8; cursor: pointer;">
+                <button type="button" class="btn-input-calendar" id="btnToggleDrawerDeliveryCal" title="Abrir calendário de disponibilidade">📅</button>
+              </div>
+              <!-- Floating Popover Delivery -->
+              <div class="cal-floating-popover" id="calDrawerDeliveryPopover" style="display: none; left: auto; right: 0;">
+                <div class="cal-popover-header">
+                  <div class="cal-top-header" id="calDrawerAgendaHeader">Agenda de Entrega</div>
+                  <button type="button" class="btn-close-popover" id="btnCloseDrawerDeliveryCal">✕</button>
+                </div>
+                <div class="cal-dual-months" id="calDrawerDualMonthsContainer"></div>
+                <div class="cal-popover-footer">
+                  <div class="cal-selected-pill" id="calDrawerDeliverySelectedDateText">Nenhuma data</div>
+                  <button type="button" id="btnClearDrawerDeliveryDate" class="btn-clear-date">Limpar</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="drawer-field-row" style="position: relative;" id="drawerClientDateGroup">
+              <label class="drawer-field-label">
+                <span>Prazo do Cliente</span>
+                <span style="font-size: 10px; color: #a5b4fc; font-weight: 600;">Calendário comum</span>
+              </label>
+              <div class="date-input-wrapper">
+                <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
+                <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #a5b4fc;">📅</button>
+              </div>
+              <!-- Common Calendar Popover Client -->
+              <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none;">
+                <div class="cal-popover-header">
+                  <div class="cal-top-header" style="font-size: 13px;">📅 <strong>Calendário</strong> (Prazo do Cliente)</div>
+                  <button type="button" class="btn-close-popover" id="btnCloseDrawerClientCal">✕</button>
+                </div>
+                <div class="cal-common-body" id="calDrawerClientMonthContainer"></div>
+                <div class="cal-popover-footer">
+                  <button type="button" id="btnDrawerClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
+                  <button type="button" id="btnClearDrawerClientDate" class="btn-clear-date">Limpar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Vínculos & Clientes -->
+          <div class="drawer-prop-card">
+            <div class="drawer-prop-card-header">
+              <span class="drawer-prop-card-title">🔗 Banco & Movidesk</span>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Banco de Dados do Cliente</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
+                <button type="button" class="btn-secondary" id="btnDrawerCopyDbAction" title="Copiar Banco" style="padding: 0 10px; height: 36px;">📋</button>
+              </div>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Nº Ticket Movidesk</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="number" class="form-input" id="drawerEditMovidesk" placeholder="Ex: 12345">
+                <button type="button" class="btn-secondary" id="btnDrawerOpenMovideskAction" title="Abrir chamado no Movidesk" style="padding: 0 10px; height: 36px;">🎫</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Classificação & Layout -->
+          <div class="drawer-prop-card">
+            <div class="drawer-prop-card-header">
+              <span class="drawer-prop-card-title">📐 Layout & Produto</span>
+            </div>
+            <div class="drawer-field-row" style="position: relative;">
+              <label class="drawer-field-label">Layout Associado</label>
+              <input type="text" class="form-input" id="drawerEditLayoutSearch" placeholder="Digite nº ou nome do layout..." autocomplete="off">
+              <input type="hidden" id="drawerEditLayoutId">
+              <div id="drawerLayoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+              <div id="drawerSelectedLayoutTag" style="display: none; margin-top: 4px;"></div>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Tipo de Chamado</label>
+              <select class="form-select" id="drawerEditType">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Produto</label>
+              <select class="form-select" id="drawerEditProduct">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Card 5: Etiquetas da Demanda -->
+          <div class="drawer-prop-card" style="grid-column: span 2;">
+            <div class="drawer-prop-card-header">
+              <span class="drawer-prop-card-title">🏷️ Etiquetas da Demanda</span>
+              <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar / desmarcar</span>
+            </div>
+            <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Card 6: Metadados do Sistema -->
+          <div class="drawer-prop-card" style="grid-column: span 2; background: rgba(255,255,255,0.015);">
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);">
+              <div>👤 <strong>Solicitante:</strong> <span id="drawerMetaRequester">-</span></div>
+              <div>📅 <strong>Criado em:</strong> <span id="drawerMetaCreatedAt">-</span></div>
+              <div>🆔 <strong>ID do Chamado:</strong> <span id="drawerMetaId" style="font-family: monospace; font-size: 11px;">-</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description Section with View/Edit toggle -->
+        <div class="form-group" style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="form-label" style="margin-bottom: 0;">Descrição Completa do Chamado</span>
+            <button type="button" class="btn-secondary" id="btnToggleEditDesc" style="padding: 4px 10px; font-size: 11.5px; gap: 5px;">
+              <span id="btnToggleEditDescIcon">✏️</span> <span id="btnToggleEditDescText">Editar Descrição</span>
+            </button>
+          </div>
+
+          <!-- Description View Mode -->
+          <div class="description-box" id="drawerDescription">Carregando descrição...</div>
+
+          <!-- Description Edit Mode (Hidden initially) -->
+          <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; margin-top: 6px;">
+            <div class="rich-editor-toolbar" id="drawerDescToolbar">
+              <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
+              <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
+              <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
+              <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+              <span class="toolbar-separator"></span>
+              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3"><b>H3</b></button>
+              <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList">• Lista</button>
+              <button type="button" class="toolbar-btn" data-cmd="insertOrderedList">1. Lista</button>
+              <span class="toolbar-separator"></span>
+              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre">&lt;/&gt; Código</button>
+              <button type="button" class="toolbar-btn" data-cmd="removeFormat">🧹 Limpar</button>
+            </div>
+            <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color);">
+              <button type="button" class="btn-secondary" id="btnCancelEditDesc" style="font-size: 12px;">Cancelar</button>
+              <button type="button" class="btn-primary" id="btnSaveDescOnly" style="font-size: 12px; gap: 6px;"><span>💾</span> Salvar Descrição</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Save Action Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color);">
+          <div id="drawerSaveStatusText" style="font-size: 12.5px; color: #10b981; font-weight: 500;"></div>
+          <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
+            <span>💾</span> Salvar Alterações da Demanda
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 2: UNIFIED DIALOGUE & TIMELINE (Linha do tempo integrada no diálogo) -->
+      <div class="drawer-tab-pane" id="drawerPaneComments" style="display: none;">
+        <!-- Filter Bar -->
+        <div class="stream-filter-bar">
+          <button type="button" class="stream-filter-btn active" data-filter="all" id="btnStreamFilterAll">
+            <span>💬</span> Tudo <span class="stream-filter-count" id="streamCountAll">0</span>
+          </button>
+          <button type="button" class="stream-filter-btn" data-filter="comments" id="btnStreamFilterComments">
+            <span>🗨️</span> Apenas Mensagens <span class="stream-filter-count" id="streamCountComments">0</span>
+          </button>
+          <button type="button" class="stream-filter-btn" data-filter="events" id="btnStreamFilterEvents">
+            <span>🕒</span> Linha do Tempo / Histórico <span class="stream-filter-count" id="streamCountEvents">0</span>
+          </button>
+        </div>
+
+        <!-- Unified Activity Stream (Messages + System Events) -->
+        <div class="comments-container stream-container" id="drawerStreamList">
+          <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">
+            Carregando diálogo e histórico...
+          </div>
+        </div>
+
+        <!-- Quick Reply Box -->
+        <div class="comment-input-box">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Responder ou adicionar comentário</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Pressione Ctrl+Enter para enviar</span>
+          </label>
+          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, esclarecimento ou observação para a equipe..."></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+            <span id="commentSendStatus" style="font-size: 11.5px; color: var(--accent-primary); font-weight: 500;"></span>
+            <button class="btn-primary" id="btnSubmitComment" style="height: 34px; font-size: 12px; gap: 6px;">
+              <span>💬</span> Enviar Resposta
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: ATTACHMENTS (Com Dropzone para envio direto) -->
+      <div class="drawer-tab-pane" id="drawerPaneAttachments" style="display: none;">
+        <!-- Upload Dropzone for demand -->
+        <div class="file-dropzone" id="drawerDropzone" style="padding: 18px 20px;">
+          <div class="dropzone-icon" style="font-size: 26px;">📎</div>
+          <div class="dropzone-text" style="font-size: 13px;">
+            <strong>Clique para selecionar</strong> ou arraste arquivos para anexar a este chamado
+          </div>
+          <div class="dropzone-sub" style="font-size: 11px;">Suporta PDF, XLSX, CSV, PNG, JPG, ZIP, CNAB e colagem com Ctrl+V</div>
+          <input type="file" id="drawerFileInput" multiple style="display: none;" accept="image/*,.pdf,.xlsx,.xls,.csv,.txt,.zip,.rar,.cnab,.ret,.rem">
+        </div>
+        <div id="drawerUploadStatus" style="font-size: 12px; font-weight: 500; display: none; padding: 4px 8px; border-radius: 4px;"></div>
+
+        <!-- Existing Attachments Grid -->
+        <div id="drawerAttachmentsEmpty" style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">
+          Nenhum anexo associado a este chamado.
+        </div>
+        <div id="drawerAttachmentsList" class="attachments-grid"></div>
+      </div>
+
+      <!-- TAB 4: PRIVATE LOCAL NOTES -->
+      <div class="drawer-tab-pane" id="drawerPaneNotes" style="display: none;">
+        <div class="notes-section">
+          <span class="form-label" style="display: flex; justify-content: space-between;">
+            <span>📝 Anotações Pessoais Salvas no seu Computador</span>
+            <span style="font-size: 11px; color: var(--status-progress);" id="noteSaveStatus">Salvo automaticamente</span>
+          </span>
+          <textarea class="notes-textarea" id="drawerLocalNotes" style="height: 200px;" placeholder="Escreva aqui anotações pessoais, pendências com o cliente, consultas SQL ou lembretes sobre este chamado..."></textarea>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- Modal: Create New Ticket (Extra Large with Interactive Calendar & Dropzone) -->
+  <div class="modal-overlay" id="createTicketModalOverlay">
+    <div class="modal-card modal-card-ultra-large">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">➕</div>
+          <div>
+            <div class="modal-title" style="font-size: 17px;">Abrir Novo Chamado</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 1px;">Cadastre uma nova demanda com verificação de agenda em tempo real</div>
+          </div>
+        </div>
+        <button class="icon-btn-ghost" id="btnCloseCreateTicketModal" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
+      </div>
+
+      <div class="modal-dual-layout">
+        <!-- LEFT: Form Fields & Floating Calendar Popover -->
+        <div class="modal-form-col">
+          <!-- 1. TÍTULO -->
+          <div class="form-group">
+            <label class="form-label">Título da Demanda <span style="color: #ef4444;">*</span></label>
+            <input type="text" class="form-input" id="newTicketTitle" placeholder="Ex: Criação de novo layout para extrato bancário...">
+          </div>
+
+          <!-- 2. LAYOUT ASSOCIADO (BUSCA) -->
+          <div class="form-group" style="position: relative;">
+            <label class="form-label">Layout Associado (Busca)</label>
+            <input type="text" class="form-input" id="newTicketLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 13, 5190, Bradesco)..." autocomplete="off">
+            <input type="hidden" id="newTicketLayoutId">
+            <div id="layoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+            <div id="selectedLayoutTag" style="display: none; margin-top: 6px;"></div>
+          </div>
+
+          <!-- 3. TICKET MOVIDESK & 4. BANCO DE DADOS -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label">Nº Ticket Movidesk (Opcional)</label>
+              <input type="number" class="form-input" id="newTicketMovidesk" placeholder="Ex: 12345">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Banco de Dados do Cliente</label>
+              <input type="text" class="form-input" id="newTicketDatabase" placeholder="Ex: cont_confour">
+            </div>
+          </div>
+
+          <!-- 5. TIPO & 6. PRODUTO -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label">Tipo de Chamado (Assunto) <span style="color: #ef4444;">*</span></label>
+              <select class="form-select" id="newTicketType">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Produto <span style="color: #ef4444;">*</span></label>
+              <select class="form-select" id="newTicketProduct">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+          </div>
+
+          <div class="catalog-link-hint">
+            <span>⚙️</span> Faltou um tipo ou uma etiqueta? Cadastre no Catálogo de Chamados
+          </div>
+
+          <!-- 7. RESPONSÁVEL & 8. PRIORIDADE -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Responsável <span style="color: #ef4444;">*</span></span>
+                <span id="newTicketDevFilteredHint" style="font-size: 10px; color: #a5b4fc; font-weight: 500;"></span>
+              </label>
+              <select class="form-select" id="newTicketAssignedTo">
+                <!-- Dynamically populated and filtered by selected type! -->
+              </select>
+              <div class="dev-triage-caption" style="margin-top: 4px;">Sem responsável, o chamado fica na triagem.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Prioridade</label>
+              <select class="form-select priority-select" id="newTicketPriority">
+                <option value="medium" selected>● Normal</option>
+                <option value="high">● Alta</option>
+                <option value="urgent">● Urgente</option>
+                <option value="low">● Baixa</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 9. PRAZO DE ENTREGA & 10. PRAZO DO CLIENTE -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <!-- Prazo de Entrega com Popover Flutuante -->
+            <div class="form-group" style="position: relative;" id="deliveryDateGroup">
+              <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Prazo de Entrega</span>
+                <span id="deliveryHintText" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
+              </label>
+              <div class="date-input-wrapper">
+                <input type="text" class="form-input" id="newTicketDeliveryDateInput" placeholder="dd/mm/aaaa" readonly style="cursor: pointer; font-weight: 600; color: #38bdf8; padding-right: 32px;" title="Clique para abrir o calendário flutuante de disponibilidade">
+                <button type="button" class="btn-input-calendar" id="btnToggleFloatingCalendar" title="Abrir calendário flutuante">📅</button>
+              </div>
+              <input type="hidden" id="newTicketDueDate">
+
+              <!-- CALENDÁRIO FLUTUANTE DE ENTREGA -->
+              <div class="cal-floating-popover" id="calFloatingPopover" style="display: none;">
+                <div class="cal-popover-header">
+                  <div class="cal-top-header" id="calAgendaHeader">
+                    Agenda de <strong id="calDevNameHeader">Desenvolvedor</strong>: chamados em aberto com entrega em cada dia.
+                  </div>
+                  <button type="button" class="btn-close-popover" id="btnCloseFloatingCalendar" title="Fechar calendário">✕</button>
+                </div>
+
+                <!-- Calendar Legend -->
+                <div class="cal-legend">
+                  <div class="legend-item"><span class="legend-box box-free"></span><span>Livre</span></div>
+                  <div class="legend-item"><span class="legend-box box-busy"></span><span>Até 5 chamados</span></div>
+                  <div class="legend-item"><span class="legend-box box-full"></span><span>Mais de 5</span></div>
+                  <div class="legend-item"><span class="legend-box box-weekend-legend"></span><span>Fim de semana, feriado ou ausência</span></div>
+                </div>
+
+                <!-- Dual Months Grid Container (Month 1 & Month 2 rendered via JS) -->
+                <div class="cal-dual-months" id="calDualMonthsContainer">
+                  <!-- Rendered dynamically -->
+                </div>
+
+                <div class="cal-popover-footer">
+                  <div class="cal-hover-hint">Passe o mouse num dia para ver o detalhe.</div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="cal-selected-pill" id="calSelectedDateText">Nenhuma data selecionada</div>
+                    <button type="button" id="btnClearSelectedDate" class="btn-clear-date" style="display: none;">Limpar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Prazo do Cliente com Calendário Comum Integrado -->
+            <div class="form-group" style="position: relative;" id="clientDateGroup">
+              <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Prazo do Cliente</span>
+                <span id="clientDueHintText" style="font-size: 10px; color: #a5b4fc; font-weight: 600;"></span>
+              </label>
+              <div class="date-input-wrapper">
+                <input type="text" class="form-input" id="newTicketClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; padding-right: 32px; cursor: pointer;" title="Clique para abrir o calendário comum">
+                <button type="button" class="btn-input-calendar" id="btnToggleClientCalendar" title="Abrir calendário comum" style="color: #a5b4fc;">📅</button>
+              </div>
+
+              <!-- CALENDÁRIO COMUM INTEGRADO (Common Calendar Popover) -->
+              <div class="cal-floating-popover cal-common-popover" id="calClientPopover" style="display: none;">
+                <div class="cal-popover-header">
+                  <div class="cal-top-header" style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                    <span>📅</span> <strong>Calendário Comum</strong> (Prazo do Cliente)
+                  </div>
+                  <button type="button" class="btn-close-popover" id="btnCloseClientCalendar" title="Fechar calendário">✕</button>
+                </div>
+
+                <div class="cal-common-body" id="calClientMonthContainer">
+                  <!-- Rendered dynamically -->
+                </div>
+
+                <div class="cal-popover-footer" style="padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                  <button type="button" id="btnClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
+                  <div style="font-size: 11px; color: var(--text-muted);" id="calClientSelectedDateLabel">Nenhuma data</div>
+                  <button type="button" id="btnClearClientCalendarDate" class="btn-clear-date" style="background: none; border: none; color: #ef4444; font-size: 11px; cursor: pointer; text-decoration: underline;">Limpar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triage-info-banner">
+            Os campos preenchidos ficam salvos, mesmo quando a demanda permanece em <strong>Triagem</strong>.
+          </div>
+
+          <!-- Labels / Etiquetas Selector -->
+          <div class="form-group">
+            <label class="form-label" style="display: flex; justify-content: space-between;">
+              <span>Etiquetas da Demanda</span>
+              <span style="font-size: 10px; color: var(--text-muted);">Clique para selecionar</span>
+            </label>
+            <div class="labels-picker-container" id="ticketLabelsPicker">
+              <!-- Dynamically populated label pills -->
+            </div>
+          </div>
+
+          <div id="createTicketError" style="display: none; padding: 10px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: var(--radius-sm); color: #fca5a5; font-size: 12px;"></div>
+        </div>
+
+        <!-- RIGHT: Description Editor with Rich Text Toolbar & Attachments -->
+        <div class="modal-editor-col">
+          <!-- Rich Description Editor -->
+          <div class="form-group" style="display: flex; flex-direction: column; flex: 1;">
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Descrição Detalhada do Chamado <span style="color: #ef4444;">*</span></span>
+              <span style="font-size: 11px; color: var(--text-muted);">Formatação rica disponível</span>
+            </label>
+            
+            <div class="rich-editor-wrapper">
+              <div class="rich-editor-toolbar" id="ticketDescToolbar">
+                <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito (Ctrl+B)"><b>B</b></button>
+                <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></button>
+                <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado (Ctrl+U)"><u>U</u></button>
+                <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+                <span class="toolbar-separator"></span>
+                <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3" title="Título de seção"><b>H3</b></button>
+                <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList" title="Lista com marcadores">• Lista</button>
+                <button type="button" class="toolbar-btn" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
+                <span class="toolbar-separator"></span>
+                <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre" title="Bloco de código / SQL">&lt;/&gt; Código</button>
+                <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="blockquote" title="Citação">❝ Citação</button>
+                <button type="button" class="toolbar-btn" data-cmd="removeFormat" title="Limpar formatação">🧹 Limpar</button>
+              </div>
+              <div class="rich-editor-content" id="newTicketDescriptionEditor" contenteditable="true" data-placeholder="Informe todas as orientações para o desenvolvimento, regras contábeis, campos, selects ou particularidades..."></div>
+              <textarea id="newTicketDescription" style="display: none;"></textarea>
+            </div>
+          </div>
+
+          <!-- File / Image Upload Dropzone -->
+          <div class="form-group">
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Anexos (Imagens e Documentos)</span>
+              <span style="font-size: 11px; color: var(--text-muted);">Arraste ou cole prints com Ctrl+V</span>
+            </label>
+            <div class="file-dropzone" id="ticketDropzone">
+              <div class="dropzone-icon">📎</div>
+              <div class="dropzone-text">
+                <strong>Clique para selecionar</strong> ou arraste documentos e imagens aqui
+              </div>
+              <div class="dropzone-sub">Suporta PDF, XLSX, CSV, PNG, JPG, ZIP, CNAB e colagem direta de prints (Ctrl+V)</div>
+              <input type="file" id="ticketFileInput" multiple style="display: none;" accept="image/*,.pdf,.xlsx,.xls,.csv,.txt,.zip,.rar,.cnab,.ret,.rem">
+            </div>
+            <!-- Uploaded / Selected files preview list -->
+            <div class="selected-files-list" id="ticketSelectedFilesList"></div>
+          </div>
+
+          <!-- Botões de Ação diretamente embaixo de Anexos -->
+          <div class="modal-actions-under-attachments">
+            <button type="button" class="btn-secondary" id="btnCancelCreateTicket" style="height: 38px; padding: 0 18px; font-weight: 500;">Cancelar</button>
+            <button type="button" class="btn-primary" id="btnSubmitCreateTicket" style="gap: 8px; height: 38px; padding: 0 22px; font-size: 13.5px; font-weight: 600;">
+              <span>🚀</span> Criar Demanda
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Modal: Create / Edit Fixed Filter -->
+  <div class="modal-overlay" id="filterModalOverlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title" id="filterModalTitle">Novo Filtro Fixo</div>
+        <button class="icon-btn-ghost" id="btnCloseFilterModal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="modalFilterId">
+        
+        <div class="form-group">
+          <label class="form-label">Nome do Filtro Fixo</label>
+          <input type="text" class="form-input" id="modalFilterName" placeholder="Ex: Meus Chamados Urgentes, Layouts Cairo, etc.">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">Ícone / Emoji</label>
+            <input type="text" class="form-input" id="modalFilterIcon" value="🎯" style="font-size: 16px;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cor de Destaque</label>
+            <input type="color" class="form-input" id="modalFilterColor" value="#6366f1" style="padding: 2px; height: 38px;">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Filtrar por Situação</label>
+          <select class="form-select" id="modalFilterStatus">
+            <option value="">Qualquer Situação</option>
+            <option value="queued">Na Fila</option>
+            <option value="in_progress">Em Progresso</option>
+            <option value="review">Em Revisão</option>
+            <option value="waiting">Aguardando quem abriu</option>
+            <option value="done">Concluídos / Finalizados</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Filtrar por Tipo</label>
+          <select class="form-select" id="modalFilterType">
+            <option value="">Qualquer Tipo</option>
+            <option value="Novo Layout">Novo Layout</option>
+            <option value="Inclusao">Inclusão</option>
+            <option value="Erro">Erro</option>
+            <option value="Migração">Migração</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Responsável Específico</label>
+          <select class="form-select" id="modalFilterDev">
+            <option value="">Qualquer Desenvolvedor</option>
+            <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Filtrar por Banco / Cliente (Texto)</label>
+          <input type="text" class="form-input" id="modalFilterDatabase" placeholder="Ex: cont_confour">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Prazos</label>
+          <select class="form-select" id="modalFilterDeadline">
+            <option value="">Todos os prazos</option>
+            <option value="urgent">Críticos (Hoje ou Atrasados)</option>
+            <option value="today">Apenas Hoje</option>
+            <option value="none">Sem prazo definido</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn-danger" id="btnDeleteFilterModal" style="display: none;">
+          🗑️ Apagar Filtro
+        </button>
+        <div style="display: flex; gap: 8px; margin-left: auto;">
+          <button type="button" class="btn-secondary" id="btnCancelFilterModal">Cancelar</button>
+          <button type="button" class="btn-primary" id="btnSaveFilterModal">Salvar Filtro Fixo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Preview Lightbox Modal -->
+  <div class="image-lightbox-overlay" id="imageLightboxOverlay" style="display: none;">
+    <div class="lightbox-top-bar">
+      <div class="lightbox-info">
+        <span class="lightbox-icon">🖼️</span>
+        <span class="lightbox-filename" id="lightboxFileName">imagem.png</span>
+      </div>
+      <div class="lightbox-actions">
+        <button type="button" class="btn-primary" id="btnLightboxDownload" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 14px;">
+          <span>⬇️</span> Baixar Imagem
+        </button>
+        <button type="button" class="icon-btn-ghost" id="btnCloseLightbox" style="font-size: 20px; color: white;" title="Fechar (Esc)">✕</button>
+      </div>
+    </div>
+    <div class="lightbox-body" id="lightboxBody">
+      <img id="lightboxImage" src="" alt="Visualização da imagem">
+    </div>
+  </div>
+
+  <!-- Login Overlay (Shown if not authenticated) -->
+  <div class="login-overlay" id="loginOverlay" style="display: none;">
+    <div class="login-card">
+      <div class="login-logo">CC</div>
+      <div class="login-header">
+        <div class="login-title">Conciliador Contábil</div>
+        <div class="login-subtitle">Entre com suas credenciais do Importer Ultra para conectar suas demandas</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input type="email" class="form-input" id="loginEmail" placeholder="seu.email@conciliadorcontabil.com.br" value="fulvio@conciliadorcontabil.com.br">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" value="123456">
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary);">
+        <input type="checkbox" id="loginRemember" checked>
+        <label for="loginRemember" style="cursor: pointer;">Salvar credenciais e manter conectado</label>
+      </div>
+
+      <div id="loginErrorMessage" style="color: #ef4444; font-size: 12px; display: none;"></div>
+
+      <button class="btn-primary" id="btnLoginSubmit" style="width: 100%; justify-content: center; height: 42px;">
+        Conectar e Carregar Demandas
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

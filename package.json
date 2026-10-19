@@ -1,0 +1,59 @@
+{
+  "name": "organizador-de-chamados",
+  "version": "1.0.0",
+  "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir",
+    "release": "electron-builder --win --publish always"
+  },
+  "keywords": [
+    "chamados",
+    "demandas",
+    "conciliador",
+    "organizador"
+  ],
+  "author": "Fulvio Tanure",
+  "license": "MIT",
+  "build": {
+    "appId": "com.conciliador.organizadorchamados",
+    "productName": "Organizador de Chamados",
+    "copyright": "Copyright © 2026 Fulvio Tanure",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Fulviotanure",
+      "repo": "organizador-de-chamados"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Organizador de Chamados"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
