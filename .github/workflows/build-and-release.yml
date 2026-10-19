@@ -38,3 +38,22 @@ jobs:
       - name: Build Electron App (Check only)
         if: "!startsWith(github.ref, 'refs/tags/v') && github.event_name != 'workflow_dispatch'"
         run: npm run build
+
+      - name: Automatically Publish All Draft Releases
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          Write-Host "Verificando se existem releases em rascunho (Draft)..."
+          try {
+            $releases = @(gh release list --json tagName,isDraft | ConvertFrom-Json)
+            foreach ($rel in $releases) {
+              if ($rel.isDraft) {
+                Write-Host "Publicando rascunho automaticamente: $($rel.tagName)"
+                gh release edit $rel.tagName --draft=false --latest
+              }
+            }
+          } catch {
+            Write-Host "Aviso ao verificar releases: $_"
+          }
