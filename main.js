@@ -207,7 +207,11 @@ ipcMain.handle('updater-check', async () => {
     const res = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: res?.updateInfo };
   } catch (err) {
-    return { success: false, error: err.message };
+    let msg = err.message || 'Erro ao verificar atualizações';
+    if (msg.includes('404') || msg.includes('releases.atom')) {
+      msg = 'Nenhuma versão publicada encontrada no GitHub (404). Certifique-se de que o repositório é público e de que existe pelo menos uma Release publicada.';
+    }
+    return { success: false, error: msg };
   }
 });
 
