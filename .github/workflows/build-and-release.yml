@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Dependencies
@@ -34,21 +34,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release
 
-      - name: Automatically Publish All Draft Releases
+      - name: Automatically Publish All Draft Releases and Set Latest
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          Write-Host "Verificando se existem releases em rascunho (Draft)..."
+          Write-Host "Verificando e garantindo que a release seja publicada como Latest..."
           try {
-            $releases = @(gh release list --json tagName,isDraft | ConvertFrom-Json)
+            $releases = @(gh release list --limit 10 --json tagName,isDraft | ConvertFrom-Json)
             foreach ($rel in $releases) {
               if ($rel.isDraft) {
-                Write-Host "Publicando rascunho automaticamente: $($rel.tagName)"
-                gh release edit $rel.tagName --draft=false --latest
+                Write-Host "Publicando rascunho: $($rel.tagName)"
+                gh release edit $rel.tagName --draft=false
               }
             }
+
+            # Garantir que a versao atual seja explicitamente marcada como latest
+            $targetTag = $env:GITHUB_REF_NAME
+            if (-not $targetTag -or $targetTag -eq 'main') {
+              $pkg = Get-Content package.json | ConvertFrom-Json
+              $targetTag = "v$($pkg.version)"
+            }
+            Write-Host "Definindo $targetTag como release Latest no GitHub..."
+            gh release edit $targetTag --latest --draft=false
           } catch {
-            Write-Host "Aviso ao verificar releases: $_"
+            Write-Host "Aviso ao ajustar releases: $_"
           }

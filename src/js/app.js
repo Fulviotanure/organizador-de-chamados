@@ -72,26 +72,43 @@ function setupAutoUpdaterRenderer() {
         }
       } else if (data.status === 'not-available') {
         banner.style.display = 'inline-flex';
-        text.textContent = 'Aplicativo atualizado!';
-        setTimeout(() => { banner.style.display = 'none'; }, 4000);
+        text.textContent = 'Organizador de Chamados já está na versão mais recente.';
+        if (btnRestart) btnRestart.style.display = 'none';
+        setTimeout(() => { banner.style.display = 'none'; }, 5000);
       } else if (data.status === 'error') {
         console.warn('Updater status:', data.message);
-        banner.style.display = 'none';
+        banner.style.display = 'inline-flex';
+        text.textContent = data.message || 'Erro ao verificar atualizações';
+        if (btnRestart) btnRestart.style.display = 'none';
+        setTimeout(() => { banner.style.display = 'none'; }, 6000);
       }
     });
   }
 
   document.getElementById('btnCheckUpdates')?.addEventListener('click', async () => {
     const btn = document.getElementById('btnCheckUpdates');
+    const banner = document.getElementById('updateBanner');
+    const text = document.getElementById('updateBannerText');
     if (btn) btn.innerHTML = '<span>⏳</span> Checando...';
+    if (banner && text) {
+      banner.style.display = 'inline-flex';
+      text.textContent = 'Buscando atualizações no GitHub...';
+    }
     try {
       const res = await window.electronAPI.checkForUpdates();
       if (btn) btn.innerHTML = '<span>🔄</span> Atualizar';
       if (res && !res.success) {
-        alert('Aviso de atualização: ' + (res.error || 'Não foi possível verificar atualizações no momento.'));
+        if (banner && text) {
+          text.textContent = res.error || 'Não foi possível verificar atualizações no momento.';
+          setTimeout(() => { banner.style.display = 'none'; }, 6000);
+        }
       }
     } catch (e) {
       if (btn) btn.innerHTML = '<span>🔄</span> Atualizar';
+      if (banner && text) {
+        text.textContent = e.message || 'Erro ao checar atualizações';
+        setTimeout(() => { banner.style.display = 'none'; }, 6000);
+      }
     }
   });
 }

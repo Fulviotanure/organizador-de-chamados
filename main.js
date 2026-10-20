@@ -149,6 +149,9 @@ function sendUpdaterStatus(payload) {
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+if (!app.isPackaged) {
+  autoUpdater.forceDevUpdateConfig = true;
+}
 
 autoUpdater.on('checking-for-update', () => {
   sendUpdaterStatus({ status: 'checking', message: 'Verificando atualizações...' });
@@ -231,6 +234,11 @@ app.whenReady().then(() => {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(e => console.warn('Silent auto-update check:', e.message));
     }, 5000);
+
+    // Periodically check for updates every 20 minutes while app is running
+    setInterval(() => {
+      autoUpdater.checkForUpdates().catch(e => console.warn('Periodic auto-update check:', e.message));
+    }, 20 * 60 * 1000);
   }
 
   app.on('activate', () => {
