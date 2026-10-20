@@ -29,7 +29,7 @@
       "provider": "github",
       "owner": "Fulviotanure",
       "repo": "organizador-de-chamados",
-      "releaseType": "release"
+      "releaseType": "draft"
     },
     "win": {
       "target": [
