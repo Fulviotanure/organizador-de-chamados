@@ -23,7 +23,10 @@ Aplicativo Desktop moderno para Windows desenvolvido para organizar, filtrar e g
   - 👤 **Minhas Demandas** (Chamados atribuídos a você ou abertos por você)
   - 📥 **Na Fila** (Demandas aguardando início)
   - 🚀 **Em Progresso**
+  - ⏳ **Aguardando Resposta do N2** (Demandas aguardando retorno do suporte/solicitante N2)
   - 🔍 **Em Revisão** (Aguardando validação)
+  - ✅ **Chamados Concluídos** (Demandas finalizadas)
+  - 📑 **Concluídos (Documentar)** (Demandas finalizadas que possuem a etiqueta DOCUMENTAR)
   - ⚠️ **Erros e Urgências**
   - 📅 **Prazos Críticos** (Demandas vencidas ou com prazo para hoje)
   - ⭐ **Favoritos & Marcados**

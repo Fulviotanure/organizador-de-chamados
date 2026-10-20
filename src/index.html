@@ -96,7 +96,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.0</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.2</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -153,9 +153,10 @@
             <option value="all">Todas as Situações</option>
             <option value="queued">Na Fila</option>
             <option value="in_progress">Em Progresso</option>
+            <option value="waiting_n2">⏳ Aguardando Resposta do N2</option>
             <option value="review">Em Revisão</option>
-            <option value="waiting">Aguardando quem abriu</option>
-            <option value="done">✅ Concluídos</option>
+            <option value="done">✅ Concluídos (Todos)</option>
+            <option value="done_documentar">📑 Concluídos (Documentar)</option>
           </select>
 
           <select class="quick-select" id="quickSelectType">
@@ -169,6 +170,11 @@
           <select class="quick-select" id="quickSelectDev">
             <option value="all">Qualquer Responsável</option>
             <!-- Filled dynamically -->
+          </select>
+
+          <select class="quick-select" id="quickSelectLabel" title="Filtrar por Etiqueta">
+            <option value="all">🏷️ Todas as Etiquetas</option>
+            <option value="DOCUMENTAR">📑 DOCUMENTAR</option>
           </select>
 
           <!-- Date Filter Dropdown -->
@@ -338,7 +344,7 @@
                 <option value="open">Na Fila (Aberto)</option>
                 <option value="in_progress">Em Progresso</option>
                 <option value="review">Em Revisão</option>
-                <option value="waiting">Aguardando Validação</option>
+                <option value="waiting_requester">Aguardando Resposta do N2</option>
                 <option value="paused">Pausado</option>
                 <option value="closed">Concluído</option>
               </select>
@@ -878,9 +884,18 @@
             <option value="">Qualquer Situação</option>
             <option value="queued">Na Fila</option>
             <option value="in_progress">Em Progresso</option>
+            <option value="waiting_n2">Aguardando Resposta do N2</option>
             <option value="review">Em Revisão</option>
-            <option value="waiting">Aguardando quem abriu</option>
             <option value="done">Concluídos / Finalizados</option>
+            <option value="done_documentar">Concluídos com Etiqueta Documentar</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Filtrar por Etiqueta (Label)</label>
+          <select class="form-select" id="modalFilterLabel">
+            <option value="">Qualquer Etiqueta</option>
+            <option value="DOCUMENTAR">DOCUMENTAR</option>
           </select>
         </div>
 

@@ -291,6 +291,50 @@ function populateDeveloperSelects() {
       modalDevSelect.appendChild(opt);
     });
   }
+
+  populateLabelSelects();
+}
+
+// Populate label dropdowns dynamically from ticket data & master definitions
+function populateLabelSelects() {
+  const labelsMap = new Map();
+  // Ensure DOCUMENTAR is prominently available
+  labelsMap.set('DOCUMENTAR', { name: 'DOCUMENTAR', color: '#0891b2' });
+
+  // Add all labels known in store
+  const available = window.appStore.getAvailableLabels();
+  available.forEach(l => {
+    if (l && l.name) {
+      labelsMap.set(l.name.toUpperCase(), l);
+    }
+  });
+
+  const quickLabelSelect = document.getElementById('quickSelectLabel');
+  const modalLabelSelect = document.getElementById('modalFilterLabel');
+
+  if (quickLabelSelect) {
+    const currentVal = quickLabelSelect.value;
+    quickLabelSelect.innerHTML = '<option value="all">🏷️ Todas as Etiquetas</option>';
+    Array.from(labelsMap.values()).forEach(lbl => {
+      const opt = document.createElement('option');
+      opt.value = lbl.name;
+      opt.textContent = lbl.name;
+      quickLabelSelect.appendChild(opt);
+    });
+    quickLabelSelect.value = currentVal || 'all';
+  }
+
+  if (modalLabelSelect) {
+    const currentVal = modalLabelSelect.value;
+    modalLabelSelect.innerHTML = '<option value="">Qualquer Etiqueta</option>';
+    Array.from(labelsMap.values()).forEach(lbl => {
+      const opt = document.createElement('option');
+      opt.value = lbl.name;
+      opt.textContent = lbl.name;
+      modalLabelSelect.appendChild(opt);
+    });
+    modalLabelSelect.value = currentVal || '';
+  }
 }
 
 // Render fixed filter tabs in the left sidebar
@@ -524,7 +568,7 @@ function renderKanbanView(demands) {
   const columns = [
     { id: 'queued', title: 'Na Fila', color: 'var(--status-queue)', statusMatch: ['queued'] },
     { id: 'in_progress', title: 'Em Progresso', color: 'var(--status-progress)', statusMatch: ['in_progress', 'progress'] },
-    { id: 'waiting', title: 'Aguardando', color: 'var(--status-waiting)', statusMatch: ['waiting', 'waiting_creator'] },
+    { id: 'waiting', title: 'Aguardando N2', color: 'var(--status-waiting)', statusMatch: ['waiting', 'waiting_creator', 'waiting_requester'] },
     { id: 'review', title: 'Em Revisão', color: 'var(--status-review)', statusMatch: ['review'] },
     { id: 'closed', title: 'Concluído', color: 'var(--status-closed)', statusMatch: ['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'] }
   ];
@@ -654,8 +698,8 @@ function getStatusBadgeHtml(status) {
   if (s.includes('review')) {
     return `<span class="badge badge-status-review"><span class="badge-dot" style="background: var(--status-review);"></span>Em Revisão</span>`;
   }
-  if (s.includes('waiting')) {
-    return `<span class="badge badge-status-waiting"><span class="badge-dot" style="background: var(--status-waiting);"></span>Aguardando</span>`;
+  if (s.includes('waiting') || s.includes('requester')) {
+    return `<span class="badge badge-status-waiting" title="Aguardando Resposta do N2"><span class="badge-dot" style="background: var(--status-waiting);"></span>Aguardando N2</span>`;
   }
   if (s.includes('done') || s.includes('close') || s.includes('finish') || s.includes('complet')) {
     return `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);"><span class="badge-dot" style="background: #10b981;"></span>Concluído</span>`;
@@ -872,7 +916,8 @@ function formatStatusLabel(st) {
     case 'progress': return 'Em Progresso';
     case 'review': return 'Em Revisão';
     case 'waiting':
-    case 'waiting_creator': return 'Aguardando Validação';
+    case 'waiting_creator':
+    case 'waiting_requester': return 'Aguardando Resposta do N2';
     case 'paused': return 'Pausado';
     case 'closed':
     case 'done':
@@ -1380,7 +1425,11 @@ async function openDemandDrawer(ticket) {
   if (titleInput) titleInput.value = ticket.title || '';
 
   const statusSelect = document.getElementById('drawerEditStatus');
-  if (statusSelect) statusSelect.value = ticket.status || 'open';
+  if (statusSelect) {
+    let stVal = ticket.status || 'open';
+    if (stVal === 'waiting' || stVal === 'waiting_creator') stVal = 'waiting_requester';
+    statusSelect.value = stVal;
+  }
 
   // Populate devs select
   const devSelect = document.getElementById('drawerEditAssignedTo');
@@ -3726,6 +3775,7 @@ function openNewFilterModal() {
   document.getElementById('modalFilterIcon').value = '🎯';
   document.getElementById('modalFilterColor').value = '#6366f1';
   document.getElementById('modalFilterStatus').value = '';
+  document.getElementById('modalFilterLabel').value = '';
   document.getElementById('modalFilterType').value = '';
   document.getElementById('modalFilterDev').value = '';
   document.getElementById('modalFilterDatabase').value = '';
@@ -3745,7 +3795,20 @@ function openEditFilterModal(filter) {
   document.getElementById('modalFilterColor').value = filter.color || '#6366f1';
   
   const c = filter.criteria || {};
-  document.getElementById('modalFilterStatus').value = c.status && c.status[0] ? c.status[0] : '';
+  if (c.status && c.status.length > 0) {
+    const isWaitingN2 = c.status.some(s => s.includes('waiting') || s.includes('requester'));
+    const isDone = c.status.some(s => s === 'done' || s === 'closed' || s === 'completed' || s === 'concluido');
+    if (isWaitingN2) {
+      document.getElementById('modalFilterStatus').value = 'waiting_n2';
+    } else if (isDone && (c.label === 'DOCUMENTAR' || (c.labels && c.labels.includes('DOCUMENTAR')))) {
+      document.getElementById('modalFilterStatus').value = 'done_documentar';
+    } else {
+      document.getElementById('modalFilterStatus').value = c.status[0];
+    }
+  } else {
+    document.getElementById('modalFilterStatus').value = '';
+  }
+  document.getElementById('modalFilterLabel').value = c.label || (c.labels && c.labels[0]) || '';
   document.getElementById('modalFilterType').value = c.type && c.type[0] ? c.type[0] : '';
   document.getElementById('modalFilterDev').value = c.isMyDemands ? 'CURRENT_USER' : (c.developerName || '');
   document.getElementById('modalFilterDatabase').value = c.database || '';
@@ -3783,13 +3846,28 @@ async function saveFilterModal() {
   }
 
   const statusVal = document.getElementById('modalFilterStatus').value;
+  const labelVal = document.getElementById('modalFilterLabel')?.value;
   const typeVal = document.getElementById('modalFilterType').value;
   const devVal = document.getElementById('modalFilterDev').value;
   const dbVal = document.getElementById('modalFilterDatabase').value.trim();
   const deadlineVal = document.getElementById('modalFilterDeadline').value;
 
   const criteria = {};
-  if (statusVal) criteria.status = [statusVal];
+  if (statusVal === 'waiting_n2' || statusVal === 'waiting') {
+    criteria.status = ['waiting', 'waiting_requester', 'waiting_creator'];
+  } else if (statusVal === 'done_documentar') {
+    criteria.status = ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'];
+    criteria.label = 'DOCUMENTAR';
+  } else if (statusVal === 'done') {
+    criteria.status = ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'];
+  } else if (statusVal) {
+    criteria.status = [statusVal];
+  }
+
+  if (labelVal) {
+    criteria.label = labelVal;
+  }
+
   if (typeVal) criteria.type = [typeVal];
   if (devVal === 'CURRENT_USER') {
     criteria.isMyDemands = true;
@@ -3856,6 +3934,12 @@ function setupEventListeners() {
     renderDemands();
   });
 
+  // Label filter listener
+  document.getElementById('quickSelectLabel')?.addEventListener('change', (e) => {
+    window.appStore.quickFilters.label = e.target.value;
+    renderDemands();
+  });
+
   // Date filter listener
   document.getElementById('quickSelectDate')?.addEventListener('change', (e) => {
     window.appStore.quickFilters.date = e.target.value;
@@ -3889,11 +3973,13 @@ function setupEventListeners() {
     document.getElementById('quickSelectStatus').value = 'all';
     document.getElementById('quickSelectType').value = 'all';
     document.getElementById('quickSelectDev').value = 'all';
+    const labelSel = document.getElementById('quickSelectLabel');
+    if (labelSel) labelSel.value = 'all';
     const dateSel = document.getElementById('quickSelectDate');
     if (dateSel) dateSel.value = 'all';
     const searchInput = document.getElementById('inputSearch');
     if (searchInput) searchInput.value = '';
-    window.appStore.quickFilters = { status: 'all', type: 'all', assignedTo: 'all', database: '', date: 'all' };
+    window.appStore.quickFilters = { status: 'all', type: 'all', assignedTo: 'all', database: '', date: 'all', label: 'all' };
     window.appStore.searchQuery = '';
     window.appStore.activeFilterId = 'all';
     renderFixedFiltersList();
@@ -3908,10 +3994,12 @@ function setupEventListeners() {
     const s = window.appStore.quickFilters.status;
     const t = window.appStore.quickFilters.type;
     const d = window.appStore.quickFilters.assignedTo;
+    const l = window.appStore.quickFilters.label;
 
-    if (s !== 'all') document.getElementById('modalFilterStatus').value = s;
-    if (t !== 'all') document.getElementById('modalFilterType').value = t;
-    if (d !== 'all') document.getElementById('modalFilterDev').value = d;
+    if (s && s !== 'all') document.getElementById('modalFilterStatus').value = s;
+    if (t && t !== 'all') document.getElementById('modalFilterType').value = t;
+    if (d && d !== 'all') document.getElementById('modalFilterDev').value = d;
+    if (l && l !== 'all') document.getElementById('modalFilterLabel').value = l;
   });
 
   // Create Ticket Modal Buttons & Controls

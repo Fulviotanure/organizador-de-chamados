@@ -14,7 +14,8 @@ class AppStore {
       type: 'all',
       assignedTo: 'all',
       database: '',
-      date: 'all' // 'all' | 'overdue' | 'today' | 'tomorrow' | 'week' | 'month' | 'none'
+      date: 'all', // 'all' | 'overdue' | 'today' | 'tomorrow' | 'week' | 'month' | 'none'
+      label: 'all'
     };
 
     // Sorting state: 'deliveryDueDate_asc' | 'deliveryDueDate_desc' | 'createdAt_desc' | 'createdAt_asc' | 'number_desc' | 'number_asc'
@@ -109,9 +110,56 @@ class AppStore {
             await window.electronAPI.saveStorage('fixedFiltersMigrationV2', true);
             await this.saveFixedFilters();
           }
+
+          // Check if migration V3 was already processed; if not, add waiting_n2 and completed_documentar
+          const migrationDoneV3 = await window.electronAPI.loadStorage('fixedFiltersMigrationV3', false);
+          if (!migrationDoneV3) {
+            if (!this.fixedFilters.some(f => f.id === 'waiting_n2')) {
+              const reviewIdx = this.fixedFilters.findIndex(f => f.id === 'review');
+              const waitingN2Filter = {
+                id: 'waiting_n2',
+                name: 'Aguardando Resposta do N2',
+                icon: '⏳',
+                color: '#f97316',
+                isSystem: true,
+                criteria: {
+                  status: ['waiting', 'waiting_requester', 'waiting_creator']
+                }
+              };
+              if (reviewIdx !== -1) {
+                this.fixedFilters.splice(reviewIdx, 0, waitingN2Filter);
+              } else {
+                this.fixedFilters.push(waitingN2Filter);
+              }
+            }
+
+            if (!this.fixedFilters.some(f => f.id === 'completed_documentar')) {
+              const completedIdx = this.fixedFilters.findIndex(f => f.id === 'completed');
+              const completedDocFilter = {
+                id: 'completed_documentar',
+                name: 'Concluídos (Documentar)',
+                icon: '📑',
+                color: '#0891b2',
+                isSystem: true,
+                criteria: {
+                  status: ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'],
+                  label: 'DOCUMENTAR'
+                }
+              };
+              if (completedIdx !== -1) {
+                this.fixedFilters.splice(completedIdx + 1, 0, completedDocFilter);
+              } else {
+                this.fixedFilters.push(completedDocFilter);
+              }
+            }
+
+            await window.electronAPI.saveStorage('fixedFiltersMigrationV3', true);
+            await this.saveFixedFilters();
+          }
         } else {
           this.fixedFilters = this.getDefaultFixedFilters();
           await window.electronAPI.saveStorage('fixedFiltersMigrationV2', true);
+          await window.electronAPI.saveStorage('fixedFiltersMigrationV3', true);
           await this.saveFixedFilters();
         }
 
@@ -170,6 +218,16 @@ class AppStore {
         }
       },
       {
+        id: 'waiting_n2',
+        name: 'Aguardando Resposta do N2',
+        icon: '⏳',
+        color: '#f97316',
+        isSystem: true,
+        criteria: {
+          status: ['waiting', 'waiting_requester', 'waiting_creator']
+        }
+      },
+      {
         id: 'review',
         name: 'Em Revisão',
         icon: '🔍',
@@ -187,6 +245,17 @@ class AppStore {
         isSystem: true,
         criteria: {
           status: ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado']
+        }
+      },
+      {
+        id: 'completed_documentar',
+        name: 'Concluídos (Documentar)',
+        icon: '📑',
+        color: '#0891b2',
+        isSystem: true,
+        criteria: {
+          status: ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'],
+          label: 'DOCUMENTAR'
         }
       },
       {
@@ -505,6 +574,16 @@ class AppStore {
     return Array.from(labelsMap.values());
   }
 
+  ticketHasLabel(ticket, labelQuery) {
+    if (!ticket || !Array.isArray(ticket.labels) || !labelQuery) return false;
+    const q = String(labelQuery).toLowerCase().trim();
+    return ticket.labels.some(item => {
+      const l = item.label || item;
+      const name = typeof l === 'object' ? (l.name || '') : String(l);
+      return name.toLowerCase().includes(q);
+    });
+  }
+
 
 
   // Credentials & Session
@@ -642,15 +721,34 @@ class AppStore {
         }
       }
 
+      // 8b. Fixed Filter: Label criteria
+      if (criteria.label) {
+        if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+      }
+      if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
+        const matchesAny = criteria.labels.some(l => this.ticketHasLabel(ticket, l));
+        if (!matchesAny) return false;
+      }
+
       // 9. Quick Dropdown Filters (applied on top of the fixed view)
       if (this.quickFilters.status !== 'all') {
         const s = (ticket.status || '').toLowerCase();
         if (this.quickFilters.status === 'done' || this.quickFilters.status === 'closed' || this.quickFilters.status === 'completed') {
           const isDone = s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
           if (!isDone) return false;
+        } else if (this.quickFilters.status === 'done_documentar') {
+          const isDone = s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
+          if (!isDone || !this.ticketHasLabel(ticket, 'documentar')) return false;
+        } else if (this.quickFilters.status === 'waiting' || this.quickFilters.status === 'waiting_n2') {
+          const isWaiting = s.includes('waiting') || s.includes('requester') || s.includes('creator');
+          if (!isWaiting) return false;
         } else {
           if (!s.includes(this.quickFilters.status.toLowerCase())) return false;
         }
+      }
+
+      if (this.quickFilters.label && this.quickFilters.label !== 'all') {
+        if (!this.ticketHasLabel(ticket, this.quickFilters.label)) return false;
       }
 
       if (this.quickFilters.type !== 'all') {
@@ -786,6 +884,14 @@ class AppStore {
         const isOverdue = dueDate < now && dueStr.slice(0, 10) !== todayStr;
         const isToday = dueStr.slice(0, 10) === todayStr;
         if (!isOverdue && !isToday) return false;
+      }
+
+      if (criteria.label) {
+        if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+      }
+      if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
+        const matchesAny = criteria.labels.some(l => this.ticketHasLabel(ticket, l));
+        if (!matchesAny) return false;
       }
 
       return true;
