@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open temp attachment file with default system app
   openBufferTemp: (fileName, buffer) => ipcRenderer.invoke('open-buffer-temp', { fileName, buffer }),
 
+  // AutoDrive Integration
+  launchAutoDrive: (data) => ipcRenderer.invoke('launch-autodrive', data),
+
   // Auto Updater
   checkForUpdates: () => ipcRenderer.invoke('updater-check'),
   restartAndInstallUpdate: () => ipcRenderer.invoke('updater-restart-install'),

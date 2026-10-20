@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -136,6 +137,79 @@ ipcMain.handle('open-buffer-temp', async (event, { fileName, buffer }) => {
     return { success: true, path: tempFilePath };
   } catch (err) {
     console.error('Error opening temp file:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Launch AutoDrive Desktop with prefilled demand data
+ipcMain.handle('launch-autodrive', async (event, data) => {
+  try {
+    const autodriveDir = data?.customPath || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive';
+    if (!fs.existsSync(autodriveDir)) {
+      return { success: false, error: `Diretório do AutoDrive não encontrado em: ${autodriveDir}` };
+    }
+
+    const tempDir = app.getPath('temp');
+    let pdfFilePath = null;
+    let imgFilePath = null;
+
+    if (data?.pdfBuffer && data?.pdfName) {
+      const safePdfName = (data.pdfName || 'manual.pdf').replace(/[/\\?%*:|"<>]/g, '_');
+      pdfFilePath = path.join(tempDir, safePdfName);
+      fs.writeFileSync(pdfFilePath, Buffer.from(data.pdfBuffer));
+    }
+
+    if (data?.imageBuffer && data?.imageName) {
+      const safeImgName = (data.imageName || 'mapeamento.png').replace(/[/\\?%*:|"<>]/g, '_');
+      imgFilePath = path.join(tempDir, safeImgName);
+      fs.writeFileSync(imgFilePath, Buffer.from(data.imageBuffer));
+    }
+
+    const payload = {
+      quick: data?.quick || '',
+      numero_layout: data?.numero_layout || '',
+      entidade: data?.entidade || '',
+      nome_documento: data?.nome_documento || '',
+      categoria: data?.categoria || '',
+      pdf: pdfFilePath,
+      image: imgFilePath
+    };
+
+    const jsonLaunchPath = path.join(tempDir, 'autodrive_launch.json');
+    fs.writeFileSync(jsonLaunchPath, JSON.stringify(payload, null, 2), 'utf-8');
+
+    // Find Python executable
+    const knownPythonPaths = [
+      'C:\\Users\\fulvi\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe',
+      'python.exe',
+      'python'
+    ];
+
+    let pythonExe = 'python';
+    for (const p of knownPythonPaths) {
+      if (p.includes('\\') && fs.existsSync(p)) {
+        pythonExe = p;
+        break;
+      }
+    }
+
+    const mainPyPath = path.join(autodriveDir, 'main.py');
+    if (!fs.existsSync(mainPyPath)) {
+      return { success: false, error: `Arquivo main.py não encontrado em: ${mainPyPath}` };
+    }
+
+    // Spawn detached Python process so AutoDrive runs independently
+    const child = spawn(pythonExe, [mainPyPath, '--json', jsonLaunchPath], {
+      cwd: autodriveDir,
+      detached: true,
+      stdio: 'ignore'
+    });
+
+    child.unref();
+
+    return { success: true, payload };
+  } catch (err) {
+    console.error('Error launching AutoDrive:', err);
     return { success: false, error: err.message };
   }
 });

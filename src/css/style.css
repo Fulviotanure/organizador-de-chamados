@@ -2945,6 +2945,43 @@ body {
   color: #ffffff;
 }
 
+.btn-drawer-autodrive {
+  background: linear-gradient(135deg, rgba(31, 111, 235, 0.28) 0%, rgba(56, 139, 253, 0.16) 100%) !important;
+  border: 1px solid rgba(56, 139, 253, 0.5) !important;
+  color: #58a6ff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.2);
+}
+
+.btn-drawer-autodrive:hover {
+  background: linear-gradient(135deg, rgba(31, 111, 235, 0.45) 0%, rgba(56, 139, 253, 0.3) 100%) !important;
+  border-color: #58a6ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(31, 111, 235, 0.35);
+}
+
+.btn-drawer-minimize {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  color: #94a3b8;
+}
+
+.btn-drawer-minimize:hover {
+  background: rgba(51, 65, 85, 0.85);
+  border-color: #64748b;
+  color: #f8fafc;
+}
+
+.btn-quick-autodrive {
+  transition: all 0.15s ease;
+}
+
+.btn-quick-autodrive:hover {
+  background: rgba(31, 111, 235, 0.2) !important;
+  color: #58a6ff !important;
+  transform: scale(1.1);
+}
+
 /* ------------------- Calendário Comum Integrado (Prazo do Cliente) ------------------- */
 .cal-common-popover {
   width: 320px !important;

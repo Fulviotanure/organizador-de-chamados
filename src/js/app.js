@@ -520,6 +520,9 @@ function renderTableView(demands) {
             <button class="icon-btn-ghost btn-toggle-ignore" data-id="${t.id}" title="${isIgnored ? 'Restaurar chamado (remover de ignorados)' : 'Ignorar chamado (ocultar das listas)'}" style="font-size: 12px;">
               ${isIgnored ? '↩️' : '🚫'}
             </button>
+            <button class="icon-btn-ghost btn-quick-autodrive" data-id="${t.id}" title="Enviar dados para o AutoDrive (Layouts)" style="font-size: 12px; color: #58a6ff;">
+              🚀
+            </button>
             <button class="icon-btn-ghost btn-inspect-demand" data-id="${t.id}" title="Ver detalhes completos">
               👁️
             </button>
@@ -532,11 +535,21 @@ function renderTableView(demands) {
   // Attach row click events
   tbody.querySelectorAll('tr').forEach(row => {
     row.addEventListener('click', (e) => {
-      // Don't open if clicked favorite star, ignore button or movidesk link directly
-      if (e.target.closest('.favorite-star') || e.target.closest('.btn-open-movi') || e.target.closest('.btn-toggle-ignore')) return;
+      // Don't open if clicked favorite star, ignore button, autodrive button or movidesk link directly
+      if (e.target.closest('.favorite-star') || e.target.closest('.btn-open-movi') || e.target.closest('.btn-toggle-ignore') || e.target.closest('.btn-quick-autodrive')) return;
       const ticketId = row.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
       if (ticket) openDemandDrawer(ticket);
+    });
+  });
+
+  // Attach quick AutoDrive button click
+  tbody.querySelectorAll('.btn-quick-autodrive').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ticketId = btn.dataset.id;
+      const ticket = window.appStore.demands.find(d => d.id === ticketId);
+      if (ticket) openAutoDriveModal(ticket);
     });
   });
 
@@ -629,8 +642,11 @@ function renderKanbanView(demands) {
                 ${escapeHtml(t.assignedTo?.name || 'Não atribuído')}
               </span>
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
               ${t.movideskTicketId ? `<span style="color: #38bdf8; font-weight: 600;">#${t.movideskTicketId}</span>` : ''}
+              <button class="icon-btn-ghost btn-kanban-autodrive" data-id="${t.id}" title="Enviar para o AutoDrive (Layouts)" style="font-size: 11px; padding: 2px; color: #58a6ff;">
+                🚀
+              </button>
               <button class="icon-btn-ghost btn-kanban-ignore" data-id="${t.id}" title="${isIgnored ? 'Restaurar' : 'Ignorar'}" style="font-size: 11px; padding: 2px;">
                 ${isIgnored ? '↩️' : '🚫'}
               </button>
@@ -660,10 +676,20 @@ function renderKanbanView(demands) {
   // Click card to open drawer
   container.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-kanban-ignore')) return;
+      if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive')) return;
       const ticketId = card.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
       if (ticket) openDemandDrawer(ticket);
+    });
+  });
+
+  // Kanban AutoDrive button
+  container.querySelectorAll('.btn-kanban-autodrive').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ticketId = btn.dataset.id;
+      const ticket = window.appStore.demands.find(d => d.id === ticketId);
+      if (ticket) openAutoDriveModal(ticket);
     });
   });
 
@@ -4150,6 +4176,24 @@ function setupEventListeners() {
   document.getElementById('btnOpenMovidesk')?.addEventListener('click', openTicketInMovidesk);
   document.getElementById('btnDrawerOpenMovidesk')?.addEventListener('click', openTicketInMovidesk);
 
+  // AutoDrive Button in Drawer Header
+  document.getElementById('btnDrawerAutoDrive')?.addEventListener('click', () => {
+    if (selectedTicket) openAutoDriveModal(selectedTicket);
+  });
+
+  // Minimize Program Buttons when viewing Demand
+  document.getElementById('btnDrawerMinimize')?.addEventListener('click', () => {
+    if (window.electronAPI && window.electronAPI.minimize) {
+      window.electronAPI.minimize();
+    }
+  });
+
+  document.getElementById('btnDrawerWindowMinimize')?.addEventListener('click', () => {
+    if (window.electronAPI && window.electronAPI.minimize) {
+      window.electronAPI.minimize();
+    }
+  });
+
   // Quick Copy Database & Movidesk
   document.getElementById('btnCopyDatabase')?.addEventListener('click', () => {
     const db = document.getElementById('drawerEditDatabase')?.value || selectedTicket?.clientDatabase;
@@ -4291,8 +4335,66 @@ function setupEventListeners() {
     }
   });
 
+  // AutoDrive Modal Event Listeners
+  document.getElementById('btnCloseAutoDriveModal')?.addEventListener('click', closeAutoDriveModal);
+  document.getElementById('btnCancelAutoDriveModal')?.addEventListener('click', closeAutoDriveModal);
+  document.getElementById('modalAutoDrive')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modalAutoDrive') closeAutoDriveModal();
+  });
+
+  document.getElementById('btnCopyAutoDriveQuick')?.addEventListener('click', () => {
+    const txt = document.getElementById('autoDriveQuickText')?.value;
+    if (txt) {
+      navigator.clipboard.writeText(txt);
+      const spanText = document.getElementById('copyQuickBtnText');
+      if (spanText) {
+        spanText.textContent = 'Copiado!';
+        setTimeout(() => { if (spanText) spanText.textContent = 'Copiar'; }, 2000);
+      }
+    }
+  });
+
+  // Interactive quick text updating when form fields change
+  const syncAutoDriveFormToQuick = () => {
+    const num = (document.getElementById('autoDriveNumeroLayout')?.value || '').trim();
+    const tipo = (document.getElementById('autoDriveTipo')?.value || '').trim();
+    const ent = (document.getElementById('autoDriveEntidade')?.value || '').trim();
+    const doc = (document.getElementById('autoDriveDocumento')?.value || '').trim();
+    const db = (document.getElementById('autoDriveDatabase')?.value || '').trim();
+
+    const parts = [];
+    if (num) parts.push(num);
+    if (tipo) parts.push(tipo);
+    if (ent) parts.push(ent);
+    if (doc) parts.push(doc);
+    if (db) parts.push(db);
+
+    const inputQuick = document.getElementById('autoDriveQuickText');
+    if (inputQuick) inputQuick.value = parts.join(' - ');
+  };
+
+  ['autoDriveNumeroLayout', 'autoDriveTipo', 'autoDriveEntidade', 'autoDriveDocumento', 'autoDriveDatabase'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', syncAutoDriveFormToQuick);
+  });
+
+  document.getElementById('autoDriveEntidade')?.addEventListener('input', (e) => {
+    const doc = document.getElementById('autoDriveDocumento')?.value || '';
+    const guessed = guessAutoDriveCategory(e.target.value, doc);
+    const selCat = document.getElementById('autoDriveCategoria');
+    if (selCat && guessed) selCat.value = guessed;
+  });
+
+  document.getElementById('btnLaunchAutoDriveNow')?.addEventListener('click', executeAutoDriveLaunch);
+
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
+    // Ctrl+M -> minimize window
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.minimize) {
+        window.electronAPI.minimize();
+      }
+    }
     // Ctrl+N -> new ticket modal
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
       e.preventDefault();
@@ -4311,6 +4413,7 @@ function setupEventListeners() {
     // Esc -> close drawer / modals / lightbox
     if (e.key === 'Escape') {
       closeImageLightbox();
+      closeAutoDriveModal();
       closeDemandDrawer();
       closeCreateTicketModal();
       closeFilterModal();
@@ -4328,5 +4431,331 @@ function setupAutoRefresh() {
         syncDemands();
       }
     }, mins * 60 * 1000);
+  }
+}
+
+// ------------------- AutoDrive Integration Module -------------------
+let currentAutoDriveTicket = null;
+
+function sanitizeAutoDriveText(text) {
+  if (!text) return '';
+  return text.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+}
+
+function guessAutoDriveCategory(entidade, nomeDocumento) {
+  const text = `${entidade || ''} ${nomeDocumento || ''}`.toUpperCase();
+
+  const bancosKeywords = [
+    "BANCO", "BANK", "SICOOB", "SICREDI", "BRADESCO", "ITAU", "ITAÚ", "SANTANDER",
+    "CAIXA", "SAFRA", "BTG", "NUBANK", "INTER", "PAGSEGURO", "MUMBUCA", "AGIBANK",
+    "BANESES", "BANCOOB", "BANRISUL", "DAYCOVAL", "ORIGINAL", "PINE", "BV", "C6"
+  ];
+  if (bancosKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(text))) {
+    return "BANCOS";
+  }
+
+  const prefeiturasKeywords = [
+    "PREFEITURA", "MUNICIPIO", "MUNICÍPIO", "PM.", "PM ", "SEFAZ", "GOVERNO DE",
+    "DISTRITO FEDERAL", "ESTADO DE", "UBERABA", "GOIANIA", "IPATINGA", "LINHARES"
+  ];
+  if (prefeiturasKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(text))) {
+    return "PREFEITURAS";
+  }
+
+  const govKeywords = [
+    "RECEITA FEDERAL", "RECEITA", "DARF", "ECAC", "E-CAC", "GPS", "GRU",
+    "CARNE LEAO", "CARNÊ LEÃO", "MINISTERIO DA FAZENDA", "GOVERNO FEDERAL"
+  ];
+  if (govKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(text))) {
+    return "GOVERNO_FEDERAL";
+  }
+
+  const cartoesKeywords = [
+    "CARTAO", "CARTÃO", "CARTÕES", "CREDITO", "CRÉDITO", "CIELO", "REDE",
+    "GETNET", "STONE", "PAGBANK", "ALELO", "SODEXO", "TICKET", "MASTERCARD", "VISA"
+  ];
+  if (cartoesKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(text))) {
+    return "CARTAO_CREDITO";
+  }
+
+  const sistemasKeywords = [
+    "SIAF", "TOTVS", "PROTHEUS", "SAP", "SENIOR", "ALTERDATA", "DOMINIO",
+    "DOMÍNIO", "ERP", "SOFTWARE", "SISTEMA", "SISTEMAS", "INFORMATICA",
+    "INFORMÁTICA", "TECH", "WINFOOD", "ADVBOX", "ACTIVESOFT", "360 ERP",
+    "AC SISTEMAS", "INOVAR", "2TASK"
+  ];
+  if (sistemasKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(text))) {
+    return "SISTEMAS";
+  }
+
+  return "BANCOS";
+}
+
+function parseDemandForAutoDrive(ticket) {
+  if (!ticket) return null;
+
+  const rawTitle = (ticket.title || '').trim();
+  const db = (ticket.clientDatabase || '').trim();
+  const ticketNumber = ticket.number != null ? String(ticket.number) : '';
+  const layoutCode = ticket.layout?.code != null ? String(ticket.layout.code) : '';
+  const layoutName = (ticket.layout?.name || '').trim();
+  const typeName = (ticket.ticketType?.name || 'NOVO LAYOUT').toUpperCase();
+
+  const numeroLayout = layoutCode || ticketNumber || '';
+
+  let cleanTitle = rawTitle;
+  const numMatch = cleanTitle.match(/^\s*#?(\d+)\s*[-–—:]\s*(.*)$/i);
+  if (numMatch) {
+    cleanTitle = numMatch[2].trim();
+  }
+
+  const knownTipos = ["NOVO LAYOUT", "NOVO", "ALTERACAO", "ALTERAÇÃO", "AJUSTE", "ATUALIZACAO", "ATUALIZAÇÃO", "CORRECAO", "CORREÇÃO", "LAYOUT", "MELHORIA", "ERRO"];
+  let detectedType = typeName;
+  let remainingTitle = cleanTitle;
+
+  for (const t of knownTipos) {
+    const reg = new RegExp(`^${t}\\s*[-–—:]\\s*(.*)$`, 'i');
+    const m = remainingTitle.match(reg);
+    if (m) {
+      detectedType = t;
+      remainingTitle = m[1].trim();
+      break;
+    }
+  }
+
+  const parts = remainingTitle.split(/\s*[-–—]\s*/).map(p => p.trim()).filter(Boolean);
+
+  let entidade = '';
+  let nomeDocumento = '';
+
+  if (parts.length >= 2) {
+    entidade = parts[0];
+    nomeDocumento = parts.slice(1).join(' - ');
+  } else if (parts.length === 1) {
+    if (layoutName) {
+      entidade = parts[0];
+      nomeDocumento = layoutName;
+    } else {
+      entidade = parts[0];
+      nomeDocumento = parts[0];
+    }
+  } else if (layoutName) {
+    nomeDocumento = layoutName;
+  }
+
+  if (db && nomeDocumento.toLowerCase().endsWith(db.toLowerCase())) {
+    nomeDocumento = nomeDocumento.substring(0, nomeDocumento.length - db.length).replace(/\s*[-–—]\s*$/, '').trim();
+  }
+
+  const categoria = guessAutoDriveCategory(entidade, nomeDocumento);
+
+  const quickParts = [];
+  if (numeroLayout) quickParts.push(numeroLayout);
+  if (detectedType) quickParts.push(detectedType);
+  if (entidade) quickParts.push(entidade.toUpperCase());
+  if (nomeDocumento && nomeDocumento !== entidade) quickParts.push(nomeDocumento.toUpperCase());
+  if (db) quickParts.push(db);
+
+  const quickText = quickParts.join(' - ');
+
+  return {
+    numero_layout: numeroLayout,
+    tipo: detectedType,
+    entidade: sanitizeAutoDriveText(entidade),
+    nome_documento: sanitizeAutoDriveText(nomeDocumento),
+    database: db,
+    categoria: categoria || 'BANCOS',
+    quick: quickText
+  };
+}
+
+async function openAutoDriveModal(ticket) {
+  if (!ticket) return;
+  currentAutoDriveTicket = ticket;
+
+  const modal = document.getElementById('modalAutoDrive');
+  if (!modal) return;
+
+  const parsed = parseDemandForAutoDrive(ticket);
+
+  const inputQuick = document.getElementById('autoDriveQuickText');
+  const inputNum = document.getElementById('autoDriveNumeroLayout');
+  const selCat = document.getElementById('autoDriveCategoria');
+  const inputEnt = document.getElementById('autoDriveEntidade');
+  const inputTipo = document.getElementById('autoDriveTipo');
+  const inputDoc = document.getElementById('autoDriveDocumento');
+  const inputDb = document.getElementById('autoDriveDatabase');
+
+  if (inputQuick) inputQuick.value = parsed.quick;
+  if (inputNum) inputNum.value = parsed.numero_layout;
+  if (selCat) selCat.value = parsed.categoria;
+  if (inputEnt) inputEnt.value = parsed.entidade;
+  if (inputTipo) inputTipo.value = parsed.tipo;
+  if (inputDoc) inputDoc.value = parsed.nome_documento;
+  if (inputDb) inputDb.value = parsed.database;
+
+  // Render attachments list
+  renderAutoDriveModalAttachments(ticket);
+
+  // If attachments are not loaded yet on this ticket, fetch details
+  if (!ticket.attachments || ticket.attachments.length === 0) {
+    try {
+      const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
+      if (details && details.attachments) {
+        ticket.attachments = details.attachments;
+        renderAutoDriveModalAttachments(ticket);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar anexos para o AutoDrive:', err);
+    }
+  }
+
+  modal.style.display = 'flex';
+  modal.classList.add('open');
+}
+
+function renderAutoDriveModalAttachments(ticket) {
+  const listEl = document.getElementById('autoDriveAttachmentsList');
+  const countEl = document.getElementById('autoDriveAttachmentsCount');
+  if (!listEl) return;
+
+  const attachments = ticket?.attachments || [];
+  if (countEl) countEl.textContent = `${attachments.length} arquivo${attachments.length === 1 ? '' : 's'}`;
+
+  if (attachments.length === 0) {
+    listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 11px;">Nenhum artefato anexado a esta demanda.</div>';
+    return;
+  }
+
+  listEl.innerHTML = attachments.map(att => {
+    const fName = att.fileName || att.filename || att.originalName || att.name || 'Arquivo';
+    const ext = (fName.split('.').pop() || '').toLowerCase();
+    const isPdf = ext === 'pdf';
+    const isImg = ['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(ext);
+
+    let roleBadge = '';
+    if (isPdf) {
+      roleBadge = '<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;">📕 Manual PDF</span>';
+    } else if (isImg) {
+      roleBadge = '<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;">🖼️ Imagem Mapeamento</span>';
+    } else {
+      roleBadge = `<span style="background: rgba(100, 116, 139, 0.2); color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px;">${ext.toUpperCase()}</span>`;
+    }
+
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(13, 17, 23, 0.7); border: 1px solid var(--border-color); border-radius: 6px;">
+        <span style="font-family: Consolas, monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px;" title="${escapeHtml(fName)}">${escapeHtml(fName)}</span>
+        <div>${roleBadge}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function closeAutoDriveModal() {
+  const modal = document.getElementById('modalAutoDrive');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.style.display = 'none';
+  }
+  currentAutoDriveTicket = null;
+}
+
+async function executeAutoDriveLaunch() {
+  if (!currentAutoDriveTicket) return;
+
+  const btn = document.getElementById('btnLaunchAutoDriveNow');
+  const btnIcon = document.getElementById('autoDriveBtnIcon');
+  const btnText = document.getElementById('autoDriveBtnText');
+
+  if (btn) btn.disabled = true;
+  if (btnIcon) btnIcon.textContent = '⏳';
+  if (btnText) btnText.textContent = 'Iniciando AutoDrive...';
+
+  try {
+    const ticket = currentAutoDriveTicket;
+    const quick = document.getElementById('autoDriveQuickText')?.value || '';
+    const num = document.getElementById('autoDriveNumeroLayout')?.value || '';
+    const ent = document.getElementById('autoDriveEntidade')?.value || '';
+    const doc = document.getElementById('autoDriveDocumento')?.value || '';
+    const cat = document.getElementById('autoDriveCategoria')?.value || 'BANCOS';
+
+    // Find PDF and Image attachments if available
+    let pdfBuffer = null;
+    let pdfName = null;
+    let imageBuffer = null;
+    let imageName = null;
+
+    const attachments = ticket.attachments || [];
+    const pdfAtt = attachments.find(a => {
+      const n = (a.fileName || a.filename || a.originalName || a.name || '').toLowerCase();
+      return n.endsWith('.pdf');
+    });
+
+    const imgAtt = attachments.find(a => {
+      const n = (a.fileName || a.filename || a.originalName || a.name || '').toLowerCase();
+      return n.endsWith('.png') || n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.webp') || n.endsWith('.bmp');
+    });
+
+    if (pdfAtt) {
+      try {
+        if (btnText) btnText.textContent = 'Baixando manual PDF...';
+        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, pdfAtt.id);
+        pdfBuffer = await blob.arrayBuffer();
+        pdfName = pdfAtt.fileName || pdfAtt.filename || pdfAtt.originalName || pdfAtt.name || 'manual.pdf';
+      } catch (e) {
+        console.warn('Erro ao carregar PDF:', e);
+      }
+    }
+
+    if (imgAtt) {
+      try {
+        if (btnText) btnText.textContent = 'Baixando imagem...';
+        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, imgAtt.id);
+        imageBuffer = await blob.arrayBuffer();
+        imageName = imgAtt.fileName || imgAtt.filename || imgAtt.originalName || imgAtt.name || 'mapeamento.png';
+      } catch (e) {
+        console.warn('Erro ao carregar imagem:', e);
+      }
+    }
+
+    if (btnText) btnText.textContent = 'Executando AutoDrive...';
+
+    const launchData = {
+      quick,
+      numero_layout: num,
+      entidade: ent,
+      nome_documento: doc,
+      categoria: cat,
+      pdfBuffer,
+      pdfName,
+      imageBuffer,
+      imageName
+    };
+
+    if (window.electronAPI && window.electronAPI.launchAutoDrive) {
+      const res = await window.electronAPI.launchAutoDrive(launchData);
+      if (!res.success) {
+        alert('Erro ao iniciar o AutoDrive: ' + res.error);
+        return;
+      }
+    } else {
+      alert('Integração com AutoDrive requer execução no aplicativo Desktop Electron.');
+      return;
+    }
+
+    closeAutoDriveModal();
+
+    // Check if user wants to minimize app
+    const shouldMinimize = document.getElementById('chkAutoDriveMinimizeApp')?.checked;
+    if (shouldMinimize && window.electronAPI && window.electronAPI.minimize) {
+      window.electronAPI.minimize();
+    }
+
+  } catch (err) {
+    alert('Erro ao executar integração do AutoDrive: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnIcon) btnIcon.textContent = '🚀';
+    if (btnText) btnText.textContent = 'Abrir no AutoDrive';
   }
 }

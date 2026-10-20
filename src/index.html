@@ -265,16 +265,26 @@
         <button class="btn-primary" id="btnDrawerSaveTicket" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 14px; font-weight: 600;" title="Salvar todas as alterações da demanda">
           <span>💾</span> Salvar Alterações
         </button>
+        <button class="btn-external-link btn-drawer-autodrive" id="btnDrawerAutoDrive" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 13px; font-weight: 600; background: linear-gradient(135deg, rgba(31, 111, 235, 0.25) 0%, rgba(56, 139, 253, 0.15) 100%); border: 1px solid rgba(56, 139, 253, 0.45); color: #58a6ff;" title="Integrar e enviar dados desta demanda para o AutoDrive Layouts">
+          <span>🚀</span> AutoDrive
+        </button>
         <button class="btn-external-link" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer">
           🌐 Abrir no Importer
         </button>
         <button class="btn-external-link" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
           🎫 Abrir no Movidesk
         </button>
+        <button class="btn-external-link btn-drawer-minimize" id="btnDrawerMinimize" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 12px; font-weight: 500;" title="Minimizar janela do programa (mantém o chamado aberto em segundo plano)">
+          <span style="font-size: 13px;">🗕</span> Minimizar
+        </button>
+        <div style="width: 1px; height: 20px; background: var(--border-color); margin: 0 2px;"></div>
+        <button class="icon-btn-ghost btn-drawer-toggle-size" id="btnDrawerWindowMinimize" title="Minimizar janela do Organizador">
+          <span style="font-size: 12px;">🗕</span>
+        </button>
         <button class="icon-btn-ghost btn-drawer-toggle-size" id="btnToggleDrawerExpand" title="Expandir visualização / Reduzir largura">
           <span id="drawerExpandIcon">🗖</span>
         </button>
-        <button class="icon-btn-ghost" id="btnCloseDrawer" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
+        <button class="icon-btn-ghost" id="btnCloseDrawer" style="font-size: 18px;" title="Fechar demanda (Esc)">✕</button>
       </div>
     </div>
 
@@ -962,6 +972,110 @@
     </div>
     <div class="lightbox-body" id="lightboxBody">
       <img id="lightboxImage" src="" alt="Visualização da imagem">
+    </div>
+  </div>
+
+  <!-- AutoDrive Integration Modal -->
+  <div class="modal-overlay" id="modalAutoDrive" style="display: none;">
+    <div class="modal-card" style="width: 680px; max-width: 95vw;">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(31, 111, 235, 0.15) 0%, transparent 100%);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(31, 111, 235, 0.2); border: 1px solid rgba(56, 139, 253, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">🚀</div>
+          <div>
+            <div class="modal-title" style="font-size: 15px; font-weight: 700; color: #f0f6fc;">Integração AutoDrive Layouts</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Envio e padronização automática para o Google Drive</div>
+          </div>
+        </div>
+        <button class="icon-btn-ghost" id="btnCloseAutoDriveModal" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
+      </div>
+
+      <div class="modal-body" style="gap: 14px; max-height: 80vh; overflow-y: auto;">
+        
+        <!-- Entrada Rápida Padrão -->
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="form-label" style="font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e;">Texto Padrão (Entrada Rápida AutoDrive)</label>
+            <button type="button" id="btnCopyAutoDriveQuick" class="btn-external-link" style="height: 24px; font-size: 11px; padding: 0 10px; gap: 4px;" title="Copiar texto padrão">
+              <span>📋</span> <span id="copyQuickBtnText">Copiar</span>
+            </button>
+          </div>
+          <div style="position: relative;">
+            <input type="text" class="form-input" id="autoDriveQuickText" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #38bdf8; background: #0d1117; border-color: #30363d;" placeholder="10328 - NOVO LAYOUT - SICOOB - COMPROVANTES... - cont_xxx">
+          </div>
+        </div>
+
+        <!-- Campos Desmembrados Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">NÚMERO DO LAYOUT</label>
+            <input type="text" class="form-input" id="autoDriveNumeroLayout" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 700;" placeholder="10328">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">CATEGORIA NO DRIVE</label>
+            <select class="form-select" id="autoDriveCategoria" style="font-size: 12px; font-weight: 600;">
+              <option value="BANCOS">🏦 BANCOS</option>
+              <option value="SISTEMAS">💻 SISTEMAS DIVERSOS</option>
+              <option value="CARTAO_CREDITO">💳 CARTÕES DE CRÉDITO</option>
+              <option value="PREFEITURAS">🏛️ PREFEITURAS / ESTADO</option>
+              <option value="GOVERNO_FEDERAL">🇧🇷 GOVERNO FEDERAL - RECEITA</option>
+              <option value="DESCONHECIDOS">❓ 1DESCONHECIDOS</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">BANCO / SISTEMA / ENTIDADE</label>
+            <input type="text" class="form-input" id="autoDriveEntidade" style="font-size: 12px;" placeholder="SICOOB">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">TIPO DE SOLICITAÇÃO</label>
+            <input type="text" class="form-input" id="autoDriveTipo" style="font-size: 12px;" placeholder="NOVO LAYOUT">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 11px; color: #8b949e;">NOME DO DOCUMENTO / LAYOUT</label>
+          <input type="text" class="form-input" id="autoDriveDocumento" style="font-size: 12px;" placeholder="COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" style="font-size: 11px; color: #8b949e;">BANCO DE DADOS (CLIENTE)</label>
+          <input type="text" class="form-input" id="autoDriveDatabase" style="font-size: 12px;" placeholder="cont_conceitoxanxere">
+        </div>
+
+        <!-- Anexos Detectados -->
+        <div style="background: rgba(22, 27, 34, 0.8); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span>📎 Artefatos Vinculados da Demanda</span>
+            <span id="autoDriveAttachmentsCount" style="color: #38bdf8; font-size: 10px;">0 arquivos</span>
+          </div>
+          <div id="autoDriveAttachmentsList" style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+            <div style="color: var(--text-muted); font-size: 11px;">Carregando anexos...</div>
+          </div>
+        </div>
+
+        <!-- Opções de Execução -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 4px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+            <input type="checkbox" id="chkAutoDriveMinimizeApp" checked>
+            <span>Minimizar Organizador ao abrir o AutoDrive</span>
+          </label>
+          <span style="font-size: 11px; color: var(--text-muted); font-family: Consolas, monospace;" title="Diretório de execução do AutoDrive">C:\Users\fulvi\Desktop\PROJETOS\autodrive</span>
+        </div>
+
+      </div>
+
+      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface);">
+        <button type="button" class="btn-secondary" id="btnCancelAutoDriveModal">
+          Cancelar
+        </button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-primary" id="btnLaunchAutoDriveNow" style="background: linear-gradient(135deg, #1f6feb 0%, #154bb3 100%); border-color: #388bfd; font-weight: 600; padding: 0 18px; gap: 8px;">
+            <span id="autoDriveBtnIcon">🚀</span> <span id="autoDriveBtnText">Abrir no AutoDrive</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
