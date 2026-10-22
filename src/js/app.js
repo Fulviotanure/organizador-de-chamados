@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAppDialogHandlers();
   setupWindowControls();
   setupAutoUpdaterRenderer();
+  initQuickFilterDropdowns();
   await initApplication();
   setupEventListeners();
 });
@@ -879,33 +880,24 @@ async function syncDemands() {
 // Populate developer dropdowns dynamically from ticket data
 function populateDeveloperSelects() {
   const devs = new Set();
+  window.appStore.getKnownDevelopers().forEach(d => {
+    if (d && d.name && d.name !== 'Não atribuído') devs.add(d.name);
+  });
   window.appStore.demands.forEach(t => {
-    if (t.assignedTo && t.assignedTo.name) {
+    if (t.assignedTo && t.assignedTo.name && t.assignedTo.name !== 'Não atribuído') {
       devs.add(t.assignedTo.name);
     }
   });
 
-  const quickDevSelect = document.getElementById('quickSelectDev');
   const modalDevSelect = document.getElementById('modalFilterDev');
-
-  const sortedDevs = Array.from(devs).sort();
-
-  if (quickDevSelect) {
-    const currentVal = quickDevSelect.value;
-    quickDevSelect.innerHTML = '<option value="all">Qualquer Responsável</option>';
-    sortedDevs.forEach(dev => {
-      const opt = document.createElement('option');
-      opt.value = dev;
-      opt.textContent = dev;
-      quickDevSelect.appendChild(opt);
-    });
-    quickDevSelect.value = currentVal || 'all';
-  }
+  const sortedDevs = Array.from(devs).sort((a, b) => a.localeCompare(b));
 
   if (modalDevSelect) {
+    const currentVal = modalDevSelect.value;
     modalDevSelect.innerHTML = `
       <option value="">Qualquer Desenvolvedor</option>
       <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
+      <option value="__NONE__">👤 Nenhum responsável (Não atribuído)</option>
     `;
     sortedDevs.forEach(dev => {
       const opt = document.createElement('option');
@@ -913,8 +905,10 @@ function populateDeveloperSelects() {
       opt.textContent = dev;
       modalDevSelect.appendChild(opt);
     });
+    modalDevSelect.value = currentVal || '';
   }
 
+  renderFilterDropdownOptions('assignedTo');
   populateLabelSelects();
 }
 
@@ -932,24 +926,14 @@ function populateLabelSelects() {
     }
   });
 
-  const quickLabelSelect = document.getElementById('quickSelectLabel');
   const modalLabelSelect = document.getElementById('modalFilterLabel');
-
-  if (quickLabelSelect) {
-    const currentVal = quickLabelSelect.value;
-    quickLabelSelect.innerHTML = '<option value="all">🏷️ Todas as Etiquetas</option>';
-    Array.from(labelsMap.values()).forEach(lbl => {
-      const opt = document.createElement('option');
-      opt.value = lbl.name;
-      opt.textContent = lbl.name;
-      quickLabelSelect.appendChild(opt);
-    });
-    quickLabelSelect.value = currentVal || 'all';
-  }
 
   if (modalLabelSelect) {
     const currentVal = modalLabelSelect.value;
-    modalLabelSelect.innerHTML = '<option value="">Qualquer Etiqueta</option>';
+    modalLabelSelect.innerHTML = `
+      <option value="">Qualquer Etiqueta</option>
+      <option value="__NONE__">🏷️ Sem etiquetas</option>
+    `;
     Array.from(labelsMap.values()).forEach(lbl => {
       const opt = document.createElement('option');
       opt.value = lbl.name;
@@ -958,6 +942,8 @@ function populateLabelSelects() {
     });
     modalLabelSelect.value = currentVal || '';
   }
+
+  renderFilterDropdownOptions('label');
 }
 
 // Render fixed filter tabs in the left sidebar
@@ -4609,9 +4595,17 @@ function openEditFilterModal(filter) {
   } else {
     document.getElementById('modalFilterStatus').value = '';
   }
-  document.getElementById('modalFilterLabel').value = c.label || (c.labels && c.labels[0]) || '';
+  if (c.noLabelsOnly || c.label === '__NONE__') {
+    document.getElementById('modalFilterLabel').value = '__NONE__';
+  } else {
+    document.getElementById('modalFilterLabel').value = c.label || (c.labels && c.labels[0]) || '';
+  }
   document.getElementById('modalFilterType').value = c.type && c.type[0] ? c.type[0] : '';
-  document.getElementById('modalFilterDev').value = c.isMyDemands ? 'CURRENT_USER' : (c.developerName || '');
+  if (c.unassignedOnly || c.developerName === '__NONE__' || c.developerId === '__NONE__') {
+    document.getElementById('modalFilterDev').value = '__NONE__';
+  } else {
+    document.getElementById('modalFilterDev').value = c.isMyDemands ? 'CURRENT_USER' : (c.developerName || '');
+  }
   document.getElementById('modalFilterDatabase').value = c.database || '';
   document.getElementById('modalFilterDeadline').value = c.deadline || '';
 
@@ -4666,13 +4660,19 @@ async function saveFilterModal() {
     criteria.status = [statusVal];
   }
 
-  if (labelVal) {
+  if (labelVal === '__NONE__') {
+    criteria.label = '__NONE__';
+    criteria.noLabelsOnly = true;
+  } else if (labelVal) {
     criteria.label = labelVal;
   }
 
   if (typeVal) criteria.type = [typeVal];
   if (devVal === 'CURRENT_USER') {
     criteria.isMyDemands = true;
+  } else if (devVal === '__NONE__') {
+    criteria.developerName = '__NONE__';
+    criteria.unassignedOnly = true;
   } else if (devVal) {
     criteria.developerName = devVal;
   }
@@ -4688,6 +4688,362 @@ async function saveFilterModal() {
   closeFilterModal();
   renderFixedFiltersList();
   renderDemands();
+}
+
+// ==========================================================================
+// Interactive Multi-Select Quick Filters Controller
+// ==========================================================================
+const filterConfigs = {
+  status: {
+    btnId: 'btnFilterStatus',
+    textId: 'btnFilterStatusText',
+    badgeId: 'btnFilterStatusBadge',
+    clearId: 'btnFilterStatusClear',
+    panelId: 'panelFilterStatus',
+    listId: 'listFilterStatus',
+    actionAllId: 'actionStatusAll',
+    actionClearId: 'actionStatusClear',
+    labelPrefix: 'Situação:',
+    defaultText: 'Todas',
+    pluralText: 'selecionadas',
+    options: [
+      { value: 'queued', label: 'Na Fila', icon: '📥' },
+      { value: 'in_progress', label: 'Em Progresso', icon: '🚀' },
+      { value: 'waiting_n2', label: 'Aguardando Resposta do N2', icon: '⏳' },
+      { value: 'review', label: 'Em Revisão', icon: '🔍' },
+      { value: 'done', label: 'Concluídos (Todos)', icon: '✅' },
+      { value: 'done_documentar', label: 'Concluídos (Documentar)', icon: '📑' }
+    ]
+  },
+  type: {
+    btnId: 'btnFilterType',
+    textId: 'btnFilterTypeText',
+    badgeId: 'btnFilterTypeBadge',
+    clearId: 'btnFilterTypeClear',
+    panelId: 'panelFilterType',
+    listId: 'listFilterType',
+    actionAllId: 'actionTypeAll',
+    actionClearId: 'actionTypeClear',
+    labelPrefix: 'Tipo:',
+    defaultText: 'Todos',
+    pluralText: 'selecionados',
+    getOptions: () => {
+      const typeSet = new Set(['Novo Layout', 'Inclusao', 'Erro', 'Migração', 'Melhoria']);
+      if (window.appStore && Array.isArray(window.appStore.demands)) {
+        window.appStore.demands.forEach(t => {
+          if (t.ticketType?.name) typeSet.add(t.ticketType.name);
+        });
+      }
+      const iconMap = {
+        'Novo Layout': '🎨',
+        'Inclusao': '➕',
+        'Erro': '⚠️',
+        'Migração': '🔄',
+        'Melhoria': '✨'
+      };
+      return Array.from(typeSet).map(name => ({
+        value: name,
+        label: name,
+        icon: iconMap[name] || '📁'
+      }));
+    }
+  },
+  assignedTo: {
+    btnId: 'btnFilterDev',
+    textId: 'btnFilterDevText',
+    badgeId: 'btnFilterDevBadge',
+    clearId: 'btnFilterDevClear',
+    panelId: 'panelFilterDev',
+    listId: 'listFilterDev',
+    searchId: 'searchFilterDev',
+    actionAllId: 'actionDevAll',
+    actionClearId: 'actionDevClear',
+    labelPrefix: 'Responsável:',
+    defaultText: 'Qualquer',
+    pluralText: 'selecionados',
+    getOptions: () => {
+      const list = [
+        { value: '__NONE__', label: 'Nenhum responsável', icon: '👤', isSpecial: true }
+      ];
+      const devs = new Set();
+      if (window.appStore) {
+        window.appStore.getKnownDevelopers().forEach(d => {
+          if (d && d.name && d.name !== 'Não atribuído') devs.add(d.name);
+        });
+        if (Array.isArray(window.appStore.demands)) {
+          window.appStore.demands.forEach(t => {
+            if (t.assignedTo && t.assignedTo.name && t.assignedTo.name !== 'Não atribuído') {
+              devs.add(t.assignedTo.name);
+            }
+          });
+        }
+      }
+      Array.from(devs).sort((a, b) => a.localeCompare(b)).forEach(name => {
+        list.push({ value: name, label: name, icon: '👤' });
+      });
+      return list;
+    }
+  },
+  label: {
+    btnId: 'btnFilterLabel',
+    textId: 'btnFilterLabelText',
+    badgeId: 'btnFilterLabelBadge',
+    clearId: 'btnFilterLabelClear',
+    panelId: 'panelFilterLabel',
+    listId: 'listFilterLabel',
+    searchId: 'searchFilterLabel',
+    actionAllId: 'actionLabelAll',
+    actionClearId: 'actionLabelClear',
+    labelPrefix: 'Etiqueta:',
+    defaultText: 'Todas',
+    pluralText: 'selecionadas',
+    getOptions: () => {
+      const list = [
+        { value: '__NONE__', label: 'Sem etiquetas', icon: '🏷️', isSpecial: true }
+      ];
+      const labelsMap = new Map();
+      labelsMap.set('DOCUMENTAR', { name: 'DOCUMENTAR', color: '#0891b2' });
+      if (window.appStore) {
+        window.appStore.getAvailableLabels().forEach(l => {
+          if (l && l.name) labelsMap.set(l.name.toUpperCase(), l);
+        });
+      }
+      Array.from(labelsMap.values()).forEach(lbl => {
+        list.push({ value: lbl.name, label: lbl.name, icon: '🏷️', color: lbl.color });
+      });
+      return list;
+    }
+  },
+  date: {
+    btnId: 'btnFilterDate',
+    textId: 'btnFilterDateText',
+    badgeId: 'btnFilterDateBadge',
+    clearId: 'btnFilterDateClear',
+    panelId: 'panelFilterDate',
+    listId: 'listFilterDate',
+    actionAllId: 'actionDateAll',
+    actionClearId: 'actionDateClear',
+    labelPrefix: 'Prazo:',
+    defaultText: 'Todas',
+    pluralText: 'selecionados',
+    options: [
+      { value: 'overdue', label: 'Atrasados (Vencidos)', icon: '🔴' },
+      { value: 'today', label: 'Para Hoje', icon: '🟡' },
+      { value: 'tomorrow', label: 'Para Amanhã', icon: '🟠' },
+      { value: 'week', label: 'Esta Semana (7 dias)', icon: '📆' },
+      { value: 'month', label: 'Este Mês', icon: '🗓️' },
+      { value: 'none', label: 'Sem Prazo Definido', icon: '⚪' }
+    ]
+  }
+};
+
+function renderFilterDropdownOptions(key) {
+  const config = filterConfigs[key];
+  if (!config) return;
+  const listEl = document.getElementById(config.listId);
+  if (!listEl) return;
+
+  const options = typeof config.getOptions === 'function' ? config.getOptions() : config.options;
+  const selectedValues = window.appStore._normalizeFilterArray(window.appStore.quickFilters[key]);
+
+  listEl.innerHTML = '';
+  options.forEach(opt => {
+    const isSelected = selectedValues.includes(opt.value);
+    const row = document.createElement('label');
+    row.className = `filter-option-row ${isSelected ? 'selected' : ''} ${opt.isSpecial ? 'special-option' : ''}`;
+    row.innerHTML = `
+      <input type="checkbox" value="${escapeHtml(opt.value)}" ${isSelected ? 'checked' : ''}>
+      <span class="filter-option-icon">${opt.icon || ''}</span>
+      <span class="filter-option-text">${escapeHtml(opt.label)}</span>
+      ${opt.color ? `<span class="filter-option-color-dot" style="background-color: ${escapeHtml(opt.color)}"></span>` : ''}
+    `;
+    listEl.appendChild(row);
+  });
+
+  updateFilterDropdownButton(key);
+}
+
+function updateFilterDropdownButton(key) {
+  const config = filterConfigs[key];
+  if (!config) return;
+
+  const btn = document.getElementById(config.btnId);
+  const textEl = document.getElementById(config.textId);
+  const badgeEl = document.getElementById(config.badgeId);
+  const clearEl = document.getElementById(config.clearId);
+  if (!btn || !textEl) return;
+
+  const selectedValues = window.appStore._normalizeFilterArray(window.appStore.quickFilters[key]);
+  const count = selectedValues.length;
+
+  if (count === 0) {
+    btn.classList.remove('active');
+    textEl.textContent = config.defaultText;
+    if (badgeEl) badgeEl.style.display = 'none';
+    if (clearEl) clearEl.style.display = 'none';
+    btn.removeAttribute('title');
+  } else if (count === 1) {
+    btn.classList.add('active');
+    const val = selectedValues[0];
+    let label = val;
+    if (val === '__NONE__') {
+      label = key === 'assignedTo' ? 'Nenhum' : (key === 'label' ? 'Sem etiquetas' : 'Nenhum');
+    } else {
+      const options = typeof config.getOptions === 'function' ? config.getOptions() : config.options;
+      const found = options.find(o => o.value === val);
+      if (found) label = found.label;
+    }
+    textEl.textContent = label;
+    if (badgeEl) badgeEl.style.display = 'none';
+    if (clearEl) clearEl.style.display = 'inline-flex';
+    btn.setAttribute('title', `${config.labelPrefix} ${label}`);
+  } else {
+    btn.classList.add('active');
+    textEl.textContent = `${count} ${config.pluralText}`;
+    if (badgeEl) {
+      badgeEl.textContent = count;
+      badgeEl.style.display = 'inline-block';
+    }
+    if (clearEl) clearEl.style.display = 'inline-flex';
+
+    const options = typeof config.getOptions === 'function' ? config.getOptions() : config.options;
+    const names = selectedValues.map(v => {
+      if (v === '__NONE__') return key === 'assignedTo' ? 'Nenhum responsável' : 'Sem etiquetas';
+      const f = options.find(o => o.value === v);
+      return f ? f.label : v;
+    });
+    btn.setAttribute('title', `${config.labelPrefix} ${names.join(', ')}`);
+  }
+}
+
+function updateAllFilterDropdownsUI() {
+  Object.keys(filterConfigs).forEach(key => {
+    renderFilterDropdownOptions(key);
+  });
+}
+
+function closeAllFilterDropdowns() {
+  document.querySelectorAll('.filter-dropdown-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.filter-dropdown').forEach(d => d.classList.remove('open'));
+}
+
+let quickFiltersInitialized = false;
+
+function initQuickFilterDropdowns() {
+  if (quickFiltersInitialized) {
+    updateAllFilterDropdownsUI();
+    return;
+  }
+  quickFiltersInitialized = true;
+
+  Object.keys(filterConfigs).forEach(key => {
+    const config = filterConfigs[key];
+    const btn = document.getElementById(config.btnId);
+    const panel = document.getElementById(config.panelId);
+    const listEl = document.getElementById(config.listId);
+    const clearEl = document.getElementById(config.clearId);
+    const searchInput = config.searchId ? document.getElementById(config.searchId) : null;
+
+    if (!btn || !panel || !listEl) return;
+
+    renderFilterDropdownOptions(key);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = btn.closest('.filter-dropdown');
+      const wasOpen = panel.style.display === 'flex';
+
+      closeAllFilterDropdowns();
+
+      if (!wasOpen) {
+        panel.style.display = 'flex';
+        dropdown.classList.add('open');
+        if (searchInput) {
+          searchInput.value = '';
+          const rows = listEl.querySelectorAll('.filter-option-row');
+          rows.forEach(r => r.style.display = 'flex');
+          setTimeout(() => searchInput.focus(), 60);
+        }
+      }
+    });
+
+    listEl.addEventListener('change', (e) => {
+      const checkbox = e.target;
+      if (!checkbox || checkbox.type !== 'checkbox') return;
+      const val = checkbox.value;
+      let current = window.appStore._normalizeFilterArray(window.appStore.quickFilters[key]);
+
+      if (checkbox.checked) {
+        if (!current.includes(val)) current.push(val);
+      } else {
+        current = current.filter(v => v !== val);
+      }
+
+      window.appStore.quickFilters[key] = current;
+      const row = checkbox.closest('.filter-option-row');
+      if (row) row.classList.toggle('selected', checkbox.checked);
+
+      updateFilterDropdownButton(key);
+      renderDemands();
+    });
+
+    const clearFilter = (e) => {
+      e?.stopPropagation();
+      window.appStore.quickFilters[key] = [];
+      listEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.filter-option-row')?.classList.remove('selected');
+      });
+      updateFilterDropdownButton(key);
+      renderDemands();
+    };
+
+    document.getElementById(config.actionAllId)?.addEventListener('click', clearFilter);
+    document.getElementById(config.actionClearId)?.addEventListener('click', clearFilter);
+    clearEl?.addEventListener('click', clearFilter);
+
+    if (searchInput) {
+      searchInput.addEventListener('click', (e) => e.stopPropagation());
+      searchInput.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase().trim();
+        const rows = listEl.querySelectorAll('.filter-option-row');
+        let visibleCount = 0;
+        rows.forEach(r => {
+          const text = (r.querySelector('.filter-option-text')?.textContent || '').toLowerCase();
+          const matches = !q || text.includes(q);
+          r.style.display = matches ? 'flex' : 'none';
+          if (matches) visibleCount++;
+        });
+
+        let emptyMsg = listEl.querySelector('.filter-empty-search');
+        if (visibleCount === 0) {
+          if (!emptyMsg) {
+            emptyMsg = document.createElement('div');
+            emptyMsg.className = 'filter-empty-search';
+            emptyMsg.textContent = 'Nenhuma opção encontrada';
+            listEl.appendChild(emptyMsg);
+          }
+          emptyMsg.style.display = 'block';
+        } else if (emptyMsg) {
+          emptyMsg.style.display = 'none';
+        }
+      });
+    }
+
+    panel.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.filter-dropdown')) {
+      closeAllFilterDropdowns();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAllFilterDropdowns();
+    }
+  });
 }
 
 // Setup Event Listeners
@@ -4720,33 +5076,8 @@ function setupEventListeners() {
   // Sync button
   document.getElementById('btnSyncNow')?.addEventListener('click', () => syncDemands());
 
-  // Quick Filter Dropdowns
-  document.getElementById('quickSelectStatus')?.addEventListener('change', (e) => {
-    window.appStore.quickFilters.status = e.target.value;
-    renderDemands();
-  });
-
-  document.getElementById('quickSelectType')?.addEventListener('change', (e) => {
-    window.appStore.quickFilters.type = e.target.value;
-    renderDemands();
-  });
-
-  document.getElementById('quickSelectDev')?.addEventListener('change', (e) => {
-    window.appStore.quickFilters.assignedTo = e.target.value;
-    renderDemands();
-  });
-
-  // Label filter listener
-  document.getElementById('quickSelectLabel')?.addEventListener('change', (e) => {
-    window.appStore.quickFilters.label = e.target.value;
-    renderDemands();
-  });
-
-  // Date filter listener
-  document.getElementById('quickSelectDate')?.addEventListener('change', (e) => {
-    window.appStore.quickFilters.date = e.target.value;
-    renderDemands();
-  });
+  // Initialize interactive Multi-Select Quick Filters
+  initQuickFilterDropdowns();
 
   // Sort selector listener
   document.getElementById('quickSelectSort')?.addEventListener('change', (e) => {
@@ -4771,19 +5102,23 @@ function setupEventListeners() {
     });
   });
 
+  // Clear all filters button
   document.getElementById('btnClearQuickFilters')?.addEventListener('click', () => {
-    document.getElementById('quickSelectStatus').value = 'all';
-    document.getElementById('quickSelectType').value = 'all';
-    document.getElementById('quickSelectDev').value = 'all';
-    const labelSel = document.getElementById('quickSelectLabel');
-    if (labelSel) labelSel.value = 'all';
-    const dateSel = document.getElementById('quickSelectDate');
-    if (dateSel) dateSel.value = 'all';
-    const searchInput = document.getElementById('inputSearch');
-    if (searchInput) searchInput.value = '';
-    window.appStore.quickFilters = { status: 'all', type: 'all', assignedTo: 'all', database: '', date: 'all', label: 'all' };
+    window.appStore.quickFilters = {
+      status: [],
+      type: [],
+      assignedTo: [],
+      database: '',
+      date: [],
+      label: []
+    };
     window.appStore.searchQuery = '';
     window.appStore.activeFilterId = 'all';
+
+    const searchInput = document.getElementById('inputSearch');
+    if (searchInput) searchInput.value = '';
+
+    updateAllFilterDropdownsUI();
     renderFixedFiltersList();
     renderDemands();
   });
@@ -4793,15 +5128,16 @@ function setupEventListeners() {
     const defaultName = `Filtro Personalizado ${window.appStore.fixedFilters.length + 1}`;
     openNewFilterModal();
     document.getElementById('modalFilterName').value = defaultName;
-    const s = window.appStore.quickFilters.status;
-    const t = window.appStore.quickFilters.type;
-    const d = window.appStore.quickFilters.assignedTo;
-    const l = window.appStore.quickFilters.label;
 
-    if (s && s !== 'all') document.getElementById('modalFilterStatus').value = s;
-    if (t && t !== 'all') document.getElementById('modalFilterType').value = t;
-    if (d && d !== 'all') document.getElementById('modalFilterDev').value = d;
-    if (l && l !== 'all') document.getElementById('modalFilterLabel').value = l;
+    const sArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.status);
+    const tArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.type);
+    const dArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.assignedTo);
+    const lArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.label);
+
+    if (sArr.length > 0) document.getElementById('modalFilterStatus').value = sArr[0];
+    if (tArr.length > 0) document.getElementById('modalFilterType').value = tArr[0];
+    if (dArr.length > 0) document.getElementById('modalFilterDev').value = dArr[0];
+    if (lArr.length > 0) document.getElementById('modalFilterLabel').value = lArr[0];
   });
 
   // Create Ticket Modal Buttons & Controls

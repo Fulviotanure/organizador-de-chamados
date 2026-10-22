@@ -10,12 +10,12 @@ class AppStore {
     
     // Quick filter dropdown states (temporary on top of fixed filter)
     this.quickFilters = {
-      status: 'all',
-      type: 'all',
-      assignedTo: 'all',
+      status: [],
+      type: [],
+      assignedTo: [],
       database: '',
-      date: 'all', // 'all' | 'overdue' | 'today' | 'tomorrow' | 'week' | 'month' | 'none'
-      label: 'all'
+      date: [],
+      label: []
     };
 
     // Sorting state: 'deliveryDueDate_asc' | 'deliveryDueDate_desc' | 'createdAt_desc' | 'createdAt_asc' | 'number_desc' | 'number_asc'
@@ -552,6 +552,14 @@ class AppStore {
     return workload;
   }
 
+  _normalizeFilterArray(val) {
+    if (!val || val === 'all') return [];
+    if (Array.isArray(val)) {
+      return val.filter(v => v !== undefined && v !== null && v !== '' && v !== 'all');
+    }
+    return [val];
+  }
+
   getAvailableLabels() {
     const labelsMap = new Map();
     const fallbackLabels = [
@@ -719,9 +727,37 @@ class AppStore {
 
       // 6. Fixed Filter: Developer criteria
       if (criteria.developerId) {
-        if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
+        if (criteria.developerId === '__NONE__' || criteria.developerId === 'none') {
+          const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+          const isUnassigned = !devName || devName === 'Não atribuído';
+          if (!isUnassigned) return false;
+        } else if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
           return false;
         }
+      }
+      if (criteria.developerName) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        if (criteria.developerName === '__NONE__' || criteria.developerName === 'none') {
+          if (!isUnassigned) return false;
+        } else {
+          if (isUnassigned || devName.toLowerCase() !== criteria.developerName.toLowerCase()) return false;
+        }
+      }
+      if (criteria.unassignedOnly) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        if (!isUnassigned) return false;
+      }
+      if (criteria.developers && Array.isArray(criteria.developers) && criteria.developers.length > 0) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        const matchesDev = criteria.developers.some(dev => {
+          if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') return isUnassigned;
+          if (isUnassigned) return false;
+          return devName.toLowerCase() === dev.toLowerCase();
+        });
+        if (!matchesDev) return false;
       }
 
       // 7. Fixed Filter: Database / Client criteria
@@ -749,43 +785,79 @@ class AppStore {
       }
 
       // 8b. Fixed Filter: Label criteria
+      if (criteria.noLabelsOnly) {
+        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+        if (!hasNoLabels) return false;
+      }
       if (criteria.label) {
-        if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+        if (criteria.label === '__NONE__' || criteria.label === 'none' || criteria.label === 'no_labels') {
+          const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+          if (!hasNoLabels) return false;
+        } else {
+          if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+        }
       }
       if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
-        const matchesAny = criteria.labels.some(l => this.ticketHasLabel(ticket, l));
+        const matchesAny = criteria.labels.some(l => {
+          if (l === '__NONE__' || l === 'none' || l === 'no_labels') {
+            return !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+          }
+          return this.ticketHasLabel(ticket, l);
+        });
         if (!matchesAny) return false;
       }
 
-      // 9. Quick Dropdown Filters (applied on top of the fixed view)
-      if (this.quickFilters.status !== 'all') {
+      // 9. Quick Dropdown Filters (supports multi-selection arrays or legacy strings)
+      const selStatuses = this._normalizeFilterArray(this.quickFilters.status);
+      if (selStatuses.length > 0) {
         const s = (ticket.status || '').toLowerCase();
-        if (this.quickFilters.status === 'done' || this.quickFilters.status === 'closed' || this.quickFilters.status === 'completed') {
-          const isDone = s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
-          if (!isDone) return false;
-        } else if (this.quickFilters.status === 'done_documentar') {
-          const isDone = s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
-          if (!isDone || !this.ticketHasLabel(ticket, 'documentar')) return false;
-        } else if (this.quickFilters.status === 'waiting' || this.quickFilters.status === 'waiting_n2') {
-          const isWaiting = s.includes('waiting') || s.includes('requester') || s.includes('creator');
-          if (!isWaiting) return false;
-        } else {
-          if (!s.includes(this.quickFilters.status.toLowerCase())) return false;
-        }
+        const matchesStatus = selStatuses.some(st => {
+          if (st === 'done' || st === 'closed' || st === 'completed') {
+            return s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
+          }
+          if (st === 'done_documentar') {
+            const isDone = s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado';
+            return isDone && this.ticketHasLabel(ticket, 'documentar');
+          }
+          if (st === 'waiting' || st === 'waiting_n2') {
+            return s.includes('waiting') || s.includes('requester') || s.includes('creator');
+          }
+          return s.includes(st.toLowerCase());
+        });
+        if (!matchesStatus) return false;
       }
 
-      if (this.quickFilters.label && this.quickFilters.label !== 'all') {
-        if (!this.ticketHasLabel(ticket, this.quickFilters.label)) return false;
+      const selLabels = this._normalizeFilterArray(this.quickFilters.label);
+      if (selLabels.length > 0) {
+        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+        const matchesLabel = selLabels.some(lbl => {
+          if (lbl === '__NONE__' || lbl === 'none' || lbl === 'no_labels') {
+            return hasNoLabels;
+          }
+          return this.ticketHasLabel(ticket, lbl);
+        });
+        if (!matchesLabel) return false;
       }
 
-      if (this.quickFilters.type !== 'all') {
+      const selTypes = this._normalizeFilterArray(this.quickFilters.type);
+      if (selTypes.length > 0) {
         const t = (ticket.ticketType?.name || '').toLowerCase();
-        if (!t.includes(this.quickFilters.type.toLowerCase())) return false;
+        const matchesType = selTypes.some(tp => t.includes(tp.toLowerCase()));
+        if (!matchesType) return false;
       }
 
-      if (this.quickFilters.assignedTo !== 'all') {
-        const devName = ticket.assignedTo?.name || 'Não atribuído';
-        if (devName !== this.quickFilters.assignedTo) return false;
+      const selDevs = this._normalizeFilterArray(this.quickFilters.assignedTo);
+      if (selDevs.length > 0) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        const matchesDev = selDevs.some(dev => {
+          if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') {
+            return isUnassigned;
+          }
+          if (isUnassigned) return false;
+          return devName.toLowerCase() === dev.toLowerCase();
+        });
+        if (!matchesDev) return false;
       }
 
       if (this.quickFilters.database) {
@@ -793,30 +865,37 @@ class AppStore {
         if (!db.includes(this.quickFilters.database.toLowerCase())) return false;
       }
 
-      // 10. Quick Date Filter
-      if (this.quickFilters.date !== 'all') {
+      // 10. Quick Date Filter (supports multi-selection or legacy string)
+      const selDates = this._normalizeFilterArray(this.quickFilters.date);
+      if (selDates.length > 0) {
         const dueStr = ticket.deliveryDueDate || ticket.clientDueDate;
-        if (this.quickFilters.date === 'none') {
-          if (dueStr) return false;
-        } else {
+        const matchesDate = selDates.some(dKey => {
+          if (dKey === 'none') {
+            return !dueStr;
+          }
           if (!dueStr) return false;
           const dueDate = new Date(dueStr);
           const dueDay = dueStr.slice(0, 10);
 
-          if (this.quickFilters.date === 'overdue') {
-            if (dueDate >= now || dueDay === todayStr) return false;
-          } else if (this.quickFilters.date === 'today') {
-            if (dueDay !== todayStr) return false;
-          } else if (this.quickFilters.date === 'tomorrow') {
-            if (dueDay !== tomorrowStr) return false;
-          } else if (this.quickFilters.date === 'week') {
-            if (dueDate < now && dueDay !== todayStr) return false; // exclude past
-            if (dueDate > weekAhead) return false;
-          } else if (this.quickFilters.date === 'month') {
-            const thisMonth = now.toISOString().slice(0, 7);
-            if (dueStr.slice(0, 7) !== thisMonth) return false;
+          if (dKey === 'overdue') {
+            return dueDate < now && dueDay !== todayStr;
           }
-        }
+          if (dKey === 'today') {
+            return dueDay === todayStr;
+          }
+          if (dKey === 'tomorrow') {
+            return dueDay === tomorrowStr;
+          }
+          if (dKey === 'week') {
+            return (dueDate >= now || dueDay === todayStr) && dueDate <= weekAhead;
+          }
+          if (dKey === 'month') {
+            const thisMonth = now.toISOString().slice(0, 7);
+            return dueStr.slice(0, 7) === thisMonth;
+          }
+          return false;
+        });
+        if (!matchesDate) return false;
       }
 
       return true;
@@ -894,7 +973,40 @@ class AppStore {
       }
 
       if (criteria.developerId) {
-        if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) return false;
+        if (criteria.developerId === '__NONE__' || criteria.developerId === 'none') {
+          const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+          const isUnassigned = !devName || devName === 'Não atribuído';
+          if (!isUnassigned) return false;
+        } else if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
+          return false;
+        }
+      }
+
+      if (criteria.developerName) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        if (criteria.developerName === '__NONE__' || criteria.developerName === 'none') {
+          if (!isUnassigned) return false;
+        } else {
+          if (isUnassigned || devName.toLowerCase() !== criteria.developerName.toLowerCase()) return false;
+        }
+      }
+
+      if (criteria.unassignedOnly) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        if (!isUnassigned) return false;
+      }
+
+      if (criteria.developers && Array.isArray(criteria.developers) && criteria.developers.length > 0) {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        const matchesDev = criteria.developers.some(dev => {
+          if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') return isUnassigned;
+          if (isUnassigned) return false;
+          return devName.toLowerCase() === dev.toLowerCase();
+        });
+        if (!matchesDev) return false;
       }
 
       if (criteria.database) {
@@ -913,11 +1025,26 @@ class AppStore {
         if (!isOverdue && !isToday) return false;
       }
 
+      if (criteria.noLabelsOnly) {
+        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+        if (!hasNoLabels) return false;
+      }
+
       if (criteria.label) {
-        if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+        if (criteria.label === '__NONE__' || criteria.label === 'none' || criteria.label === 'no_labels') {
+          const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+          if (!hasNoLabels) return false;
+        } else {
+          if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+        }
       }
       if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
-        const matchesAny = criteria.labels.some(l => this.ticketHasLabel(ticket, l));
+        const matchesAny = criteria.labels.some(l => {
+          if (l === '__NONE__' || l === 'none' || l === 'no_labels') {
+            return !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+          }
+          return this.ticketHasLabel(ticket, l);
+        });
         if (!matchesAny) return false;
       }
 

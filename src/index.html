@@ -157,45 +157,117 @@
         </div>
 
         <!-- Quick Filter Dropdowns Row -->
-        <div class="quick-filter-bar">
-          <select class="quick-select" id="quickSelectStatus">
-            <option value="all">Todas as Situações</option>
-            <option value="queued">Na Fila</option>
-            <option value="in_progress">Em Progresso</option>
-            <option value="waiting_n2">⏳ Aguardando Resposta do N2</option>
-            <option value="review">Em Revisão</option>
-            <option value="done">✅ Concluídos (Todos)</option>
-            <option value="done_documentar">📑 Concluídos (Documentar)</option>
-          </select>
+        <div class="quick-filter-bar" id="quickFilterBar">
+          <!-- Situação (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterStatus">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterStatus" title="Filtrar por Situação (Permite selecionar múltiplas opções)">
+              <span class="filter-btn-prefix">Situação:</span>
+              <span class="filter-btn-text" id="btnFilterStatusText">Todas</span>
+              <span class="filter-btn-badge" id="btnFilterStatusBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterStatusClear" title="Limpar filtro de situação" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterStatus" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Situação</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionStatusAll">Todas</button>
+                  <button type="button" class="filter-action-link" id="actionStatusClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-list" id="listFilterStatus"></div>
+            </div>
+          </div>
 
-          <select class="quick-select" id="quickSelectType">
-            <option value="all">Todos os Tipos</option>
-            <option value="Novo Layout">Novo Layout</option>
-            <option value="Inclusao">Inclusão</option>
-            <option value="Erro">Erro</option>
-            <option value="Migração">Migração</option>
-          </select>
+          <!-- Tipo (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterType">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterType" title="Filtrar por Tipo (Permite selecionar múltiplas opções)">
+              <span class="filter-btn-prefix">Tipo:</span>
+              <span class="filter-btn-text" id="btnFilterTypeText">Todos</span>
+              <span class="filter-btn-badge" id="btnFilterTypeBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterTypeClear" title="Limpar filtro de tipo" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterType" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Tipo</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionTypeAll">Todos</button>
+                  <button type="button" class="filter-action-link" id="actionTypeClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-list" id="listFilterType"></div>
+            </div>
+          </div>
 
-          <select class="quick-select" id="quickSelectDev">
-            <option value="all">Qualquer Responsável</option>
-            <!-- Filled dynamically -->
-          </select>
+          <!-- Responsável (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterDev">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterDev" title="Filtrar por Responsável (Permite selecionar múltiplos)">
+              <span class="filter-btn-prefix">Responsável:</span>
+              <span class="filter-btn-text" id="btnFilterDevText">Qualquer</span>
+              <span class="filter-btn-badge" id="btnFilterDevBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterDevClear" title="Limpar filtro de responsável" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterDev" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Responsável</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionDevAll">Qualquer</button>
+                  <button type="button" class="filter-action-link" id="actionDevClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-search">
+                <input type="text" class="filter-search-input" id="searchFilterDev" placeholder="🔍 Pesquisar responsável...">
+              </div>
+              <div class="filter-panel-list" id="listFilterDev"></div>
+            </div>
+          </div>
 
-          <select class="quick-select" id="quickSelectLabel" title="Filtrar por Etiqueta">
-            <option value="all">🏷️ Todas as Etiquetas</option>
-            <option value="DOCUMENTAR">📑 DOCUMENTAR</option>
-          </select>
+          <!-- Etiqueta (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterLabel">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterLabel" title="Filtrar por Etiqueta (Permite selecionar múltiplas)">
+              <span class="filter-btn-prefix">Etiqueta:</span>
+              <span class="filter-btn-text" id="btnFilterLabelText">Todas</span>
+              <span class="filter-btn-badge" id="btnFilterLabelBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterLabelClear" title="Limpar filtro de etiqueta" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterLabel" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Etiquetas</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionLabelAll">Todas</button>
+                  <button type="button" class="filter-action-link" id="actionLabelClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-search">
+                <input type="text" class="filter-search-input" id="searchFilterLabel" placeholder="🔍 Pesquisar etiqueta...">
+              </div>
+              <div class="filter-panel-list" id="listFilterLabel"></div>
+            </div>
+          </div>
 
-          <!-- Date Filter Dropdown -->
-          <select class="quick-select" id="quickSelectDate" title="Filtrar por data e prazo">
-            <option value="all">📅 Todas as Datas</option>
-            <option value="overdue">🔴 Atrasados (Vencidos)</option>
-            <option value="today">🟡 Para Hoje</option>
-            <option value="tomorrow">🟠 Para Amanhã</option>
-            <option value="week">📆 Esta Semana (7 dias)</option>
-            <option value="month">🗓️ Este Mês</option>
-            <option value="none">⚪ Sem Prazo Definido</option>
-          </select>
+          <!-- Data / Prazo (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterDate">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterDate" title="Filtrar por Prazo (Permite selecionar múltiplos)">
+              <span class="filter-btn-prefix">Prazo:</span>
+              <span class="filter-btn-text" id="btnFilterDateText">Todas</span>
+              <span class="filter-btn-badge" id="btnFilterDateBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterDateClear" title="Limpar filtro de prazo" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterDate" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Prazo de Entrega</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionDateAll">Todas</button>
+                  <button type="button" class="filter-action-link" id="actionDateClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-list" id="listFilterDate"></div>
+            </div>
+          </div>
 
           <!-- Sorting Dropdown -->
           <select class="quick-select" id="quickSelectSort" title="Ordenar lista de demandas" style="font-weight: 600; color: #a5b4fc;">
@@ -916,6 +988,7 @@
           <label class="form-label">Filtrar por Etiqueta (Label)</label>
           <select class="form-select" id="modalFilterLabel">
             <option value="">Qualquer Etiqueta</option>
+            <option value="__NONE__">🏷️ Sem etiquetas</option>
             <option value="DOCUMENTAR">DOCUMENTAR</option>
           </select>
         </div>
@@ -936,6 +1009,7 @@
           <select class="form-select" id="modalFilterDev">
             <option value="">Qualquer Desenvolvedor</option>
             <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
+            <option value="__NONE__">👤 Nenhum responsável (Não atribuído)</option>
           </select>
         </div>
 
