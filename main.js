@@ -2,7 +2,13 @@ const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron')
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const { autoUpdater } = require('electron-updater');
+let autoUpdater = null;
+try {
+  const updaterModule = require('electron-updater');
+  autoUpdater = updaterModule.autoUpdater;
+} catch (e) {
+  console.warn('electron-updater não disponível no ambiente atual:', e.message);
+}
 
 let mainWindow;
 
@@ -141,7 +147,55 @@ ipcMain.handle('open-buffer-temp', async (event, { fileName, buffer }) => {
   }
 });
 
-// Launch AutoDrive Desktop with prefilled demand data
+// Google Drive & AutoDrive Native Integration
+const { GoogleDriveService } = require('./src/googleDriveService');
+const driveService = new GoogleDriveService();
+
+ipcMain.handle('drive-get-status', async () => {
+  try {
+    return await driveService.getStatus();
+  } catch (err) {
+    return { connected: false, error: err.message };
+  }
+});
+
+ipcMain.handle('drive-check-layout', async (event, data) => {
+  try {
+    const result = await driveService.checkLayoutPreFlight(data);
+    return { success: true, ...result };
+  } catch (err) {
+    console.error('Error in drive-check-layout:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('drive-upload-layout', async (event, data) => {
+  try {
+    const result = await driveService.processLayoutUpload(data, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('drive-upload-progress', progress);
+      }
+    });
+    return { success: true, ...result };
+  } catch (err) {
+    console.error('Error in drive-upload-layout:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-path', async (event, targetPath) => {
+  try {
+    if (targetPath && fs.existsSync(targetPath)) {
+      await shell.openPath(targetPath);
+      return { success: true };
+    }
+    return { success: false, error: 'Caminho não encontrado no disco.' };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Launch AutoDrive Desktop with prefilled demand data (External Python fallback)
 ipcMain.handle('launch-autodrive', async (event, data) => {
   try {
     const autodriveDir = data?.customPath || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive';
@@ -171,6 +225,7 @@ ipcMain.handle('launch-autodrive', async (event, data) => {
       entidade: data?.entidade || '',
       nome_documento: data?.nome_documento || '',
       categoria: data?.categoria || '',
+      senha: data?.senha || '',
       pdf: pdfFilePath,
       image: imgFilePath
     };
@@ -221,65 +276,91 @@ function sendUpdaterStatus(payload) {
   }
 }
 
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
-if (!app.isPackaged) {
-  autoUpdater.forceDevUpdateConfig = true;
-}
-
-autoUpdater.on('checking-for-update', () => {
-  sendUpdaterStatus({ status: 'checking', message: 'Verificando atualizações...' });
-});
-
-autoUpdater.on('update-available', (info) => {
-  sendUpdaterStatus({
-    status: 'available',
-    message: `Nova versão ${info.version} encontrada! Baixando...`,
-    version: info.version
-  });
-});
-
-autoUpdater.on('update-not-available', (info) => {
-  sendUpdaterStatus({
-    status: 'not-available',
-    message: 'Seu Organizador de Chamados está na versão mais recente.'
-  });
-});
-
-autoUpdater.on('error', (err) => {
-  console.warn('AutoUpdater warning:', err.message);
-  sendUpdaterStatus({
-    status: 'error',
-    message: `Erro ao verificar atualizações: ${err.message}`
-  });
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-  const percent = Math.round(progressObj.percent || 0);
-  sendUpdaterStatus({
-    status: 'downloading',
-    percent,
-    message: `Baixando atualização: ${percent}%`
-  });
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-  sendUpdaterStatus({
-    status: 'downloaded',
-    version: info.version,
-    message: `Versão ${info.version} baixada e pronta para instalar!`
-  });
-
-  if (Notification.isSupported()) {
-    new Notification({
-      title: 'Atualização Pronta',
-      body: `A versão ${info.version} foi baixada com sucesso. Reinicie o aplicativo para aplicar as novidades.`
-    }).show();
+if (autoUpdater) {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  if (!app.isPackaged) {
+    autoUpdater.forceDevUpdateConfig = true;
   }
-});
+
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdaterStatus({ status: 'checking', message: 'Verificando atualizações...' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    sendUpdaterStatus({
+      status: 'available',
+      message: `Nova versão ${info.version} encontrada! Baixando...`,
+      version: info.version
+    });
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    sendUpdaterStatus({
+      status: 'not-available',
+      message: 'Seu Organizador de Chamados está na versão mais recente.'
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.warn('AutoUpdater warning:', err.message);
+    sendUpdaterStatus({
+      status: 'error',
+      message: `Erro ao verificar atualizações: ${err.message}`
+    });
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const percent = Math.round(progressObj.percent || 0);
+    const speedNum = progressObj.bytesPerSecond || 0;
+    const speed = speedNum > 1024 * 1024
+      ? `${(speedNum / (1024 * 1024)).toFixed(1)} MB/s`
+      : `${Math.round(speedNum / 1024)} KB/s`;
+    const transferred = `${((progressObj.transferred || 0) / (1024 * 1024)).toFixed(1)} MB`;
+    const total = `${((progressObj.total || 0) / (1024 * 1024)).toFixed(1)} MB`;
+
+    sendUpdaterStatus({
+      status: 'downloading',
+      percent,
+      speed,
+      transferred,
+      total,
+      message: `Baixando atualização: ${percent}%`
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdaterStatus({
+      status: 'downloaded',
+      version: info.version,
+      percent: 100,
+      message: `Versão ${info.version} baixada! Reiniciando e aplicando atualização...`
+    });
+
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'Instalando Atualização',
+        body: `A versão ${info.version} foi baixada com sucesso. O sistema reiniciará automaticamente para concluir a instalação.`
+      }).show();
+    }
+
+    // Reiniciar sozinho logo após baixar conforme solicitação do usuário
+    setTimeout(() => {
+      try {
+        console.log('Reiniciando automaticamente para aplicar atualização...');
+        autoUpdater.quitAndInstall(false, true);
+      } catch (err) {
+        console.error('Erro ao reiniciar para aplicar atualização:', err);
+      }
+    }, 2200);
+  });
+}
 
 // Auto-updater IPC handlers
 ipcMain.handle('updater-check', async () => {
+  if (!autoUpdater) {
+    return { success: false, error: 'Módulo de atualização não disponível no ambiente atual.' };
+  }
   try {
     const res = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: res?.updateInfo };
@@ -293,7 +374,9 @@ ipcMain.handle('updater-check', async () => {
 });
 
 ipcMain.handle('updater-restart-install', () => {
-  autoUpdater.quitAndInstall(false, true);
+  if (autoUpdater) {
+    autoUpdater.quitAndInstall(false, true);
+  }
 });
 
 ipcMain.handle('get-app-version', () => {
@@ -304,7 +387,7 @@ app.whenReady().then(() => {
   createWindow();
 
   // Check for updates 5 seconds after startup if in production package
-  if (app.isPackaged) {
+  if (app.isPackaged && autoUpdater) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(e => console.warn('Silent auto-update check:', e.message));
     }, 5000);

@@ -416,6 +416,12 @@ class AppStore {
     }
   }
 
+  async saveDemandsCache() {
+    if (window.electronAPI) {
+      await window.electronAPI.saveStorage('cachedDemands', this.demands);
+    }
+  }
+
   getKnownDevelopers() {
     const devsMap = new Map();
     // Default known team members
@@ -598,6 +604,27 @@ class AppStore {
         await window.electronAPI.saveStorage('savedCredentials', credentials);
       }
     }
+  }
+
+  async saveCredentials(credentials) {
+    this.savedCredentials = credentials;
+    if (window.electronAPI) {
+      await window.electronAPI.saveStorage('savedCredentials', credentials);
+    }
+  }
+
+  async saveCurrentUser(user) {
+    this.currentUser = user;
+    if (window.conciliadorAPI) {
+      window.conciliadorAPI.setUser(user);
+    }
+    if (window.electronAPI) {
+      await window.electronAPI.saveStorage('currentUser', user);
+    }
+  }
+
+  hasSavedPassword() {
+    return !!(this.savedCredentials && typeof this.savedCredentials.password === 'string' && this.savedCredentials.password.length > 0);
   }
 
   async logout() {

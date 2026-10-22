@@ -18,6 +18,10 @@
     <div class="titlebar-center">
       <div class="sync-status-dot" id="syncDot" title="Sincronizado"></div>
       <span id="syncText">Sincronizado</span>
+      <button type="button" class="btn-titlebar-settings" id="btnTitlebarSettings" title="Configurações e Usuário (⚙️)">
+        <span>⚙️</span>
+        <span class="settings-btn-label">Configurações</span>
+      </button>
       <div id="updateBanner" style="display: none; align-items: center; gap: 8px; margin-left: 14px; font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35);">
         <span id="updateBannerText" style="color: #38bdf8; font-weight: 500;"></span>
         <button type="button" id="btnRestartUpdate" class="btn-primary" style="display: none; height: 20px; padding: 0 8px; font-size: 10px; line-height: 1; border-radius: 3px;">Reiniciar Agora</button>
@@ -43,8 +47,8 @@
     <!-- Left Sidebar -->
     <aside class="sidebar">
       <!-- User profile card -->
-      <div class="sidebar-user-card">
-        <div class="user-info">
+      <div class="sidebar-user-card" id="sidebarUserCard" title="Configurações e Usuário (⚙️)">
+        <div class="user-info" id="btnOpenUserCardSettings" style="cursor: pointer;" title="Clique para ver perfil e configurações">
           <div class="user-avatar" id="userAvatar">--</div>
           <div class="user-details">
             <div class="user-name" id="userName">Carregando...</div>
@@ -54,9 +58,14 @@
             </div>
           </div>
         </div>
-        <button class="icon-btn-ghost" id="btnLogout" title="Desconectar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button class="icon-btn-ghost" id="btnUserSettings" title="Configurações e Usuário (⚙️)">
+            <span style="font-size: 15px;">⚙️</span>
+          </button>
+          <button class="icon-btn-ghost" id="btnLogout" title="Desconectar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
       </div>
 
       <!-- Fixed Filters Section -->
@@ -96,7 +105,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.2</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.4</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -247,91 +256,96 @@
 
   </div>
 
-  <!-- Slide-over / Expanded Demand Details Workspace -->
+  <!-- Slide-over / Expanded Demand Details Workspace (Centralizado na Tela) -->
   <div class="drawer-overlay" id="drawerOverlay"></div>
   <aside class="demand-drawer" id="demandDrawer">
-    <!-- Header -->
-    <div class="drawer-header">
-      <div class="drawer-title-area">
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <div class="drawer-demand-number" id="drawerDemandNumber">#---</div>
-          <div style="display: flex; gap: 6px; align-items: center;" id="drawerBadges">
-            <!-- Badges -->
-          </div>
+    
+    <!-- Header Fixo Superior do Chamado -->
+    <div class="drawer-fixed-header">
+      
+      <!-- 1. TÍTULO CENTRALIZADO -->
+      <div class="drawer-title-row">
+        <!-- Controles da Janela do Chamado no Canto Superior Direito -->
+        <div class="drawer-window-controls">
+          <button type="button" class="btn-external-link btn-drawer-minimize" id="btnDrawerMinimize" style="display: none;" title="Minimizar janela do programa">
+            <span>🗕</span>
+          </button>
+          <button type="button" class="icon-btn-ghost btn-drawer-toggle-size" id="btnToggleDrawerExpand" title="Expandir visualização / Reduzir largura">
+            <span id="drawerExpandIcon">🗖</span>
+          </button>
+          <button type="button" class="icon-btn-ghost btn-drawer-close" id="btnCloseDrawer" title="Fechar chamado (Esc)">✕</button>
         </div>
-        <div class="drawer-demand-title" id="drawerDemandTitle">Carregando chamado...</div>
+
+        <!-- Área Central com Número, Badges e Título Centralizado -->
+        <div class="drawer-title-center-box">
+          <div class="drawer-demand-header-meta">
+            <span class="drawer-demand-number" id="drawerDemandNumber">#---</span>
+            <div class="drawer-demand-badges" id="drawerBadges">
+              <!-- Badges geradas via JS -->
+            </div>
+          </div>
+          <h2 class="drawer-demand-title" id="drawerDemandTitle">Carregando chamado...</h2>
+        </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button class="btn-primary" id="btnDrawerSaveTicket" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 14px; font-weight: 600;" title="Salvar todas as alterações da demanda">
-          <span>💾</span> Salvar Alterações
-        </button>
-        <button class="btn-external-link btn-drawer-autodrive" id="btnDrawerAutoDrive" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 13px; font-weight: 600; background: linear-gradient(135deg, rgba(31, 111, 235, 0.25) 0%, rgba(56, 139, 253, 0.15) 100%); border: 1px solid rgba(56, 139, 253, 0.45); color: #58a6ff;" title="Integrar e enviar dados desta demanda para o AutoDrive Layouts">
-          <span>🚀</span> AutoDrive
-        </button>
-        <button class="btn-external-link" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer">
-          🌐 Abrir no Importer
-        </button>
-        <button class="btn-external-link" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
-          🎫 Abrir no Movidesk
-        </button>
-        <button class="btn-external-link btn-drawer-minimize" id="btnDrawerMinimize" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 12px; font-weight: 500;" title="Minimizar janela do programa (mantém o chamado aberto em segundo plano)">
-          <span style="font-size: 13px;">🗕</span> Minimizar
-        </button>
-        <div style="width: 1px; height: 20px; background: var(--border-color); margin: 0 2px;"></div>
-        <button class="icon-btn-ghost btn-drawer-toggle-size" id="btnDrawerWindowMinimize" title="Minimizar janela do Organizador">
-          <span style="font-size: 12px;">🗕</span>
-        </button>
-        <button class="icon-btn-ghost btn-drawer-toggle-size" id="btnToggleDrawerExpand" title="Expandir visualização / Reduzir largura">
-          <span id="drawerExpandIcon">🗖</span>
-        </button>
-        <button class="icon-btn-ghost" id="btnCloseDrawer" style="font-size: 18px;" title="Fechar demanda (Esc)">✕</button>
-      </div>
-    </div>
 
-    <!-- Navigation Tabs -->
-    <div class="drawer-tabs">
-      <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails">
-        <span>📄</span> Ficha & Edição
-      </button>
-      <button class="drawer-tab" data-tab="comments" id="drawerTabBtnComments">
-        <span>💬</span> Diálogo & Linha do Tempo <span class="tab-badge" id="drawerStreamCountBadge">0</span>
-      </button>
-      <button class="drawer-tab" data-tab="attachments" id="drawerTabBtnAttachments">
-        <span>📎</span> Anexos <span class="tab-badge" id="drawerAttachmentsCountBadge">0</span>
-      </button>
-      <button class="drawer-tab" data-tab="notes" id="drawerTabBtnNotes">
-        <span>📝</span> Minhas Anotações
-      </button>
-    </div>
+      <!-- 2. BOTÕES DE AÇÃO DE MOVIDESK, IMPORTER E DRIVE ABAIXO FIXOS -->
+      <div class="drawer-actions-fixed-bar">
+        <div class="drawer-actions-fixed-group main-actions">
+          <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
+            <span>🎫</span> <span>Abrir no Movidesk</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra">
+            <span>🌐</span> <span>Abrir no Importer</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
+            <span>🚀</span> <span>Google Drive / AutoDrive</span>
+          </button>
+        </div>
 
-    <!-- Drawer Body -->
-    <div class="drawer-body">
+        <div class="drawer-actions-fixed-separator"></div>
 
-      <!-- TAB 1: DETAILS & EDIT -->
-      <div class="drawer-tab-pane active" id="drawerPaneDetails">
-        <!-- Quick Action Buttons -->
-        <div class="drawer-actions-row">
-          <button class="quick-action-btn" id="btnOpenWeb" title="Abrir chamado no Importer">
-            <span>🌐</span> Importer Ultra
-          </button>
-          <button class="quick-action-btn" id="btnOpenMovidesk" title="Abrir chamado no Movidesk">
-            <span>🎫</span> Movidesk
-          </button>
-          <button class="quick-action-btn" id="btnCopyDatabase">
-            <span>📋</span> Copiar Banco
-          </button>
-          <button class="quick-action-btn" id="btnToggleDrawerFavorite">
+        <div class="drawer-actions-fixed-group util-actions">
+          <button type="button" class="quick-action-btn" id="btnToggleDrawerFavorite" title="Favoritar este chamado">
             <span>⭐</span> Favorito
           </button>
-          <button class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
+          <button type="button" class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
             <span>🚫</span> Ignorar Chamado
           </button>
-          <button class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
+          <button type="button" class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
             <span>📦</span> Arquivar
           </button>
         </div>
 
-        <!-- Editable Title Field -->
+        <!-- Botões de compatibilidade com scripts existentes -->
+        <button id="btnOpenWeb" style="display: none;"></button>
+        <button id="btnOpenMovidesk" style="display: none;"></button>
+      </div>
+
+      <!-- 3. DEPOIS OS BOTÕES DE ABAS DO CHAMADO -->
+      <div class="drawer-tabs">
+        <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails">
+          <span>📄</span> Ficha & Edição
+        </button>
+        <button class="drawer-tab" data-tab="comments" id="drawerTabBtnComments">
+          <span>💬</span> Diálogo & Linha do Tempo <span class="tab-badge" id="drawerStreamCountBadge">0</span>
+        </button>
+        <button class="drawer-tab" data-tab="attachments" id="drawerTabBtnAttachments">
+          <span>📎</span> Anexos <span class="tab-badge" id="drawerAttachmentsCountBadge">0</span>
+        </button>
+        <button class="drawer-tab" data-tab="notes" id="drawerTabBtnNotes">
+          <span>📝</span> Minhas Anotações
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Drawer Body (Rolagem independente) -->
+    <div class="drawer-body">
+
+      <!-- TAB 1: DETAILS & EDIT -->
+      <div class="drawer-tab-pane active" id="drawerPaneDetails">
+
+        <!-- 1. TÍTULO DA DEMANDA -->
         <div class="form-group" style="margin-top: 4px;">
           <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Título da Demanda</span>
@@ -340,8 +354,54 @@
           <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14.5px; font-weight: 600;">
         </div>
 
-        <!-- Structured Properties Cards (Ficha de Edição) -->
-        <div class="drawer-properties-cards">
+        <!-- 2. DESCRIÇÃO COMPLETA DO CHAMADO -->
+        <div class="form-group" style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="form-label" style="margin-bottom: 0;">Descrição Completa do Chamado</span>
+            <button type="button" class="btn-secondary" id="btnToggleEditDesc" style="padding: 4px 10px; font-size: 11.5px; gap: 5px;">
+              <span id="btnToggleEditDescIcon">✏️</span> <span id="btnToggleEditDescText">Editar Descrição</span>
+            </button>
+          </div>
+
+          <!-- Description View Mode -->
+          <div class="description-box" id="drawerDescription">Carregando descrição...</div>
+
+          <!-- Description Edit Mode (Hidden initially) -->
+          <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; margin-top: 6px;">
+            <div class="rich-editor-toolbar" id="drawerDescToolbar">
+              <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
+              <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
+              <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
+              <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+              <span class="toolbar-separator"></span>
+              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3"><b>H3</b></button>
+              <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList">• Lista</button>
+              <button type="button" class="toolbar-btn" data-cmd="insertOrderedList">1. Lista</button>
+              <span class="toolbar-separator"></span>
+              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre">&lt;/&gt; Código</button>
+              <button type="button" class="toolbar-btn" data-cmd="removeFormat">🧹 Limpar</button>
+            </div>
+            <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color);">
+              <button type="button" class="btn-secondary" id="btnCancelEditDesc" style="font-size: 12px;">Cancelar</button>
+              <button type="button" class="btn-primary" id="btnSaveDescOnly" style="font-size: 12px; gap: 6px;"><span>💾</span> Salvar Descrição</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. ETIQUETAS DA DEMANDA -->
+        <div class="drawer-prop-card" style="margin-top: 14px;">
+          <div class="drawer-prop-card-header">
+            <span class="drawer-prop-card-title">🏷️ Etiquetas da Demanda</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar / desmarcar</span>
+          </div>
+          <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- 4. OUTROS CAMPOS ABAIXO (Propriedades Técnicas e Vínculos) -->
+        <div class="drawer-properties-cards" style="margin-top: 14px;">
           <!-- Card 1: Situação & Atribuição -->
           <div class="drawer-prop-card">
             <div class="drawer-prop-card-header">
@@ -439,10 +499,7 @@
             </div>
             <div class="drawer-field-row">
               <label class="drawer-field-label">Banco de Dados do Cliente</label>
-              <div style="display: flex; gap: 6px;">
-                <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
-                <button type="button" class="btn-secondary" id="btnDrawerCopyDbAction" title="Copiar Banco" style="padding: 0 10px; height: 36px;">📋</button>
-              </div>
+              <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
             </div>
             <div class="drawer-field-row">
               <label class="drawer-field-label">Nº Ticket Movidesk</label>
@@ -479,18 +536,7 @@
             </div>
           </div>
 
-          <!-- Card 5: Etiquetas da Demanda -->
-          <div class="drawer-prop-card" style="grid-column: span 2;">
-            <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">🏷️ Etiquetas da Demanda</span>
-              <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar / desmarcar</span>
-            </div>
-            <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
-              <!-- Dynamically populated -->
-            </div>
-          </div>
-
-          <!-- Card 6: Metadados do Sistema -->
+          <!-- Card 5: Metadados do Sistema -->
           <div class="drawer-prop-card" style="grid-column: span 2; background: rgba(255,255,255,0.015);">
             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);">
               <div>👤 <strong>Solicitante:</strong> <span id="drawerMetaRequester">-</span></div>
@@ -500,42 +546,7 @@
           </div>
         </div>
 
-        <!-- Description Section with View/Edit toggle -->
-        <div class="form-group" style="margin-top: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span class="form-label" style="margin-bottom: 0;">Descrição Completa do Chamado</span>
-            <button type="button" class="btn-secondary" id="btnToggleEditDesc" style="padding: 4px 10px; font-size: 11.5px; gap: 5px;">
-              <span id="btnToggleEditDescIcon">✏️</span> <span id="btnToggleEditDescText">Editar Descrição</span>
-            </button>
-          </div>
-
-          <!-- Description View Mode -->
-          <div class="description-box" id="drawerDescription">Carregando descrição...</div>
-
-          <!-- Description Edit Mode (Hidden initially) -->
-          <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; margin-top: 6px;">
-            <div class="rich-editor-toolbar" id="drawerDescToolbar">
-              <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
-              <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
-              <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
-              <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
-              <span class="toolbar-separator"></span>
-              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3"><b>H3</b></button>
-              <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList">• Lista</button>
-              <button type="button" class="toolbar-btn" data-cmd="insertOrderedList">1. Lista</button>
-              <span class="toolbar-separator"></span>
-              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre">&lt;/&gt; Código</button>
-              <button type="button" class="toolbar-btn" data-cmd="removeFormat">🧹 Limpar</button>
-            </div>
-            <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px;"></div>
-            <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color);">
-              <button type="button" class="btn-secondary" id="btnCancelEditDesc" style="font-size: 12px;">Cancelar</button>
-              <button type="button" class="btn-primary" id="btnSaveDescOnly" style="font-size: 12px; gap: 6px;"><span>💾</span> Salvar Descrição</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bottom Save Action Bar -->
+        <!-- 5. BOTÃO DE SALVAR ALTERAÇÃO SÓ NO FIM DO CHAMADO -->
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color);">
           <div id="drawerSaveStatusText" style="font-size: 12.5px; color: #10b981; font-weight: 500;"></div>
           <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
@@ -962,6 +973,7 @@
       <div class="lightbox-info">
         <span class="lightbox-icon">🖼️</span>
         <span class="lightbox-filename" id="lightboxFileName">imagem.png</span>
+        <span id="lightboxCounter" class="lightbox-counter" style="display: none;">1 de 1</span>
       </div>
       <div class="lightbox-actions">
         <button type="button" class="btn-primary" id="btnLightboxDownload" style="height: 32px; font-size: 12px; gap: 6px; padding: 0 14px;">
@@ -971,44 +983,101 @@
       </div>
     </div>
     <div class="lightbox-body" id="lightboxBody">
-      <img id="lightboxImage" src="" alt="Visualização da imagem">
+      <button type="button" class="lightbox-nav-btn prev" id="btnLightboxPrev" title="Imagem Anterior (◀ ou Seta Esquerda)">
+        <span>◀</span>
+      </button>
+      <div class="lightbox-image-container">
+        <img id="lightboxImage" src="" alt="Visualização da imagem">
+      </div>
+      <button type="button" class="lightbox-nav-btn next" id="btnLightboxNext" title="Próxima Imagem (▶ ou Seta Direita)">
+        <span>▶</span>
+      </button>
     </div>
   </div>
 
   <!-- AutoDrive Integration Modal -->
   <div class="modal-overlay" id="modalAutoDrive" style="display: none;">
-    <div class="modal-card" style="width: 680px; max-width: 95vw;">
-      <div class="modal-header" style="background: linear-gradient(135deg, rgba(31, 111, 235, 0.15) 0%, transparent 100%);">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(31, 111, 235, 0.2); border: 1px solid rgba(56, 139, 253, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">🚀</div>
+    <div class="modal-card autodrive-card-wide">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(31, 111, 235, 0.18) 0%, transparent 100%);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(31, 111, 235, 0.25); border: 1px solid rgba(56, 139, 253, 0.4); display: flex; align-items: center; justify-content: center; font-size: 18px;">🚀</div>
           <div>
-            <div class="modal-title" style="font-size: 15px; font-weight: 700; color: #f0f6fc;">Integração AutoDrive Layouts</div>
-            <div style="font-size: 11px; color: var(--text-muted);">Envio e padronização automática para o Google Drive</div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="modal-title" style="font-size: 16px; font-weight: 700; color: #f0f6fc;">AutoDrive • Google Drive Layouts</span>
+              <div id="autoDriveAccountStatus" class="autodrive-status-pill">
+                <span id="autoDriveStatusDot">🟢</span>
+                <span id="autoDriveAccountEmail">Verificando Google Drive...</span>
+              </div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Envio direto, padronização de pastas e salvamento no espelho local</div>
           </div>
         </div>
         <button class="icon-btn-ghost" id="btnCloseAutoDriveModal" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
       </div>
 
-      <div class="modal-body" style="gap: 14px; max-height: 80vh; overflow-y: auto;">
+      <div class="modal-body" id="autoDriveModalBody" style="gap: 14px; max-height: 80vh; overflow-y: auto;">
         
+        <!-- Live Progress Box (Shown during upload) -->
+        <div id="autoDriveProgressBox" style="display: none; background: rgba(13, 17, 23, 0.95); border: 1px solid #388bfd; border-radius: 8px; padding: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: 700; font-size: 13px; color: #58a6ff; display: flex; align-items: center; gap: 8px;">
+              <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+              <span id="autoDriveProgressTitle">Processando sincronização com o Google Drive...</span>
+            </span>
+            <span id="autoDriveProgressStepText" style="font-size: 11px; color: var(--text-muted);">Aguarde...</span>
+          </div>
+          <div style="font-size: 12px; color: #c9d1d9; margin-top: 6px; font-family: Consolas, monospace;" id="autoDriveProgressMsg">
+            Iniciando autenticação...
+          </div>
+        </div>
+
+        <!-- Success Result Box (Shown after completion) -->
+        <div id="autoDriveSuccessBox" style="display: none; background: rgba(35, 134, 54, 0.15); border: 2px solid #2ea043; border-radius: 8px; padding: 18px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <div style="font-size: 28px; line-height: 1;">✅</div>
+            <div style="flex: 1;">
+              <div style="font-weight: 700; font-size: 15px; color: #3fb950;">Layout sincronizado com sucesso no Google Drive!</div>
+              <div style="font-size: 12px; color: #e6edf3; margin-top: 6px;" id="autoDriveSuccessSummary">
+                Pastas e arquivos padronizados com sucesso.
+              </div>
+              <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center;">
+                <button type="button" class="btn-primary" id="btnOpenDriveFolderLink" style="height: 36px; font-size: 12px; padding: 0 16px; gap: 8px; background: linear-gradient(135deg, #238636 0%, #196c2e 100%); border-color: #2ea043; font-weight: 700; box-shadow: 0 0 14px rgba(35, 134, 54, 0.45);">
+                  <span>🌐</span> <span>Abrir Pasta no Google Drive</span>
+                </button>
+                <button type="button" class="btn-secondary" id="btnCopyDriveFolderLink" style="height: 36px; font-size: 12px; padding: 0 14px; gap: 6px;" title="Copiar link da pasta no Google Drive">
+                  <span>📋</span> <span>Copiar Link</span>
+                </button>
+                <button type="button" class="btn-secondary" id="btnOpenLocalMirrorFolder" style="height: 36px; font-size: 12px; padding: 0 14px; gap: 6px;">
+                  <span>📁</span> <span>Abrir Espelho Local</span>
+                </button>
+                <button type="button" class="btn-secondary" id="btnResetAutoDriveForm" style="height: 36px; font-size: 12px; padding: 0 14px;">
+                  <span>✕</span> <span>Fechar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Entrada Rápida Padrão -->
-        <div class="form-group">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="form-group" style="margin-bottom: 2px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
             <label class="form-label" style="font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e;">Texto Padrão (Entrada Rápida AutoDrive)</label>
             <button type="button" id="btnCopyAutoDriveQuick" class="btn-external-link" style="height: 24px; font-size: 11px; padding: 0 10px; gap: 4px;" title="Copiar texto padrão">
               <span>📋</span> <span id="copyQuickBtnText">Copiar</span>
             </button>
           </div>
-          <div style="position: relative;">
-            <input type="text" class="form-input" id="autoDriveQuickText" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #38bdf8; background: #0d1117; border-color: #30363d;" placeholder="10328 - NOVO LAYOUT - SICOOB - COMPROVANTES... - cont_xxx">
-          </div>
+          <input type="text" class="form-input" id="autoDriveQuickText" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #38bdf8; background: #0d1117; border-color: #30363d;" placeholder="10328 - SICOOB - COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
         </div>
 
-        <!-- Campos Desmembrados Grid -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <!-- Campos Desmembrados Grid (Sem Tipo e Sem Banco de Dados) -->
+        <div style="display: grid; grid-template-columns: 140px 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label" style="font-size: 11px; color: #8b949e;">NÚMERO DO LAYOUT</label>
             <input type="text" class="form-input" id="autoDriveNumeroLayout" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 700;" placeholder="10328">
+          </div>
+          <div class="form-group">
+            <label class="form-label" id="labelAutoDriveEntidade" style="font-size: 11px; color: #8b949e;">BANCO OU SISTEMA</label>
+            <input type="text" class="form-input" id="autoDriveEntidade" style="font-size: 12px; font-weight: 600;" placeholder="SICOOB">
           </div>
           <div class="form-group">
             <label class="form-label" style="font-size: 11px; color: #8b949e;">CATEGORIA NO DRIVE</label>
@@ -1023,45 +1092,111 @@
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div class="form-group">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">BANCO / SISTEMA / ENTIDADE</label>
-            <input type="text" class="form-input" id="autoDriveEntidade" style="font-size: 12px;" placeholder="SICOOB">
+        <div style="display: grid; grid-template-columns: 1fr 220px; gap: 12px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">NOME DO DOCUMENTO</label>
+            <input type="text" class="form-input" id="autoDriveDocumento" style="font-size: 12px;" placeholder="COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
           </div>
-          <div class="form-group">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">TIPO DE SOLICITAÇÃO</label>
-            <input type="text" class="form-input" id="autoDriveTipo" style="font-size: 12px;" placeholder="NOVO LAYOUT">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between;">
+              <span>🔑 SENHA DO ARQUIVO / PDF</span>
+              <span id="btnToggleAutoDrivePassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
+            </label>
+            <input type="password" class="form-input" id="autoDriveSenha" style="font-family: Consolas, monospace; font-size: 12px;" placeholder="Senha (se houver)">
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" style="font-size: 11px; color: #8b949e;">NOME DO DOCUMENTO / LAYOUT</label>
-          <input type="text" class="form-input" id="autoDriveDocumento" style="font-size: 12px;" placeholder="COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" style="font-size: 11px; color: #8b949e;">BANCO DE DADOS (CLIENTE)</label>
-          <input type="text" class="form-input" id="autoDriveDatabase" style="font-size: 12px;" placeholder="cont_conceitoxanxere">
-        </div>
-
-        <!-- Anexos Detectados -->
-        <div style="background: rgba(22, 27, 34, 0.8); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
-          <div style="font-size: 11px; font-weight: 700; color: #8b949e; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-            <span>📎 Artefatos Vinculados da Demanda</span>
-            <span id="autoDriveAttachmentsCount" style="color: #38bdf8; font-size: 10px;">0 arquivos</span>
+        <!-- Painel Interativo de Verificação e Confirmação Pré-Envio -->
+        <div id="autoDriveApprovalBox" style="display: none; background: #0d1117; border: 2px solid #388bfd; border-radius: 8px; padding: 16px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+            <div style="font-weight: 700; font-size: 13px; color: #f0f6fc; display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">🔍</span>
+              <span>Resultado da Verificação Prévia no Google Drive</span>
+            </div>
+            <span style="font-size: 11px; font-weight: 700; background: rgba(56, 139, 253, 0.2); color: #58a6ff; border-radius: 4px; padding: 2px 8px;">Aguardando sua Aprovação</span>
           </div>
-          <div id="autoDriveAttachmentsList" style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
-            <div style="color: var(--text-muted); font-size: 11px;">Carregando anexos...</div>
+
+          <div id="autoDriveApprovalDetails" style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
+            <!-- Conteúdo montado dinamicamente -->
+          </div>
+
+          <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: #e6edf3;">
+              Deseja aprovar e executar a criação das pastas e o envio dos arquivos agora?
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary" id="btnCancelApprovalStep" style="height: 32px; font-size: 12px; padding: 0 12px;">
+                ✏️ Voltar e Ajustar
+              </button>
+              <button type="button" class="btn-primary" id="btnConfirmAndUploadNow" style="height: 32px; font-size: 12px; padding: 0 16px; background: linear-gradient(135deg, #238636 0%, #196c2e 100%); border-color: #2ea043; font-weight: 700; gap: 6px; box-shadow: 0 0 12px rgba(35, 134, 54, 0.4);">
+                <span>✅</span> <span>Aprovar & Criar no Google Drive</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO DE IMAGENS DO MAPEAMENTO (VISIBILIDADE E EXCLUSÃO) -->
+        <div class="autodrive-section-box" id="autoDriveImagesSection">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: #f0f6fc; text-transform: uppercase;">🖼️ Imagens da Demanda</span>
+              <span id="autoDriveImagesCountBadge" style="background: rgba(56, 139, 253, 0.2); color: #58a6ff; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">0 imagens</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <input type="file" id="inputAddAutoDriveImage" accept="image/*" multiple style="display: none;">
+              <button type="button" class="btn-secondary" id="btnAddAutoDriveImageFile" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;">
+                <span>➕</span> <span>Adicionar Imagem</span>
+              </button>
+            </div>
+          </div>
+
+          <div style="font-size: 11px; color: #8b949e; line-height: 1.4;">
+            As imagens anexadas estão visíveis abaixo. <strong>Apague qualquer imagem que não seja o mapeamento</strong> (como logos, assinaturas de e-mail ou telas secundárias) clicando em <strong>🗑️ Apagar</strong> para enviar apenas o print do mapeamento oficial.
+          </div>
+
+          <!-- Dropzone & Paste Prompt -->
+          <div class="autodrive-dropzone" id="autoDriveImageDropzone">
+            <span>💡 <strong>Dica:</strong> Cole prints diretamente com <strong>Ctrl+V</strong> ou arraste novas imagens para este quadro.</span>
+          </div>
+
+          <!-- Images Cards Grid -->
+          <div class="autodrive-images-grid" id="autoDriveImagesGrid">
+            <div style="color: var(--text-muted); font-size: 11px; grid-column: 1 / -1; padding: 10px 0;">
+              Carregando imagens da demanda...
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO MANUAL PDF -->
+        <div class="autodrive-section-box" id="autoDrivePdfSection">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: #f0f6fc; text-transform: uppercase;">📕 Manual do Layout (PDF)</span>
+              <span id="autoDrivePdfStatusBadge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">Nenhum</span>
+            </div>
+            <div>
+              <input type="file" id="inputAddAutoDrivePdf" accept=".pdf" style="display: none;">
+              <button type="button" class="btn-secondary" id="btnAddAutoDrivePdfFile" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;">
+                <span>➕</span> <span>Adicionar / Substituir PDF</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="autoDrivePdfCardContainer">
+            <div style="color: var(--text-muted); font-size: 11px;">Carregando anexo PDF...</div>
           </div>
         </div>
 
         <!-- Opções de Execução -->
         <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 4px;">
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
-            <input type="checkbox" id="chkAutoDriveMinimizeApp" checked>
-            <span>Minimizar Organizador ao abrir o AutoDrive</span>
+            <input type="checkbox" id="chkAutoDriveSaveMirror" checked>
+            <span>Salvar cópia no Espelho Local (<span style="font-family: Consolas, monospace; font-size: 11px;">..\autodrive\espelho_local</span>)</span>
           </label>
-          <span style="font-size: 11px; color: var(--text-muted); font-family: Consolas, monospace;" title="Diretório de execução do AutoDrive">C:\Users\fulvi\Desktop\PROJETOS\autodrive</span>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+            <input type="checkbox" id="chkAutoDriveMinimizeApp">
+            <span>Minimizar Organizador após envio</span>
+          </label>
         </div>
 
       </div>
@@ -1070,11 +1205,164 @@
         <button type="button" class="btn-secondary" id="btnCancelAutoDriveModal">
           Cancelar
         </button>
-        <div style="display: flex; gap: 8px;">
-          <button type="button" class="btn-primary" id="btnLaunchAutoDriveNow" style="background: linear-gradient(135deg, #1f6feb 0%, #154bb3 100%); border-color: #388bfd; font-weight: 600; padding: 0 18px; gap: 8px;">
-            <span id="autoDriveBtnIcon">🚀</span> <span id="autoDriveBtnText">Abrir no AutoDrive</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn-secondary" id="btnLaunchExternalPython" style="font-size: 11px; gap: 6px; color: #8b949e;" title="Abrir no aplicativo AutoDrive externo (Python)">
+            <span>🐍</span> <span>Abrir no AutoDrive Externo</span>
+          </button>
+          <button type="button" class="btn-primary" id="btnLaunchAutoDriveNow" style="background: linear-gradient(135deg, #1f6feb 0%, #1158c7 100%); border-color: #388bfd; font-weight: 700; padding: 0 20px; gap: 8px; box-shadow: 0 0 15px rgba(31, 111, 235, 0.4);">
+            <span id="autoDriveBtnIcon">🔍</span> <span id="autoDriveBtnText">Verificar no Google Drive</span>
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <!-- Modal de Configurações e Informações do Usuário (Engrenagem ⚙️) -->
+  <div class="modal-overlay" id="modalUserSettings" style="display: none; z-index: 9999;">
+    <div class="modal-card user-settings-card">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, transparent 100%);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); display: flex; align-items: center; justify-content: center; font-size: 20px;">
+            ⚙️
+          </div>
+          <div>
+            <div class="modal-title" style="font-size: 16px; font-weight: 700; color: #f0f6fc;">Configurações & Usuário</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Reconhecimento do perfil, verificação de senha salva e conexões</div>
+          </div>
+        </div>
+        <button class="icon-btn-ghost" id="btnCloseUserSettingsModal" style="font-size: 18px;" title="Fechar (Esc)">✕</button>
+      </div>
+
+      <div class="modal-body" style="gap: 16px; max-height: 80vh; overflow-y: auto;">
+        
+        <!-- Bloco 1: Reconhecimento do Usuário (Identidade) -->
+        <div class="user-recognition-card">
+          <div class="user-recognition-avatar" id="settingsUserAvatar">--</div>
+          <div class="user-recognition-info">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="user-recognition-name" id="settingsUserName">Reconhecendo usuário...</span>
+              <span class="badge" id="settingsUserRoleBadge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 11px;">Identificando...</span>
+            </div>
+            <div class="user-recognition-email" id="settingsUserEmail">identificando@email.com</div>
+            <div class="user-recognition-status" id="settingsUserAuthStatus">
+              <span class="status-dot-active">🟢</span> Conectado com sucesso ao Importer Ultra
+            </div>
+          </div>
+          <button type="button" class="btn-secondary" id="btnRefreshUserProfile" style="font-size: 11px; padding: 0 10px; height: 30px; gap: 6px;" title="Atualizar informações de perfil direto do servidor">
+            <span>🔄</span> Reconhecer
+          </button>
+        </div>
+
+        <!-- Bloco 2: Verificação e Gerenciamento de Senha -->
+        <div class="settings-section-card" id="settingsPasswordSection">
+          <div class="settings-section-header">
+            <span class="settings-section-title">🔑 Senha & Login Automático</span>
+            <span id="settingsPasswordStatusBadge" class="badge">Verificando...</span>
+          </div>
+
+          <!-- Alerta se não houver senha salva -->
+          <div id="settingsNoPasswordWarning" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; font-size: 12px; color: #fbbf24;">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <span style="font-size: 16px; line-height: 1;">⚠️</span>
+              <div>
+                <strong>Nenhuma senha salva detectada!</strong><br>
+                Insira sua senha do Importer Ultra abaixo para habilitar o login automático permanente e evitar desconexões indesejadas.
+              </div>
+            </div>
+          </div>
+
+          <!-- Mensagem se já tem senha salva -->
+          <div id="settingsHasPasswordSuccess" style="display: none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; color: #34d399;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 16px;">✅</span>
+              <div>
+                <strong>Senha salva com sucesso!</strong> O sistema conectará automaticamente ao iniciar.
+              </div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px; color: #8b949e;">E-MAIL DE ACESSO</label>
+              <input type="email" class="form-input" id="settingsInputEmail" placeholder="seu.email@conciliadorcontabil.com.br" style="font-size: 12px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between;">
+                <span>SENHA DO USUÁRIO</span>
+                <span id="btnToggleShowSettingsPassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
+              </label>
+              <div style="position: relative;">
+                <input type="password" class="form-input" id="settingsInputPassword" placeholder="Informe sua senha..." style="font-size: 12px; padding-right: 32px;">
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+              <input type="checkbox" id="settingsRememberCredentials" checked>
+              <span>Salvar senha no computador para auto-login</span>
+            </label>
+            <button type="button" class="btn-primary" id="btnSaveUserSettingsCreds" style="height: 32px; font-size: 12px; padding: 0 16px; gap: 6px;">
+              <span>💾</span> Salvar Senha
+            </button>
+          </div>
+        </div>
+
+        <!-- Bloco 3: Conexão Google Drive / AutoDrive -->
+        <div class="settings-section-card">
+          <div class="settings-section-header">
+            <span class="settings-section-title">☁️ Conexão Google Drive & AutoDrive</span>
+            <div id="settingsDriveStatusPill" class="autodrive-status-pill">
+              <span id="settingsDriveStatusDot">🟢</span>
+              <span id="settingsDriveEmail">Verificando...</span>
+            </div>
+          </div>
+
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+            Conta do Google Drive integrada para envio de layouts, detecção de pastas e espelho local.
+          </div>
+
+          <div class="form-group" style="margin-bottom: 4px;">
+            <label class="form-label" style="font-size: 11px; color: #8b949e;">PASTA DO ESPELHO LOCAL (BACKUP NO PC)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" class="form-input" id="settingsLocalMirrorPath" readonly style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="C:\Users\fulvi\Desktop\PROJETOS\autodrive\espelho_local">
+              <button type="button" class="btn-secondary" id="btnOpenSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;">
+                <span>📁</span> Abrir Pasta
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloco 4: Preferências de Atualização do Sistema -->
+        <div class="settings-section-card">
+          <div class="settings-section-header">
+            <span class="settings-section-title">🔄 Sincronização & Atualização Automática</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px;">
+            <div style="font-size: 12px; color: var(--text-secondary);">
+              Intervalo para sincronizar demandas no Importer Ultra:
+            </div>
+            <select class="form-select" id="settingsAutoRefreshSelect" style="width: 170px; font-size: 12px;">
+              <option value="1">A cada 1 minuto</option>
+              <option value="3" selected>A cada 3 minutos</option>
+              <option value="5">A cada 5 minutos</option>
+              <option value="10">A cada 10 minutos</option>
+              <option value="0">Desativado (manual)</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn-secondary" id="btnUserSettingsLogout" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); font-size: 12px; gap: 6px;">
+          <span>🚪</span> Desconectar desta Conta
+        </button>
+        <button type="button" class="btn-primary" id="btnCloseUserSettingsBottom" style="height: 36px; padding: 0 20px; font-size: 12px;">
+          Fechar
+        </button>
       </div>
     </div>
   </div>
@@ -1108,6 +1396,76 @@
       <button class="btn-primary" id="btnLoginSubmit" style="width: 100%; justify-content: center; height: 42px;">
         Conectar e Carregar Demandas
       </button>
+    </div>
+  </div>
+
+  <!-- Modal de Mensagens, Avisos e Erros do Sistema (Layout Nativo Dark do Sistema) -->
+  <div class="modal-overlay" id="appSystemDialogModal" style="display: none; z-index: 10000;">
+    <div class="app-dialog-card type-info" id="appDialogCard">
+      <div class="app-dialog-header">
+        <div class="app-dialog-icon-wrapper" id="appDialogIconWrapper">
+          <span id="appDialogIcon">ℹ️</span>
+        </div>
+        <div class="app-dialog-titles">
+          <h3 class="app-dialog-title" id="appDialogTitle">Mensagem do Sistema</h3>
+          <p class="app-dialog-subtitle" id="appDialogSubtitle">Organizador de Chamados</p>
+        </div>
+        <button type="button" class="icon-btn-ghost app-dialog-close-btn" id="btnAppDialogClose" title="Fechar">✕</button>
+      </div>
+      <div class="app-dialog-body">
+        <div class="app-dialog-message" id="appDialogMessage"></div>
+        <details class="app-dialog-tech-details" id="appDialogTechDetails" style="display: none;">
+          <summary>Detalhes técnicos do erro</summary>
+          <pre id="appDialogTechText"></pre>
+        </details>
+      </div>
+      <div class="app-dialog-footer" id="appDialogFooter">
+        <button type="button" class="btn-secondary" id="btnAppDialogCancel" style="display: none;">Cancelar</button>
+        <button type="button" class="btn-primary" id="btnAppDialogConfirm">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Instalação e Atualização do Sistema com Barra de Progresso na Tela -->
+  <div class="modal-overlay" id="appUpdateProgressModal" style="display: none; z-index: 10001; backdrop-filter: blur(8px);">
+    <div class="app-update-card" id="appUpdateCard">
+      <div class="app-update-header">
+        <div class="app-update-icon-pulse" id="appUpdateIconPulse">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </div>
+        <div style="flex: 1;">
+          <h3 class="app-update-title" id="appUpdateTitle">Atualização do Sistema</h3>
+          <p class="app-update-subtitle" id="appUpdateVersion">Baixando nova versão...</p>
+        </div>
+      </div>
+
+      <div class="app-update-body">
+        <div class="app-update-status-row">
+          <span id="appUpdateStatusText">Baixando arquivos da nova versão...</span>
+          <span id="appUpdatePercentText" class="app-update-percent">0%</span>
+        </div>
+
+        <!-- Barra de Instalação / Download Visível na Tela -->
+        <div class="app-update-progress-track">
+          <div class="app-update-progress-bar" id="appUpdateProgressBar" style="width: 0%;">
+            <div class="app-update-progress-shimmer"></div>
+          </div>
+        </div>
+
+        <div class="app-update-details-row">
+          <span id="appUpdateSpeedText">Calculando velocidade...</span>
+          <span id="appUpdateBytesText">Aguardando dados...</span>
+        </div>
+
+        <div class="app-update-info-note" id="appUpdateInfoNote">
+          <span class="app-update-info-icon">⚡</span>
+          <span id="appUpdateInfoNoteText">O aplicativo será reiniciado sozinho logo após o download para aplicar a nova versão.</span>
+        </div>
+      </div>
     </div>
   </div>
 

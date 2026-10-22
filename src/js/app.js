@@ -14,6 +14,7 @@ let commonCalCurrentMonth = new Date().getMonth();
 let commonCalSelectedDate = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  setupAppDialogHandlers();
   setupWindowControls();
   setupAutoUpdaterRenderer();
   await initApplication();
@@ -33,9 +34,266 @@ function setupWindowControls() {
   }
 }
 
+// ==========================================================================
+// Sistema de Tradução de Erros em Português e Diálogos no Layout do Sistema
+// ==========================================================================
+function translateErrorMessage(rawError) {
+  if (!rawError) return 'Ocorreu um erro desconhecido na operação.';
+
+  let rawMsg = '';
+  if (typeof rawError === 'string') {
+    rawMsg = rawError;
+  } else if (rawError && typeof rawError.message === 'string') {
+    rawMsg = rawError.message;
+  } else {
+    try {
+      rawMsg = JSON.stringify(rawError);
+    } catch {
+      rawMsg = String(rawError);
+    }
+  }
+
+  // Dividir caso haja múltiplos erros (ex: validação do NestJS separada por vírgula)
+  const parts = rawMsg.split(/,\s*/);
+  const translatedParts = parts.map(part => {
+    const trimmed = part.trim();
+    if (!trimmed) return '';
+
+    // Property X should not exist
+    const shouldNotExistMatch = trimmed.match(/property\s+([a-zA-Z0-9_]+)\s+should not exist/i);
+    if (shouldNotExistMatch) {
+      const field = shouldNotExistMatch[1];
+      const fieldMap = {
+        status: 'Status da Demanda (deve ser atualizado pela ação de status)',
+        layoutId: 'Vínculo de Layout (deve ser vinculado pelo botão de layout)',
+        ticketTypeId: 'Tipo de Chamado',
+        typeId: 'Tipo de Demanda',
+        createdAt: 'Data de Criação',
+        updatedAt: 'Data de Alteração',
+        id: 'Identificador do Registro'
+      };
+      return `O campo "${fieldMap[field] || field}" não é permitido nesta alteração direta.`;
+    }
+
+    if (/is not a valid email/i.test(trimmed)) {
+      return 'O e-mail digitado não possui um formato válido.';
+    }
+    if (/must be a UUID/i.test(trimmed)) {
+      return 'Identificador interno inválido (deve ser um código UUID válido).';
+    }
+    if (/should not be empty/i.test(trimmed)) {
+      return 'Este campo é obrigatório e não pode ficar em branco.';
+    }
+    if (/must be a string/i.test(trimmed)) {
+      return 'O valor preenchido deve ser um texto válido.';
+    }
+    if (/must be an integer/i.test(trimmed) || /must be a number/i.test(trimmed)) {
+      return 'O valor preenchido deve ser numérico.';
+    }
+    if (/Unauthorized/i.test(trimmed) || trimmed === '401' || /HTTP 401/i.test(trimmed)) {
+      return 'Sua sessão expirou ou suas credenciais são inválidas. Faça login novamente.';
+    }
+    if (/Forbidden/i.test(trimmed) || trimmed === '403' || /HTTP 403/i.test(trimmed)) {
+      return 'Acesso negado. Você não tem permissão para realizar esta operação no Importer Ultra.';
+    }
+    if (/Not Found/i.test(trimmed) || trimmed === '404' || /HTTP 404/i.test(trimmed)) {
+      return 'O registro ou recurso solicitado não foi encontrado no servidor.';
+    }
+    if (/Internal server error/i.test(trimmed) || trimmed === '500' || /HTTP 500/i.test(trimmed)) {
+      return 'Ocorreu um erro interno no servidor Importer Ultra. Tente novamente em instantes.';
+    }
+    if (/Failed to fetch|NetworkError|ENOTFOUND|ECONNREFUSED/i.test(trimmed)) {
+      return 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet.';
+    }
+    return trimmed;
+  });
+
+  const finalMsg = translatedParts.filter(Boolean).join('\n• ');
+  return finalMsg;
+}
+
+let appDialogResolver = null;
+
+function showAppAlert(message, title = 'Aviso do Sistema', type = 'info', techDetails = null) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('appSystemDialogModal');
+    const card = document.getElementById('appDialogCard');
+    const titleEl = document.getElementById('appDialogTitle');
+    const subtitleEl = document.getElementById('appDialogSubtitle');
+    const msgEl = document.getElementById('appDialogMessage');
+    const iconEl = document.getElementById('appDialogIcon');
+    const btnConfirm = document.getElementById('btnAppDialogConfirm');
+    const btnCancel = document.getElementById('btnAppDialogCancel');
+    const techBox = document.getElementById('appDialogTechDetails');
+    const techPre = document.getElementById('appDialogTechText');
+
+    if (!modal) {
+      if (window.nativeAlert) window.nativeAlert(message);
+      return resolve(true);
+    }
+
+    appDialogResolver = resolve;
+
+    if (card) {
+      card.className = `app-dialog-card type-${type}`;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) {
+      subtitleEl.textContent = type === 'error' ? 'Falha na Operação' : (type === 'warning' ? 'Atenção Necessária' : (type === 'success' ? 'Operação Concluída' : 'Organizador de Chamados'));
+    }
+
+    if (iconEl) {
+      if (type === 'error') iconEl.textContent = '❌';
+      else if (type === 'warning') iconEl.textContent = '⚠️';
+      else if (type === 'success') iconEl.textContent = '✅';
+      else iconEl.textContent = 'ℹ️';
+    }
+
+    if (msgEl) {
+      msgEl.textContent = typeof message === 'string' ? message : translateErrorMessage(message);
+    }
+
+    if (techBox && techPre) {
+      if (techDetails) {
+        techBox.style.display = 'block';
+        techPre.textContent = typeof techDetails === 'string' ? techDetails : JSON.stringify(techDetails, null, 2);
+      } else {
+        techBox.style.display = 'none';
+        techPre.textContent = '';
+      }
+    }
+
+    if (btnCancel) btnCancel.style.display = 'none';
+    if (btnConfirm) {
+      btnConfirm.style.display = 'inline-flex';
+      btnConfirm.textContent = 'OK';
+      btnConfirm.className = 'btn-primary';
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => btnConfirm?.focus(), 50);
+  });
+}
+
+function showAppConfirm(message, title = 'Confirmação', options = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('appSystemDialogModal');
+    const card = document.getElementById('appDialogCard');
+    const titleEl = document.getElementById('appDialogTitle');
+    const subtitleEl = document.getElementById('appDialogSubtitle');
+    const msgEl = document.getElementById('appDialogMessage');
+    const iconEl = document.getElementById('appDialogIcon');
+    const btnConfirm = document.getElementById('btnAppDialogConfirm');
+    const btnCancel = document.getElementById('btnAppDialogCancel');
+    const techBox = document.getElementById('appDialogTechDetails');
+
+    if (!modal) {
+      const ok = window.nativeConfirm ? window.nativeConfirm(message) : true;
+      return resolve(ok);
+    }
+
+    appDialogResolver = resolve;
+
+    const isDanger = !!options.isDanger;
+    if (card) {
+      card.className = `app-dialog-card type-${isDanger ? 'error' : 'warning'}`;
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) subtitleEl.textContent = 'Confirme para prosseguir';
+    if (iconEl) iconEl.textContent = isDanger ? '🗑️' : '❓';
+    if (msgEl) msgEl.textContent = message;
+    if (techBox) techBox.style.display = 'none';
+
+    if (btnCancel) {
+      btnCancel.style.display = 'inline-flex';
+      btnCancel.textContent = options.cancelText || 'Cancelar';
+    }
+
+    if (btnConfirm) {
+      btnConfirm.style.display = 'inline-flex';
+      btnConfirm.textContent = options.confirmText || 'Confirmar';
+      btnConfirm.className = isDanger ? 'btn-danger' : 'btn-primary';
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => btnConfirm?.focus(), 50);
+  });
+}
+
+function showAppError(title, err) {
+  const friendly = translateErrorMessage(err);
+  let techDetails = null;
+  if (err) {
+    if (err.stack) techDetails = err.stack;
+    else if (err.message && err.message !== friendly) techDetails = err.message;
+    else if (typeof err === 'object') techDetails = JSON.stringify(err, null, 2);
+  }
+  return showAppAlert(friendly, title || 'Ocorreu um Erro', 'error', techDetails);
+}
+
+function closeAppDialog(result = false) {
+  const modal = document.getElementById('appSystemDialogModal');
+  if (modal) modal.style.display = 'none';
+  if (appDialogResolver) {
+    const fn = appDialogResolver;
+    appDialogResolver = null;
+    fn(result);
+  }
+}
+
+function setupAppDialogHandlers() {
+  document.getElementById('btnAppDialogConfirm')?.addEventListener('click', () => closeAppDialog(true));
+  document.getElementById('btnAppDialogCancel')?.addEventListener('click', () => closeAppDialog(false));
+  document.getElementById('btnAppDialogClose')?.addEventListener('click', () => closeAppDialog(false));
+
+  const modal = document.getElementById('appSystemDialogModal');
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeAppDialog(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (modal && modal.style.display !== 'none') {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAppDialog(false);
+      } else if (e.key === 'Enter') {
+        const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+        if (activeTag !== 'textarea') {
+          e.preventDefault();
+          closeAppDialog(true);
+        }
+      }
+    }
+  });
+
+  // Guardar referência nativa e sobrescrever window.alert para garantir padrão visual dark do sistema
+  if (!window.nativeAlert) {
+    window.nativeAlert = window.alert;
+    window.alert = function(msg) {
+      showAppAlert(msg, 'Aviso do Sistema', 'info');
+    };
+  }
+}
+
+window.showAppAlert = showAppAlert;
+window.showAppConfirm = showAppConfirm;
+window.showAppError = showAppError;
+window.translateErrorMessage = translateErrorMessage;
+
 // Auto-updater UI integration (GitHub Releases)
 function setupAutoUpdaterRenderer() {
   if (!window.electronAPI) return;
+
+  const updateModal = document.getElementById('appUpdateProgressModal');
+  const updateBar = document.getElementById('appUpdateProgressBar');
+  const updatePercentText = document.getElementById('appUpdatePercentText');
+  const updateStatusText = document.getElementById('appUpdateStatusText');
+  const updateSpeedText = document.getElementById('appUpdateSpeedText');
+  const updateBytesText = document.getElementById('appUpdateBytesText');
+  const updateVersionEl = document.getElementById('appUpdateVersion');
+  const updateNoteText = document.getElementById('appUpdateInfoNoteText');
 
   if (window.electronAPI.getAppVersion) {
     window.electronAPI.getAppVersion().then(v => {
@@ -44,43 +302,106 @@ function setupAutoUpdaterRenderer() {
     });
   }
 
+  function showUpdateHud(show = true) {
+    if (updateModal) {
+      updateModal.style.display = show ? 'flex' : 'none';
+    }
+  }
+
   if (window.electronAPI.onUpdaterStatus) {
     window.electronAPI.onUpdaterStatus(data => {
+      console.log('Updater status received:', data);
       const banner = document.getElementById('updateBanner');
       const text = document.getElementById('updateBannerText');
       const btnRestart = document.getElementById('btnRestartUpdate');
-      if (!banner || !text) return;
 
       if (data.status === 'checking') {
-        banner.style.display = 'inline-flex';
-        text.textContent = 'Verificando atualizações...';
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          text.textContent = 'Verificando atualizações...';
+        }
         if (btnRestart) btnRestart.style.display = 'none';
       } else if (data.status === 'available') {
-        banner.style.display = 'inline-flex';
-        text.textContent = `Nova versão ${data.version ? 'v' + data.version : ''} encontrada! Baixando...`;
+        showUpdateHud(true);
+        if (updateVersionEl) {
+          updateVersionEl.textContent = data.version ? `Instalando versão v${data.version}` : 'Baixando nova versão...';
+        }
+        if (updateStatusText) {
+          updateStatusText.textContent = 'Iniciando download da atualização...';
+        }
+        if (updateBar) {
+          updateBar.style.width = '6%';
+          updateBar.classList.remove('is-complete');
+        }
+        if (updatePercentText) updatePercentText.textContent = '6%';
         if (btnRestart) btnRestart.style.display = 'none';
       } else if (data.status === 'downloading') {
-        banner.style.display = 'inline-flex';
-        text.textContent = `Baixando atualização: ${data.percent}%`;
+        showUpdateHud(true);
+        const p = data.percent || 0;
+        if (updateBar) {
+          updateBar.style.width = `${Math.max(6, p)}%`;
+          updateBar.classList.remove('is-complete');
+        }
+        if (updatePercentText) updatePercentText.textContent = `${p}%`;
+        if (updateStatusText) {
+          updateStatusText.textContent = `Baixando atualização do sistema (${p}%)...`;
+        }
+        if (updateSpeedText) {
+          updateSpeedText.textContent = data.speed ? `Velocidade: ${data.speed}` : 'Baixando...';
+        }
+        if (updateBytesText) {
+          updateBytesText.textContent = (data.transferred && data.total) ? `${data.transferred} / ${data.total}` : '';
+        }
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          text.textContent = `Baixando atualização: ${p}%`;
+        }
         if (btnRestart) btnRestart.style.display = 'none';
       } else if (data.status === 'downloaded') {
-        banner.style.display = 'inline-flex';
-        text.textContent = `Versão ${data.version ? 'v' + data.version : ''} pronta para instalar!`;
-        if (btnRestart) {
-          btnRestart.style.display = 'inline-block';
-          btnRestart.onclick = () => window.electronAPI.restartAndInstallUpdate();
+        showUpdateHud(true);
+        if (updateBar) {
+          updateBar.style.width = '100%';
+          updateBar.classList.add('is-complete');
         }
+        if (updatePercentText) updatePercentText.textContent = '100%';
+        if (updateStatusText) {
+          updateStatusText.textContent = '✨ Download concluído com sucesso!';
+        }
+        if (updateSpeedText) updateSpeedText.textContent = 'Finalizado';
+        if (updateBytesText) updateBytesText.textContent = 'Pronto para instalar';
+        if (updateNoteText) {
+          updateNoteText.textContent = '🚀 Reiniciando o aplicativo automaticamente para concluir a instalação...';
+        }
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          text.textContent = 'Atualização baixada! Reiniciando aplicativo...';
+        }
+        if (btnRestart) btnRestart.style.display = 'none';
+
+        // Reinicia sozinho logo após baixar, conforme solicitado
+        setTimeout(() => {
+          if (window.electronAPI.restartAndInstallUpdate) {
+            window.electronAPI.restartAndInstallUpdate();
+          }
+        }, 2200);
+
       } else if (data.status === 'not-available') {
-        banner.style.display = 'inline-flex';
-        text.textContent = 'Organizador de Chamados já está na versão mais recente.';
-        if (btnRestart) btnRestart.style.display = 'none';
-        setTimeout(() => { banner.style.display = 'none'; }, 5000);
+        showUpdateHud(false);
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          text.textContent = 'Organizador de Chamados já está na versão mais recente.';
+          if (btnRestart) btnRestart.style.display = 'none';
+          setTimeout(() => { banner.style.display = 'none'; }, 4000);
+        }
       } else if (data.status === 'error') {
-        console.warn('Updater status:', data.message);
-        banner.style.display = 'inline-flex';
-        text.textContent = data.message || 'Erro ao verificar atualizações';
-        if (btnRestart) btnRestart.style.display = 'none';
-        setTimeout(() => { banner.style.display = 'none'; }, 6000);
+        showUpdateHud(false);
+        console.warn('Updater status error:', data.message);
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          text.textContent = data.message || 'Erro ao verificar atualizações';
+          if (btnRestart) btnRestart.style.display = 'none';
+          setTimeout(() => { banner.style.display = 'none'; }, 5000);
+        }
       }
     });
   }
@@ -100,14 +421,14 @@ function setupAutoUpdaterRenderer() {
       if (res && !res.success) {
         if (banner && text) {
           text.textContent = res.error || 'Não foi possível verificar atualizações no momento.';
-          setTimeout(() => { banner.style.display = 'none'; }, 6000);
+          setTimeout(() => { banner.style.display = 'none'; }, 5000);
         }
       }
     } catch (e) {
       if (btn) btn.innerHTML = '<span>🔄</span> Atualizar';
       if (banner && text) {
         text.textContent = e.message || 'Erro ao checar atualizações';
-        setTimeout(() => { banner.style.display = 'none'; }, 6000);
+        setTimeout(() => { banner.style.display = 'none'; }, 5000);
       }
     }
   });
@@ -141,6 +462,16 @@ async function initApplication() {
 
     // Now sync fresh data from API
     syncDemands();
+
+    // Reconhecer perfil de usuário na API em background
+    recognizeCurrentUser(false);
+
+    // Verificar se o usuário tem senha salva. Se não tiver, pedir para inserir
+    if (!window.appStore.hasSavedPassword()) {
+      setTimeout(() => {
+        openUserSettingsModal(true);
+      }, 1200);
+    }
   }
 
   setupAutoRefresh();
@@ -206,13 +537,288 @@ function updateUserProfileUI() {
   const avatarEl = document.getElementById('userAvatar');
 
   if (nameEl) nameEl.textContent = user.name || user.email;
-  if (roleEl) roleEl.textContent = user.role === 'support' ? 'Suporte' : (user.role || 'Usuário');
+  if (roleEl) roleEl.textContent = user.role === 'support' ? 'Suporte' : (user.role === 'developer' ? 'Desenvolvedor' : (user.role || 'Usuário'));
 
-  if (avatarEl && user.name) {
-    const parts = user.name.split(' ');
-    const initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
-    avatarEl.textContent = initials;
+  if (avatarEl && (user.name || user.email)) {
+    if (user.name) {
+      const parts = user.name.split(' ');
+      const initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+      avatarEl.textContent = initials;
+    } else {
+      avatarEl.textContent = (user.email.slice(0, 2) || '--').toUpperCase();
+    }
   }
+}
+
+// ------------------- Configurações e Reconhecimento do Usuário (Engrenagem ⚙️) -------------------
+
+async function recognizeCurrentUser(forceApi = false) {
+  let user = window.appStore.currentUser;
+
+  // Se solicitado ou se faltar dados essenciais, buscar perfil atualizado direto da API
+  if (forceApi || !user || !user.name) {
+    if (window.conciliadorAPI && window.appStore.token) {
+      try {
+        const apiUser = await window.conciliadorAPI.fetchCurrentUser();
+        if (apiUser) {
+          user = apiUser;
+          await window.appStore.saveCurrentUser(apiUser);
+        }
+      } catch (err) {
+        console.warn('Erro ao reconhecer usuário na API:', err);
+      }
+    }
+  }
+
+  // Atualizar visual da barra lateral
+  updateUserProfileUI();
+
+  // Atualizar campos do modal de configurações
+  const avatarEl = document.getElementById('settingsUserAvatar');
+  const nameEl = document.getElementById('settingsUserName');
+  const emailEl = document.getElementById('settingsUserEmail');
+  const roleEl = document.getElementById('settingsUserRoleBadge');
+  const statusEl = document.getElementById('settingsUserAuthStatus');
+
+  const displayName = user?.name || user?.email || (window.appStore.savedCredentials?.email || 'Usuário Não Reconhecido');
+  const displayEmail = user?.email || (window.appStore.savedCredentials?.email || 'Sem e-mail cadastrado');
+  const roleName = user?.role === 'support' ? 'Suporte' : (user?.role === 'developer' ? 'Desenvolvedor' : (user?.role || 'Usuário'));
+
+  if (nameEl) nameEl.textContent = displayName;
+  if (emailEl) emailEl.textContent = displayEmail;
+  if (roleEl) roleEl.textContent = roleName;
+
+  if (avatarEl) {
+    if (user?.name) {
+      const parts = user.name.split(' ');
+      const initials = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+      avatarEl.textContent = initials;
+    } else {
+      avatarEl.textContent = (displayEmail.slice(0, 2) || '--').toUpperCase();
+    }
+  }
+
+  if (statusEl) {
+    if (window.appStore.token) {
+      statusEl.innerHTML = '<span class="status-dot-active" style="color: #10b981;">🟢</span> Sessão Ativa no Importer Ultra';
+      statusEl.style.color = '#34d399';
+    } else {
+      statusEl.innerHTML = '<span style="color: #ef4444;">🔴</span> Sessão Desconectada';
+      statusEl.style.color = '#f87171';
+    }
+  }
+
+  return user;
+}
+
+async function openUserSettingsModal(promptPasswordIfMissing = false) {
+  const modal = document.getElementById('modalUserSettings');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+
+  // 1. Reconhecer usuário na API / Store
+  const user = await recognizeCurrentUser(false);
+
+  // 2. Verificar se tem senha salva
+  const hasPassword = window.appStore.hasSavedPassword();
+  const warningBox = document.getElementById('settingsNoPasswordWarning');
+  const successBox = document.getElementById('settingsHasPasswordSuccess');
+  const statusBadge = document.getElementById('settingsPasswordStatusBadge');
+  const emailInput = document.getElementById('settingsInputEmail');
+  const pwdInput = document.getElementById('settingsInputPassword');
+
+  const currentEmail = window.appStore.savedCredentials?.email || user?.email || '';
+  if (emailInput) emailInput.value = currentEmail;
+
+  if (hasPassword) {
+    if (warningBox) warningBox.style.display = 'none';
+    if (successBox) successBox.style.display = 'block';
+    if (statusBadge) {
+      statusBadge.textContent = '✅ Senha Salva';
+      statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      statusBadge.style.color = '#34d399';
+      statusBadge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+    }
+    if (pwdInput) {
+      pwdInput.value = window.appStore.savedCredentials.password;
+      pwdInput.style.borderColor = '';
+      pwdInput.style.boxShadow = '';
+    }
+  } else {
+    // NÃO TEM SENHA SALVA -> Pedir para inserir
+    if (warningBox) warningBox.style.display = 'block';
+    if (successBox) successBox.style.display = 'none';
+    if (statusBadge) {
+      statusBadge.textContent = '⚠️ Senha Ausente';
+      statusBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+      statusBadge.style.color = '#fbbf24';
+      statusBadge.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+    }
+    if (pwdInput) {
+      pwdInput.value = '';
+      pwdInput.style.borderColor = '#f59e0b';
+      pwdInput.style.boxShadow = '0 0 10px rgba(245, 158, 11, 0.25)';
+      setTimeout(() => pwdInput.focus(), 150);
+    }
+
+    if (promptPasswordIfMissing) {
+      warningBox?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  // 3. Status do Google Drive
+  const driveStatusPill = document.getElementById('settingsDriveStatusPill');
+  const driveStatusDot = document.getElementById('settingsDriveStatusDot');
+  const driveEmail = document.getElementById('settingsDriveEmail');
+
+  if (window.electronAPI && window.electronAPI.getDriveStatus) {
+    try {
+      const driveStatus = await window.electronAPI.getDriveStatus();
+      if (driveStatus && driveStatus.connected) {
+        if (driveStatusDot) driveStatusDot.textContent = '🟢';
+        if (driveEmail) driveEmail.textContent = `${driveStatus.user?.displayName || 'Google Drive'} (${driveStatus.user?.emailAddress || 'Conectado'})`;
+        if (driveStatusPill) driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+      } else {
+        if (driveStatusDot) driveStatusDot.textContent = '🟡';
+        if (driveEmail) driveEmail.textContent = 'Google Drive: Não conectado';
+      }
+    } catch (e) {
+      if (driveStatusDot) driveStatusDot.textContent = '🟡';
+      if (driveEmail) driveEmail.textContent = 'Google Drive: Offline';
+    }
+  }
+
+  // 4. Intervalo de auto-refresh
+  const refreshSelect = document.getElementById('settingsAutoRefreshSelect');
+  if (refreshSelect) {
+    refreshSelect.value = String(window.appStore.autoRefreshMinutes ?? 3);
+  }
+}
+
+function closeUserSettingsModal() {
+  const modal = document.getElementById('modalUserSettings');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveUserSettingsCredentials() {
+  const email = document.getElementById('settingsInputEmail')?.value.trim();
+  const password = document.getElementById('settingsInputPassword')?.value.trim();
+  const remember = document.getElementById('settingsRememberCredentials')?.checked;
+
+  if (!password) {
+    showAppAlert('Por favor, digite a sua senha de acesso para que o sistema possa salvá-la.', 'Senha Obrigatória', 'warning');
+    document.getElementById('settingsInputPassword')?.focus();
+    return;
+  }
+
+  const finalEmail = email || window.appStore.currentUser?.email || (window.appStore.savedCredentials?.email || '');
+  if (!finalEmail) {
+    showAppAlert('Por favor, informe seu e-mail de acesso.', 'E-mail Obrigatório', 'warning');
+    document.getElementById('settingsInputEmail')?.focus();
+    return;
+  }
+
+  try {
+    const creds = remember ? { email: finalEmail, password } : null;
+    await window.appStore.saveCredentials(creds);
+
+    // Atualizar UI do modal
+    const warningBox = document.getElementById('settingsNoPasswordWarning');
+    const successBox = document.getElementById('settingsHasPasswordSuccess');
+    const statusBadge = document.getElementById('settingsPasswordStatusBadge');
+    const pwdInput = document.getElementById('settingsInputPassword');
+
+    if (warningBox) warningBox.style.display = 'none';
+    if (successBox) successBox.style.display = 'block';
+    if (statusBadge) {
+      statusBadge.textContent = '✅ Senha Salva';
+      statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      statusBadge.style.color = '#34d399';
+      statusBadge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+    }
+    if (pwdInput) {
+      pwdInput.style.borderColor = '';
+      pwdInput.style.boxShadow = '';
+    }
+
+    showAppAlert('Senha e informações de usuário salvas com sucesso! O sistema usará essas credenciais para reconexão automática.', 'Configurações Salvas', 'success');
+  } catch (err) {
+    showAppError('Erro ao Salvar Configurações', err);
+  }
+}
+
+function setupUserSettingsHandlers() {
+  // Botões de engrenagem para abrir o modal
+  document.getElementById('btnTitlebarSettings')?.addEventListener('click', () => openUserSettingsModal());
+  document.getElementById('btnUserSettings')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openUserSettingsModal();
+  });
+  document.getElementById('btnOpenUserCardSettings')?.addEventListener('click', () => openUserSettingsModal());
+
+  // Fechar modal
+  document.getElementById('btnCloseUserSettingsModal')?.addEventListener('click', closeUserSettingsModal);
+  document.getElementById('btnCloseUserSettingsBottom')?.addEventListener('click', closeUserSettingsModal);
+  document.getElementById('modalUserSettings')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modalUserSettings') closeUserSettingsModal();
+  });
+
+  // Botão reconhecer perfil
+  document.getElementById('btnRefreshUserProfile')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnRefreshUserProfile');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Reconhecendo...';
+    }
+    await recognizeCurrentUser(true);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🔄</span> Reconhecer';
+    }
+  });
+
+  // Botão salvar senha / credenciais
+  document.getElementById('btnSaveUserSettingsCreds')?.addEventListener('click', saveUserSettingsCredentials);
+
+  // Alternar visibilidade de senha
+  document.getElementById('btnToggleShowSettingsPassword')?.addEventListener('click', () => {
+    const pwdInput = document.getElementById('settingsInputPassword');
+    const toggleBtn = document.getElementById('btnToggleShowSettingsPassword');
+    if (pwdInput && toggleBtn) {
+      if (pwdInput.type === 'password') {
+        pwdInput.type = 'text';
+        toggleBtn.textContent = '🙈 Ocultar';
+      } else {
+        pwdInput.type = 'password';
+        toggleBtn.textContent = '👁️ Ver';
+      }
+    }
+  });
+
+  // Botão desconectar no modal de configurações
+  document.getElementById('btnUserSettingsLogout')?.addEventListener('click', () => {
+    closeUserSettingsModal();
+    document.getElementById('btnLogout')?.click();
+  });
+
+  // Abrir espelho local
+  document.getElementById('btnOpenSettingsMirrorFolder')?.addEventListener('click', () => {
+    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    if (window.electronAPI && window.electronAPI.openPath) {
+      window.electronAPI.openPath(mirrorPath);
+    }
+  });
+
+  // Intervalo de auto-refresh
+  document.getElementById('settingsAutoRefreshSelect')?.addEventListener('change', async (e) => {
+    const minutes = parseInt(e.target.value, 10);
+    window.appStore.autoRefreshMinutes = isNaN(minutes) ? 3 : minutes;
+    if (window.electronAPI) {
+      await window.electronAPI.saveStorage('autoRefreshMinutes', window.appStore.autoRefreshMinutes);
+    }
+    setupAutoRefresh();
+  });
 }
 
 // Fetch demands from API and update UI
@@ -410,7 +1016,8 @@ function renderFixedFiltersList() {
     if (btnDel) {
       btnDel.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (confirm(`Deseja realmente apagar o filtro "${f.name}"?`)) {
+        const ok = await showAppConfirm(`Deseja realmente apagar o filtro "${f.name}"?`, 'Excluir Filtro', { isDanger: true, confirmText: 'Apagar Filtro' });
+        if (ok) {
           await window.appStore.deleteFixedFilter(f.id);
           renderFixedFiltersList();
           renderDemands();
@@ -1091,7 +1698,7 @@ async function downloadAttachmentFile(ticketId, attId, fileName) {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (err) {
-    alert('Erro ao baixar anexo: ' + err.message);
+    showAppError('Erro ao Baixar Anexo', err);
   }
 }
 
@@ -1121,40 +1728,102 @@ async function openAttachmentFile(ticketId, attId, fileName) {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (err) {
-    alert('Erro ao abrir anexo: ' + err.message);
+    showAppError('Erro ao Abrir Anexo', err);
   }
 }
 
-function openImageLightbox(blobUrl, fileName, ticketId, attId) {
+let lightboxGallery = [];
+let currentLightboxIndex = 0;
+
+function openImageLightbox(blobUrl, fileName, ticketId, attId, gallery = null, initialIndex = 0) {
   const overlay = document.getElementById('imageLightboxOverlay');
   const imgEl = document.getElementById('lightboxImage');
-  const nameEl = document.getElementById('lightboxFileName');
-  const btnDownload = document.getElementById('btnLightboxDownload');
-
   if (!overlay || !imgEl) return;
 
-  currentLightboxAttachment = { blobUrl, fileName, ticketId, attId };
-  imgEl.src = blobUrl;
-  if (nameEl) nameEl.textContent = fileName || 'Visualização da imagem';
+  if (Array.isArray(gallery) && gallery.length > 0) {
+    lightboxGallery = gallery.map(item => ({
+      blobUrl: item.blobUrl || item.url || '',
+      fileName: item.fileName || item.name || 'imagem.png',
+      ticketId: item.ticketId || ticketId,
+      attId: item.attId || attId
+    }));
+    currentLightboxIndex = (initialIndex >= 0 && initialIndex < lightboxGallery.length) ? initialIndex : 0;
+  } else {
+    lightboxGallery = [{
+      blobUrl,
+      fileName: fileName || 'imagem.png',
+      ticketId,
+      attId
+    }];
+    currentLightboxIndex = 0;
+  }
+
+  updateLightboxView();
+  overlay.style.display = 'flex';
+}
+
+function updateLightboxView() {
+  if (!lightboxGallery || lightboxGallery.length === 0) return;
+  const current = lightboxGallery[currentLightboxIndex] || lightboxGallery[0];
+  const imgEl = document.getElementById('lightboxImage');
+  const nameEl = document.getElementById('lightboxFileName');
+  const counterEl = document.getElementById('lightboxCounter');
+  const btnPrev = document.getElementById('btnLightboxPrev');
+  const btnNext = document.getElementById('btnLightboxNext');
+  const btnDownload = document.getElementById('btnLightboxDownload');
+
+  currentLightboxAttachment = current;
+  if (imgEl) imgEl.src = current.blobUrl;
+  if (nameEl) nameEl.textContent = current.fileName;
+
+  const total = lightboxGallery.length;
+  if (counterEl) {
+    if (total > 1) {
+      counterEl.textContent = `${currentLightboxIndex + 1} de ${total}`;
+      counterEl.style.display = 'inline-block';
+    } else {
+      counterEl.style.display = 'none';
+    }
+  }
+
+  if (btnPrev && btnNext) {
+    if (total > 1) {
+      btnPrev.classList.remove('hidden');
+      btnNext.classList.remove('hidden');
+      btnPrev.style.display = 'flex';
+      btnNext.style.display = 'flex';
+    } else {
+      btnPrev.classList.add('hidden');
+      btnNext.classList.add('hidden');
+      btnPrev.style.display = 'none';
+      btnNext.style.display = 'none';
+    }
+  }
 
   if (btnDownload) {
     btnDownload.onclick = () => {
       const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = fileName || 'imagem.png';
+      a.href = current.blobUrl;
+      a.download = current.fileName || 'imagem.png';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     };
   }
+}
 
-  overlay.style.display = 'flex';
+function navigateLightbox(dir) {
+  if (!lightboxGallery || lightboxGallery.length <= 1) return;
+  currentLightboxIndex = (currentLightboxIndex + dir + lightboxGallery.length) % lightboxGallery.length;
+  updateLightboxView();
 }
 
 function closeImageLightbox() {
   const overlay = document.getElementById('imageLightboxOverlay');
   if (overlay) overlay.style.display = 'none';
   currentLightboxAttachment = null;
+  lightboxGallery = [];
+  currentLightboxIndex = 0;
 }
 
 async function renderAuthenticatedDescription(descHtml, ticketId, containerEl) {
@@ -1918,12 +2587,28 @@ function renderDrawerAttachments(attachments) {
   list.querySelectorAll('.attachment-thumb-wrapper, .btn-view-attachment').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const attId = el.dataset.attId || el.dataset.id;
-      const fileName = el.dataset.filename || 'imagem.png';
-      if (ticketId && attId) {
-        const blobUrl = await getOrFetchAttachmentBlobUrl(ticketId, attId);
-        if (blobUrl) {
-          openImageLightbox(blobUrl, fileName, ticketId, attId);
+      const clickedAttId = el.dataset.attId || el.dataset.id;
+      const clickedFileName = el.dataset.filename || 'imagem.png';
+      if (ticketId && clickedAttId) {
+        const clickedBlobUrl = await getOrFetchAttachmentBlobUrl(ticketId, clickedAttId);
+        if (clickedBlobUrl) {
+          const imgExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'];
+          const imageAtts = (attachments || []).filter(a => {
+            const ext = ((a.fileName || a.filename || a.name || '').split('.').pop() || '').toLowerCase();
+            return imgExtensions.includes(ext);
+          });
+          const gallery = await Promise.all(imageAtts.map(async (a) => {
+            const bUrl = await getOrFetchAttachmentBlobUrl(ticketId, a.id);
+            return {
+              blobUrl: bUrl || '',
+              fileName: a.fileName || a.filename || a.name || 'imagem.png',
+              ticketId,
+              attId: a.id
+            };
+          }));
+          const filteredGallery = gallery.filter(g => !!g.blobUrl);
+          const initialIdx = filteredGallery.findIndex(g => String(g.attId) === String(clickedAttId));
+          openImageLightbox(clickedBlobUrl, clickedFileName, ticketId, clickedAttId, filteredGallery, initialIdx !== -1 ? initialIdx : 0);
         }
       }
     });
@@ -1960,7 +2645,7 @@ async function submitComment() {
 
   const content = textarea?.value?.trim();
   if (!content) {
-    alert('Por favor, digite uma mensagem para enviar.');
+    showAppAlert('Por favor, digite uma mensagem para enviar.', 'Mensagem Vazia', 'warning');
     textarea?.focus();
     return;
   }
@@ -1997,18 +2682,18 @@ async function saveDrawerTicketChanges() {
 
   const title = document.getElementById('drawerEditTitle')?.value.trim();
   if (!title) {
-    alert('O título da demanda não pode ficar vazio.');
+    showAppAlert('O título da demanda não pode ficar vazio.', 'Aviso', 'warning');
     document.getElementById('drawerEditTitle')?.focus();
     return;
   }
 
-  const status = document.getElementById('drawerEditStatus')?.value;
+  const newStatus = document.getElementById('drawerEditStatus')?.value;
   const assignedToId = document.getElementById('drawerEditAssignedTo')?.value || null;
   const priority = normalizePriorityToApi(document.getElementById('drawerEditPriority')?.value);
   const clientDatabase = document.getElementById('drawerEditDatabase')?.value.trim() || null;
   const movideskRaw = document.getElementById('drawerEditMovidesk')?.value.trim();
   const movideskTicketId = movideskRaw ? parseInt(movideskRaw, 10) : null;
-  const layoutId = document.getElementById('drawerEditLayoutId')?.value || null;
+  const newLayoutId = document.getElementById('drawerEditLayoutId')?.value || null;
   const ticketTypeId = document.getElementById('drawerEditType')?.value || null;
   const productId = document.getElementById('drawerEditProduct')?.value || null;
 
@@ -2018,23 +2703,19 @@ async function saveDrawerTicketChanges() {
   const deliveryDueDate = parseBrDateToIso(deliveryDueInput);
   const clientDueDate = parseBrDateToIso(clientDueInput);
 
+  // Payload exclusivo para campos descritivos no PATCH /support/tickets/:id
+  // Proibido no PATCH: status, layoutId, assignedToId, deliveryDueDate, clientDueDate
   const payload = {
     title,
-    status,
     priority,
-    assignedToId,
     clientDatabase,
     movideskTicketId,
-    layoutId,
     typeId: ticketTypeId,
-    ticketTypeId,
     productId,
-    deliveryDueDate,
-    clientDueDate,
     labelIds: Array.from(selectedDrawerLabels)
   };
 
-  // If user opened and edited description
+  // Se o usuário abriu e editou a descrição
   const editWrapper = document.getElementById('drawerDescEditWrapper');
   if (editWrapper && editWrapper.style.display !== 'none') {
     const editor = document.getElementById('drawerEditDescEditor');
@@ -2058,16 +2739,73 @@ async function saveDrawerTicketChanges() {
   }
 
   try {
+    // 1. Se o status foi alterado, chamar o endpoint de status dedicado
+    if (newStatus && newStatus !== selectedTicket.status) {
+      try {
+        await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, newStatus);
+      } catch (statusErr) {
+        console.warn('Erro ao alterar status:', statusErr);
+        throw new Error('Falha ao alterar status da demanda: ' + statusErr.message);
+      }
+    }
+
+    // 2. Se o layout foi alterado, vincular layout pelo endpoint dedicado
+    const currentLayoutId = selectedTicket.layoutId || selectedTicket.layout?.id || null;
+    if (newLayoutId && newLayoutId !== currentLayoutId) {
+      try {
+        await window.conciliadorAPI.linkTicketLayout(selectedTicket.id, newLayoutId);
+      } catch (layoutErr) {
+        console.warn('Erro ao vincular layout:', layoutErr);
+        throw new Error('Falha ao vincular layout à demanda: ' + layoutErr.message);
+      }
+    }
+
+    // 3. Se o responsável foi alterado, usar a rota de atribuição dedicada
+    const currentAssignedToId = selectedTicket.assignedTo?.id || selectedTicket.assignedToId || null;
+    const newAssignedToId = assignedToId || null;
+    if (newAssignedToId !== currentAssignedToId) {
+      try {
+        await window.conciliadorAPI.assignTicket(selectedTicket.id, newAssignedToId, 'Alteração de responsável pelo Organizador de Chamados');
+      } catch (assignErr) {
+        console.warn('Erro ao atribuir responsável:', assignErr);
+        throw new Error('Falha ao definir responsável da demanda: ' + assignErr.message);
+      }
+    }
+
+    // 4. Se os prazos foram alterados, usar a rota de datas dedicada
+    const currentDeliveryIso = selectedTicket.deliveryDueDate ? new Date(selectedTicket.deliveryDueDate).toISOString().slice(0, 10) : null;
+    const currentClientIso = selectedTicket.clientDueDate ? new Date(selectedTicket.clientDueDate).toISOString().slice(0, 10) : null;
+    const newDeliveryIso = deliveryDueDate ? new Date(deliveryDueDate).toISOString().slice(0, 10) : null;
+    const newClientIso = clientDueDate ? new Date(clientDueDate).toISOString().slice(0, 10) : null;
+
+    if (newDeliveryIso !== currentDeliveryIso || newClientIso !== currentClientIso) {
+      try {
+        await window.conciliadorAPI.setTicketDates(selectedTicket.id, deliveryDueDate, clientDueDate, 'Atualização de prazos pelo Organizador de Chamados');
+      } catch (dateErr) {
+        console.warn('Erro ao atualizar prazos:', dateErr);
+        throw new Error('Falha ao atualizar prazos da demanda: ' + dateErr.message);
+      }
+    }
+
+    // 5. Atualizar dados gerais e descritivos no PATCH do ticket
     const updated = await window.conciliadorAPI.updateTicket(selectedTicket.id, payload);
 
-    // Update in appStore demands list
+    // Atualizar no cache local de demandas
     const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
     if (idx !== -1) {
       const existing = window.appStore.demands[idx];
-      const merged = { ...existing, ...updated, ...payload };
+      const merged = {
+        ...existing,
+        ...updated,
+        ...payload,
+        status: newStatus || existing.status,
+        layoutId: newLayoutId || existing.layoutId,
+        deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : existing.deliveryDueDate,
+        clientDueDate: clientDueDate !== undefined ? clientDueDate : existing.clientDueDate
+      };
       if (assignedToId) {
         const devObj = window.appStore.getKnownDevelopers().find(d => d.id === assignedToId);
-        if (devObj) merged.assignedTo = devObj;
+        merged.assignedTo = devObj || { id: assignedToId };
       } else {
         merged.assignedTo = null;
       }
@@ -2080,36 +2818,54 @@ async function saveDrawerTicketChanges() {
         if (prodObj) merged.product = prodObj;
       }
       window.appStore.demands[idx] = merged;
-      await window.appStore.saveDemandsCache();
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      } else if (window.electronAPI) {
+        await window.electronAPI.saveStorage('cachedDemands', window.appStore.demands);
+      }
     }
 
-    selectedTicket = { ...selectedTicket, ...updated, ...payload };
+    selectedTicket = {
+      ...selectedTicket,
+      ...updated,
+      ...payload,
+      status: newStatus || selectedTicket.status,
+      layoutId: newLayoutId || selectedTicket.layoutId,
+      deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : selectedTicket.deliveryDueDate,
+      clientDueDate: clientDueDate !== undefined ? clientDueDate : selectedTicket.clientDueDate
+    };
+    if (assignedToId) {
+      const devObj = window.appStore.getKnownDevelopers().find(d => d.id === assignedToId);
+      selectedTicket.assignedTo = devObj || { id: assignedToId };
+    } else {
+      selectedTicket.assignedTo = null;
+    }
 
-    // Update drawer header and badges
+    // Atualizar cabeçalho e badges do painel lateral
     document.getElementById('drawerDemandTitle').textContent = title;
     const badgesBox = document.getElementById('drawerBadges');
     if (badgesBox) {
       badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml(selectedTicket.status)} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)}`;
     }
 
-    // If description was saved, update view box and close editor
+    // Se a descrição foi salva, atualizar visualização
     if (payload.description) {
       const descBox = document.getElementById('drawerDescription');
       if (descBox) descBox.innerHTML = payload.description;
       toggleDrawerDescEdit(false);
     }
 
-    // Success feedback
+    // Feedback de sucesso
     if (statusText) {
       statusText.style.color = '#10b981';
       statusText.textContent = '✅ Alterações salvas com sucesso!';
       setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
     }
 
-    // Refresh demands board/table so changes reflect instantly
+    // Atualizar tabela/kanban para refletir alterações
     renderDemands();
 
-    // Fetch refreshed ticket details from backend to pull new events
+    // Recarregar detalhes frescos do backend
     try {
       const refreshed = await window.conciliadorAPI.fetchDemandDetails(selectedTicket.id);
       selectedTicket = { ...selectedTicket, ...refreshed };
@@ -2124,9 +2880,9 @@ async function saveDrawerTicketChanges() {
     console.error('Failed to update ticket:', err);
     if (statusText) {
       statusText.style.color = '#ef4444';
-      statusText.textContent = '❌ Erro ao salvar: ' + err.message;
+      statusText.textContent = '❌ Erro ao salvar: ' + translateErrorMessage(err);
     }
-    alert('Erro ao salvar alterações da demanda: ' + err.message);
+    showAppError('Erro ao Salvar Demanda', err);
   } finally {
     if (btnTop) {
       btnTop.disabled = false;
@@ -2141,13 +2897,15 @@ async function saveDrawerTicketChanges() {
 
 async function archiveCurrentTicket() {
   if (!selectedTicket) return;
-  if (confirm(`Deseja realmente arquivar a demanda #${selectedTicket.number}?`)) {
+  const ok = await showAppConfirm(`Deseja realmente arquivar a demanda #${selectedTicket.number}?`, 'Arquivar Demanda', { isDanger: true, confirmText: 'Arquivar Demanda' });
+  if (ok) {
     try {
       await window.conciliadorAPI.archiveTicket(selectedTicket.id);
       closeDemandDrawer();
       await syncDemands();
+      showAppAlert(`A demanda #${selectedTicket.number} foi arquivada com sucesso.`, 'Demanda Arquivada', 'success');
     } catch (err) {
-      alert('Erro ao arquivar demanda: ' + err.message);
+      showAppError('Erro ao Arquivar Demanda', err);
     }
   }
 }
@@ -3861,7 +4619,8 @@ function openEditFilterModal(filter) {
   if (btnDelModal) {
     btnDelModal.style.display = filter.id !== 'all' ? 'inline-flex' : 'none';
     btnDelModal.onclick = async () => {
-      if (confirm(`Deseja realmente apagar o filtro "${filter.name}"?`)) {
+      const ok = await showAppConfirm(`Deseja realmente apagar o filtro "${filter.name}"?`, 'Excluir Filtro', { isDanger: true, confirmText: 'Apagar Filtro' });
+      if (ok) {
         await window.appStore.deleteFixedFilter(filter.id);
         closeFilterModal();
         renderFixedFiltersList();
@@ -3884,7 +4643,7 @@ async function saveFilterModal() {
   const color = document.getElementById('modalFilterColor').value || '#6366f1';
 
   if (!name) {
-    alert('Por favor, informe o nome do filtro fixo.');
+    showAppAlert('Por favor, informe o nome do filtro fixo.', 'Nome Obrigatório', 'warning');
     return;
   }
 
@@ -4167,7 +4926,7 @@ function setupEventListeners() {
     } else if (movId) {
       window.open(`https://conciliador-contabil2.movidesk.com/Ticket/Edit/${movId}`, '_blank');
     } else {
-      alert('Esta demanda não possui número do Movidesk associado.');
+      showAppAlert('Esta demanda não possui número do chamado Movidesk associado.', 'Movidesk', 'info');
     }
   };
 
@@ -4268,10 +5027,12 @@ function setupEventListeners() {
 
   // Restore Default Filters button
   document.getElementById('btnRestoreDefaultFilters')?.addEventListener('click', async () => {
-    if (confirm('Deseja restaurar todos os filtros fixos padrão que foram apagados?')) {
+    const ok = await showAppConfirm('Deseja restaurar todos os filtros fixos padrão que foram apagados?', 'Restaurar Filtros', { confirmText: 'Restaurar' });
+    if (ok) {
       await window.appStore.restoreDefaultFilters();
       renderFixedFiltersList();
       renderDemands();
+      showAppAlert('Os filtros fixos padrão foram restaurados com sucesso.', 'Filtros Restaurados', 'success');
     }
   });
 
@@ -4287,7 +5048,8 @@ function setupEventListeners() {
 
   // Logout
   document.getElementById('btnLogout')?.addEventListener('click', async () => {
-    if (confirm('Deseja realmente desconectar da sua conta?')) {
+    const ok = await showAppConfirm('Deseja realmente desconectar da sua conta do Importer Ultra?', 'Desconectar da Conta', { isDanger: true, confirmText: 'Desconectar' });
+    if (ok) {
       await window.appStore.logout();
 
       // Reset user profile in sidebar to neutral state
@@ -4312,7 +5074,7 @@ function setupEventListeners() {
     const password = document.getElementById('loginPassword').value.trim();
     const remember = document.getElementById('loginRemember').checked;
     if (!email || !password) {
-      alert('Preencha e-mail e senha.');
+      showAppAlert('Por favor, preencha seu e-mail e senha para conectar.', 'Campos Obrigatórios', 'warning');
       return;
     }
     doLogin(email, password, remember);
@@ -4327,8 +5089,16 @@ function setupEventListeners() {
     });
   });
 
-  // Image Lightbox Close
+  // Image Lightbox Close and Navigation
   document.getElementById('btnCloseLightbox')?.addEventListener('click', closeImageLightbox);
+  document.getElementById('btnLightboxPrev')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigateLightbox(-1);
+  });
+  document.getElementById('btnLightboxNext')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigateLightbox(1);
+  });
   document.getElementById('imageLightboxOverlay')?.addEventListener('click', (e) => {
     if (e.target.id === 'imageLightboxOverlay' || e.target.id === 'lightboxBody') {
       closeImageLightbox();
@@ -4357,24 +5127,49 @@ function setupEventListeners() {
   // Interactive quick text updating when form fields change
   const syncAutoDriveFormToQuick = () => {
     const num = (document.getElementById('autoDriveNumeroLayout')?.value || '').trim();
-    const tipo = (document.getElementById('autoDriveTipo')?.value || '').trim();
     const ent = (document.getElementById('autoDriveEntidade')?.value || '').trim();
     const doc = (document.getElementById('autoDriveDocumento')?.value || '').trim();
-    const db = (document.getElementById('autoDriveDatabase')?.value || '').trim();
 
     const parts = [];
     if (num) parts.push(num);
-    if (tipo) parts.push(tipo);
     if (ent) parts.push(ent);
     if (doc) parts.push(doc);
-    if (db) parts.push(db);
 
     const inputQuick = document.getElementById('autoDriveQuickText');
     if (inputQuick) inputQuick.value = parts.join(' - ');
   };
 
-  ['autoDriveNumeroLayout', 'autoDriveTipo', 'autoDriveEntidade', 'autoDriveDocumento', 'autoDriveDatabase'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', syncAutoDriveFormToQuick);
+  ['autoDriveNumeroLayout', 'autoDriveEntidade', 'autoDriveDocumento', 'autoDriveCategoria'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      syncAutoDriveFormToQuick();
+      const approvalBox = document.getElementById('autoDriveApprovalBox');
+      if (approvalBox) approvalBox.style.display = 'none';
+    });
+  });
+
+  document.getElementById('btnToggleAutoDrivePassword')?.addEventListener('click', () => {
+    const input = document.getElementById('autoDriveSenha');
+    const toggleBtn = document.getElementById('btnToggleAutoDrivePassword');
+    if (!input) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      if (toggleBtn) toggleBtn.textContent = '🙈 Ocultar';
+    } else {
+      input.type = 'password';
+      if (toggleBtn) toggleBtn.textContent = '👁️ Ver';
+    }
+  });
+
+  document.getElementById('autoDriveSenha')?.addEventListener('input', (e) => {
+    if (currentAutoDriveTicket?.id) {
+      if (!window.appStore.localNotes) window.appStore.localNotes = {};
+      window.appStore.localNotes[`autodrive_pwd_${currentAutoDriveTicket.id}`] = e.target.value;
+      if (window.electronAPI) {
+        window.electronAPI.saveStorage('localNotes', window.appStore.localNotes);
+      }
+    }
+    const approvalBox = document.getElementById('autoDriveApprovalBox');
+    if (approvalBox) approvalBox.style.display = 'none';
   });
 
   document.getElementById('autoDriveEntidade')?.addEventListener('input', (e) => {
@@ -4384,7 +5179,144 @@ function setupEventListeners() {
     if (selCat && guessed) selCat.value = guessed;
   });
 
-  document.getElementById('btnLaunchAutoDriveNow')?.addEventListener('click', executeAutoDriveLaunch);
+  // Category change listener: update entity label and placeholder for 1DESCONHECIDOS
+  document.getElementById('autoDriveCategoria')?.addEventListener('change', (e) => {
+    const cat = e.target.value;
+    const entLabel = document.getElementById('labelAutoDriveEntidade');
+    const entInput = document.getElementById('autoDriveEntidade');
+    if (cat === 'DESCONHECIDOS') {
+      if (entLabel) entLabel.innerHTML = 'BANCO OU SISTEMA <span style="font-size: 10px; color: #8b949e; font-weight: normal;">(Opcional em 1DESCONHECIDOS)</span>';
+      if (entInput) entInput.placeholder = 'Opcional (criação direta na raiz)';
+    } else {
+      if (entLabel) entLabel.textContent = 'BANCO OU SISTEMA';
+      if (entInput) entInput.placeholder = 'SICOOB';
+    }
+  });
+
+  // Verification and Approval actions
+  document.getElementById('btnLaunchAutoDriveNow')?.addEventListener('click', handlePreFlightCheck);
+  document.getElementById('btnConfirmAndUploadNow')?.addEventListener('click', executeAutoDriveLaunch);
+  document.getElementById('btnCancelApprovalStep')?.addEventListener('click', () => {
+    const approvalBox = document.getElementById('autoDriveApprovalBox');
+    if (approvalBox) approvalBox.style.display = 'none';
+  });
+  document.getElementById('btnLaunchExternalPython')?.addEventListener('click', executeExternalPythonLaunch);
+
+  // Success Box Direct Action Buttons
+  document.getElementById('btnOpenDriveFolderLink')?.addEventListener('click', () => {
+    const link = autoDriveLastResult?.layoutLink || (autoDriveLastResult?.layoutFolderId ? `https://drive.google.com/drive/folders/${autoDriveLastResult.layoutFolderId}` : null);
+    if (link) {
+      if (window.electronAPI && window.electronAPI.openExternal) {
+        window.electronAPI.openExternal(link);
+      } else {
+        window.open(link, '_blank');
+      }
+    } else {
+      showAppAlert('O link da pasta no Google Drive ainda não está disponível.', 'Google Drive', 'info');
+    }
+  });
+
+  document.getElementById('btnCopyDriveFolderLink')?.addEventListener('click', () => {
+    const link = autoDriveLastResult?.layoutLink || (autoDriveLastResult?.layoutFolderId ? `https://drive.google.com/drive/folders/${autoDriveLastResult.layoutFolderId}` : null);
+    if (link) {
+      navigator.clipboard.writeText(link);
+      showToast('Link do Google Drive copiado com sucesso!');
+    }
+  });
+
+  document.getElementById('btnOpenLocalMirrorFolder')?.addEventListener('click', () => {
+    const dir = autoDriveLastResult?.mirror?.targetDir;
+    if (dir && window.electronAPI && window.electronAPI.openPath) {
+      window.electronAPI.openPath(dir);
+    } else {
+      showAppAlert('Espelho local não configurado ou diretório local não encontrado no computador.', 'Pasta Local', 'warning');
+    }
+  });
+
+  document.getElementById('btnResetAutoDriveForm')?.addEventListener('click', () => {
+    closeAutoDriveModal();
+  });
+
+  // AutoDrive Image and PDF upload handlers
+  document.getElementById('btnAddAutoDriveImageFile')?.addEventListener('click', () => {
+    document.getElementById('inputAddAutoDriveImage')?.click();
+  });
+
+  document.getElementById('inputAddAutoDriveImage')?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleAddAutoDriveImageFiles(e.target.files);
+      e.target.value = '';
+    }
+  });
+
+  document.getElementById('btnAddAutoDrivePdfFile')?.addEventListener('click', () => {
+    document.getElementById('inputAddAutoDrivePdf')?.click();
+  });
+
+  document.getElementById('inputAddAutoDrivePdf')?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleAddAutoDrivePdfFile(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+
+  // Success screen actions
+  document.getElementById('btnOpenDriveFolderLink')?.addEventListener('click', () => {
+    if (autoDriveLastResult?.layoutLink && window.electronAPI && window.electronAPI.openExternal) {
+      window.electronAPI.openExternal(autoDriveLastResult.layoutLink);
+    }
+  });
+
+  document.getElementById('btnOpenLocalMirrorFolder')?.addEventListener('click', () => {
+    if (autoDriveLastResult?.mirror?.targetDir && window.electronAPI && window.electronAPI.openPath) {
+      window.electronAPI.openPath(autoDriveLastResult.mirror.targetDir);
+    }
+  });
+
+  document.getElementById('btnResetAutoDriveForm')?.addEventListener('click', () => {
+    closeAutoDriveModal();
+  });
+
+  // Drag and drop for images in modal
+  const dropzone = document.getElementById('autoDriveImageDropzone');
+  if (dropzone) {
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('dragover');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleAddAutoDriveImageFiles(e.dataTransfer.files);
+      }
+    });
+    dropzone.addEventListener('click', () => {
+      document.getElementById('inputAddAutoDriveImage')?.click();
+    });
+  }
+
+  // Paste image directly with Ctrl+V when modal is open
+  window.addEventListener('paste', (e) => {
+    const modal = document.getElementById('modalAutoDrive');
+    if (!modal || modal.style.display === 'none') return;
+
+    if (e.clipboardData && e.clipboardData.items) {
+      const items = Array.from(e.clipboardData.items);
+      const imgItem = items.find(item => item.kind === 'file' && item.type.startsWith('image/'));
+      if (imgItem) {
+        const file = imgItem.getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleAddAutoDriveImageFiles([file]);
+          showToast('Print colado no AutoDrive com sucesso!');
+        }
+      }
+    }
+  });
 
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
@@ -4410,8 +5342,21 @@ function setupEventListeners() {
       e.preventDefault();
       syncDemands();
     }
+    // Lightbox navigation with keyboard arrows
+    const lightboxOverlay = document.getElementById('imageLightboxOverlay');
+    if (lightboxOverlay && lightboxOverlay.style.display !== 'none') {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateLightbox(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateLightbox(1);
+      }
+    }
+
     // Esc -> close drawer / modals / lightbox
     if (e.key === 'Escape') {
+      closeUserSettingsModal();
       closeImageLightbox();
       closeAutoDriveModal();
       closeDemandDrawer();
@@ -4419,6 +5364,9 @@ function setupEventListeners() {
       closeFilterModal();
     }
   });
+
+  // Configurações do usuário & Engrenagem ⚙️
+  setupUserSettingsHandlers();
 }
 
 function setupAutoRefresh() {
@@ -4436,6 +5384,61 @@ function setupAutoRefresh() {
 
 // ------------------- AutoDrive Integration Module -------------------
 let currentAutoDriveTicket = null;
+let stagedAutoDriveImages = [];
+let stagedAutoDrivePdf = null;
+let autoDriveLastResult = null;
+let isGoogleDriveChecking = false;
+
+function formatBytes(bytes) {
+  if (!bytes || isNaN(bytes)) return '0 KB';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+async function checkGoogleDriveStatus() {
+  if (isGoogleDriveChecking) return;
+  isGoogleDriveChecking = true;
+
+  const dotEl = document.getElementById('autoDriveStatusDot');
+  const emailEl = document.getElementById('autoDriveAccountEmail');
+  const pillEl = document.getElementById('autoDriveAccountStatus');
+
+  if (emailEl) emailEl.textContent = 'Verificando Google Drive...';
+  if (dotEl) dotEl.textContent = '⏳';
+
+  try {
+    if (window.electronAPI && window.electronAPI.getDriveStatus) {
+      const status = await window.electronAPI.getDriveStatus();
+      if (status.connected) {
+        if (dotEl) dotEl.textContent = '🟢';
+        if (emailEl) emailEl.textContent = `Drive: ${status.user?.emailAddress || 'Conectado'}`;
+        if (pillEl) {
+          pillEl.style.background = 'rgba(35, 134, 54, 0.15)';
+          pillEl.style.color = '#3fb950';
+          pillEl.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+        }
+      } else {
+        if (dotEl) dotEl.textContent = '🟡';
+        if (emailEl) emailEl.textContent = 'Drive não autenticado';
+        if (pillEl) {
+          pillEl.style.background = 'rgba(210, 153, 34, 0.15)';
+          pillEl.style.color = '#e3b341';
+          pillEl.style.borderColor = 'rgba(210, 153, 34, 0.4)';
+        }
+      }
+    } else {
+      if (dotEl) dotEl.textContent = '⚪';
+      if (emailEl) emailEl.textContent = 'Disponível no Desktop';
+    }
+  } catch (err) {
+    if (dotEl) dotEl.textContent = '🔴';
+    if (emailEl) emailEl.textContent = 'Erro de conexão';
+  } finally {
+    isGoogleDriveChecking = false;
+  }
+}
 
 function sanitizeAutoDriveText(text) {
   if (!text) return '';
@@ -4495,75 +5498,98 @@ function parseDemandForAutoDrive(ticket) {
   if (!ticket) return null;
 
   const rawTitle = (ticket.title || '').trim();
-  const db = (ticket.clientDatabase || '').trim();
-  const ticketNumber = ticket.number != null ? String(ticket.number) : '';
-  const layoutCode = ticket.layout?.code != null ? String(ticket.layout.code) : '';
+  const rawDb = (ticket.clientDatabase || '').trim().toUpperCase();
+  const ticketNumber = ticket.number != null ? String(ticket.number).trim() : '';
+  const layoutCode = ticket.layout?.code != null ? String(ticket.layout.code).trim() : '';
   const layoutName = (ticket.layout?.name || '').trim();
-  const typeName = (ticket.ticketType?.name || 'NOVO LAYOUT').toUpperCase();
 
-  const numeroLayout = layoutCode || ticketNumber || '';
+  let numeroLayout = layoutCode || ticketNumber || '';
+  let remainingTitle = rawTitle;
 
-  let cleanTitle = rawTitle;
-  const numMatch = cleanTitle.match(/^\s*#?(\d+)\s*[-–—:]\s*(.*)$/i);
+  // 1. Extrair número no início do título (#10328 - ...)
+  const numMatch = remainingTitle.match(/^\s*#?(\d+)\s*[-–—:]\s*(.*)$/i);
   if (numMatch) {
-    cleanTitle = numMatch[2].trim();
+    if (!numeroLayout) numeroLayout = numMatch[1];
+    remainingTitle = numMatch[2].trim();
   }
 
-  const knownTipos = ["NOVO LAYOUT", "NOVO", "ALTERACAO", "ALTERAÇÃO", "AJUSTE", "ATUALIZACAO", "ATUALIZAÇÃO", "CORRECAO", "CORREÇÃO", "LAYOUT", "MELHORIA", "ERRO"];
-  let detectedType = typeName;
-  let remainingTitle = cleanTitle;
-
-  for (const t of knownTipos) {
-    const reg = new RegExp(`^${t}\\s*[-–—:]\\s*(.*)$`, 'i');
+  // 2. Remover prefixos de operação comuns (NOVO LAYOUT -, etc.)
+  const ignorePrefixes = ["NOVO LAYOUT", "NOVO", "ALTERACAO", "ALTERAÇÃO", "AJUSTE", "ATUALIZACAO", "ATUALIZAÇÃO", "CORRECAO", "CORREÇÃO", "LAYOUT", "MELHORIA", "ERRO"];
+  for (const p of ignorePrefixes) {
+    const reg = new RegExp(`^${p}\\s*[-–—:]\\s*(.*)$`, 'i');
     const m = remainingTitle.match(reg);
     if (m) {
-      detectedType = t;
       remainingTitle = m[1].trim();
       break;
     }
   }
 
-  const parts = remainingTitle.split(/\s*[-–—]\s*/).map(p => p.trim()).filter(Boolean);
+  // 3. Normalizar variações de -CONT- ou -CONT_ no título
+  remainingTitle = remainingTitle.replace(/[-–—]\s*CONT(?=[-_\s]|$)/gi, ' - CONT');
+
+  // 4. Separar segmentos pelo traço
+  let parts = remainingTitle.split(/\s*[-–—]\s*/).map(p => p.trim()).filter(Boolean);
+
+  // 5. Ignorar qualquer termo de banco de dados/cliente (-CONT-, CONT_..., CONT-...)
+  // Se esse termo estiver no final, descarta-o para pegar o nome do documento antes dele
+  function isContPart(p) {
+    if (!p) return false;
+    const up = p.toUpperCase();
+    if (up === 'CONT' || up === 'CONT-' || up === 'CONT_' || up === '-CONT-') return true;
+    if (up.startsWith('CONT_') || up.startsWith('CONT-') || up.startsWith('CONT ')) return true;
+    if (rawDb && (up === rawDb || up.includes(rawDb))) return true;
+    return false;
+  }
+
+  const contIdx = parts.findIndex(isContPart);
+  if (contIdx !== -1) {
+    parts = parts.slice(0, contIdx);
+  }
+
+  // Remover sufixo de banco de dados se colado no último termo
+  if (parts.length > 0 && rawDb) {
+    let last = parts[parts.length - 1];
+    if (last.toUpperCase().endsWith(rawDb)) {
+      last = last.substring(0, last.length - rawDb.length).replace(/[-–—_\s]+$/, '').trim();
+      if (last) parts[parts.length - 1] = last;
+      else parts.pop();
+    }
+  }
 
   let entidade = '';
   let nomeDocumento = '';
 
   if (parts.length >= 2) {
-    entidade = parts[0];
-    nomeDocumento = parts.slice(1).join(' - ');
+    // A última informação do título depois do traço é sempre o NOME DO DOCUMENTO
+    nomeDocumento = parts[parts.length - 1];
+    // O que vem antes dele (entre o número e o último traço) é o BANCO OU SISTEMA
+    entidade = parts.slice(0, parts.length - 1).join(' - ');
   } else if (parts.length === 1) {
-    if (layoutName) {
-      entidade = parts[0];
-      nomeDocumento = layoutName;
-    } else {
-      entidade = parts[0];
-      nomeDocumento = parts[0];
-    }
-  } else if (layoutName) {
-    nomeDocumento = layoutName;
+    nomeDocumento = parts[0];
+    entidade = layoutName || parts[0];
+  } else {
+    nomeDocumento = layoutName || '';
+    entidade = layoutName || '';
   }
 
-  if (db && nomeDocumento.toLowerCase().endsWith(db.toLowerCase())) {
-    nomeDocumento = nomeDocumento.substring(0, nomeDocumento.length - db.length).replace(/\s*[-–—]\s*$/, '').trim();
-  }
+  const cleanEntidade = sanitizeAutoDriveText(entidade);
+  const cleanDocumento = sanitizeAutoDriveText(nomeDocumento);
+  const cleanNumero = sanitizeAutoDriveText(numeroLayout);
 
-  const categoria = guessAutoDriveCategory(entidade, nomeDocumento);
+  const categoria = guessAutoDriveCategory(cleanEntidade, cleanDocumento);
 
+  // Formato padrão: [NUMERO] - [BANCO OU SISTEMA] - [NOME DO DOCUMENTO]
   const quickParts = [];
-  if (numeroLayout) quickParts.push(numeroLayout);
-  if (detectedType) quickParts.push(detectedType);
-  if (entidade) quickParts.push(entidade.toUpperCase());
-  if (nomeDocumento && nomeDocumento !== entidade) quickParts.push(nomeDocumento.toUpperCase());
-  if (db) quickParts.push(db);
+  if (cleanNumero) quickParts.push(cleanNumero);
+  if (cleanEntidade) quickParts.push(cleanEntidade);
+  if (cleanDocumento && cleanDocumento !== cleanEntidade) quickParts.push(cleanDocumento);
 
   const quickText = quickParts.join(' - ');
 
   return {
-    numero_layout: numeroLayout,
-    tipo: detectedType,
-    entidade: sanitizeAutoDriveText(entidade),
-    nome_documento: sanitizeAutoDriveText(nomeDocumento),
-    database: db,
+    numero_layout: cleanNumero,
+    entidade: cleanEntidade,
+    nome_documento: cleanDocumento,
     categoria: categoria || 'BANCOS',
     quick: quickText
   };
@@ -4572,9 +5598,23 @@ function parseDemandForAutoDrive(ticket) {
 async function openAutoDriveModal(ticket) {
   if (!ticket) return;
   currentAutoDriveTicket = ticket;
+  stagedAutoDriveImages = [];
+  stagedAutoDrivePdf = null;
+  autoDriveLastResult = null;
 
   const modal = document.getElementById('modalAutoDrive');
   if (!modal) return;
+
+  // Reset Approval, Progress and Success screens
+  const approvalBox = document.getElementById('autoDriveApprovalBox');
+  if (approvalBox) approvalBox.style.display = 'none';
+  const progressBox = document.getElementById('autoDriveProgressBox');
+  if (progressBox) progressBox.style.display = 'none';
+  const successBox = document.getElementById('autoDriveSuccessBox');
+  if (successBox) successBox.style.display = 'none';
+
+  // Check Drive status in background
+  checkGoogleDriveStatus();
 
   const parsed = parseDemandForAutoDrive(ticket);
 
@@ -4582,73 +5622,354 @@ async function openAutoDriveModal(ticket) {
   const inputNum = document.getElementById('autoDriveNumeroLayout');
   const selCat = document.getElementById('autoDriveCategoria');
   const inputEnt = document.getElementById('autoDriveEntidade');
-  const inputTipo = document.getElementById('autoDriveTipo');
   const inputDoc = document.getElementById('autoDriveDocumento');
-  const inputDb = document.getElementById('autoDriveDatabase');
+  const inputSenha = document.getElementById('autoDriveSenha');
 
   if (inputQuick) inputQuick.value = parsed.quick;
   if (inputNum) inputNum.value = parsed.numero_layout;
   if (selCat) selCat.value = parsed.categoria;
   if (inputEnt) inputEnt.value = parsed.entidade;
-  if (inputTipo) inputTipo.value = parsed.tipo;
   if (inputDoc) inputDoc.value = parsed.nome_documento;
-  if (inputDb) inputDb.value = parsed.database;
 
-  // Render attachments list
-  renderAutoDriveModalAttachments(ticket);
+  // Auto-detect password from ticket description or title or stored notes
+  let detectedSenha = '';
+  const textToSearch = `${ticket.title || ''} ${ticket.description || ''}`;
+  const senhaMatch = textToSearch.match(/(?:senha|password|pass|chave)\s*(?:do\s*(?:pdf|arquivo|layout))?\s*[:=]\s*([A-Za-z0-9@#$_!.\-]+)/i);
+  if (senhaMatch) {
+    detectedSenha = senhaMatch[1].trim();
+  }
+  const savedSenha = window.appStore.localNotes?.[`autodrive_pwd_${ticket.id}`];
+  if (savedSenha) {
+    detectedSenha = savedSenha;
+  }
+  if (inputSenha) {
+    inputSenha.value = detectedSenha;
+    inputSenha.type = 'password';
+  }
+  const togglePwdBtn = document.getElementById('btnToggleAutoDrivePassword');
+  if (togglePwdBtn) togglePwdBtn.textContent = '👁️ Ver';
 
-  // If attachments are not loaded yet on this ticket, fetch details
-  if (!ticket.attachments || ticket.attachments.length === 0) {
+  // Initial placeholder rendering
+  const imagesGrid = document.getElementById('autoDriveImagesGrid');
+  if (imagesGrid) {
+    imagesGrid.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; grid-column: 1 / -1; padding: 12px 0;">🔍 Baixando e renderizando imagens da demanda...</div>';
+  }
+  const pdfContainer = document.getElementById('autoDrivePdfCardContainer');
+  if (pdfContainer) {
+    pdfContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 8px 0;">Carregando manual PDF...</div>';
+  }
+
+  modal.style.display = 'flex';
+  modal.classList.add('open');
+
+  // Load ticket details and attachments if needed
+  let attachments = ticket.attachments || [];
+  if (!attachments || attachments.length === 0) {
     try {
       const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
       if (details && details.attachments) {
         ticket.attachments = details.attachments;
-        renderAutoDriveModalAttachments(ticket);
+        attachments = details.attachments;
       }
     } catch (err) {
       console.warn('Erro ao carregar anexos para o AutoDrive:', err);
     }
   }
 
-  modal.style.display = 'flex';
-  modal.classList.add('open');
+  // Process attachments
+  const imgExtensions = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
+  for (const att of attachments) {
+    const fName = att.fileName || att.filename || att.originalName || att.name || 'arquivo';
+    const ext = (fName.split('.').pop() || '').toLowerCase();
+
+    if (ext === 'pdf' && !stagedAutoDrivePdf) {
+      try {
+        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, att.id);
+        const buffer = await blob.arrayBuffer();
+        stagedAutoDrivePdf = {
+          id: att.id,
+          name: fName,
+          size: blob.size,
+          blob,
+          buffer
+        };
+        renderAutoDrivePdfCard();
+      } catch (err) {
+        console.warn('Erro ao carregar PDF:', err);
+      }
+    } else if (imgExtensions.includes(ext)) {
+      try {
+        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, att.id);
+        const objectUrl = URL.createObjectURL(blob);
+        stagedAutoDriveImages.push({
+          id: String(att.id || Math.random().toString(36).substring(2)),
+          name: fName,
+          size: blob.size,
+          blob,
+          objectUrl,
+          isMapping: false
+        });
+        renderAutoDriveImagesGrid();
+      } catch (err) {
+        console.warn('Erro ao carregar imagem:', err);
+      }
+    }
+  }
+
+  // Automatic best guess for mapping image
+  if (stagedAutoDriveImages.length > 0) {
+    const candidate = stagedAutoDriveImages.find(img => {
+      const n = img.name.toLowerCase();
+      return n.includes('map') || n.includes('layout') || n.includes('tela') || n.includes('print');
+    });
+    if (candidate) {
+      candidate.isMapping = true;
+    } else {
+      stagedAutoDriveImages[0].isMapping = true;
+    }
+  }
+
+  renderAutoDriveImagesGrid();
+  renderAutoDrivePdfCard();
 }
 
-function renderAutoDriveModalAttachments(ticket) {
-  const listEl = document.getElementById('autoDriveAttachmentsList');
-  const countEl = document.getElementById('autoDriveAttachmentsCount');
-  if (!listEl) return;
+function renderAutoDriveImagesGrid() {
+  const grid = document.getElementById('autoDriveImagesGrid');
+  const countBadge = document.getElementById('autoDriveImagesCountBadge');
+  if (!grid) return;
 
-  const attachments = ticket?.attachments || [];
-  if (countEl) countEl.textContent = `${attachments.length} arquivo${attachments.length === 1 ? '' : 's'}`;
+  const count = stagedAutoDriveImages.length;
+  if (countBadge) {
+    countBadge.textContent = `${count} imagem${count === 1 ? '' : 's'}`;
+  }
 
-  if (attachments.length === 0) {
-    listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 11px;">Nenhum artefato anexado a esta demanda.</div>';
+  if (count === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; padding: 20px; text-align: center; color: var(--text-muted); background: #0d1117; border-radius: 8px; border: 1px dashed var(--border-color);">
+        <div style="font-size: 24px; margin-bottom: 6px;">🖼️</div>
+        <div style="font-size: 12px; font-weight: 600; color: #c9d1d9;">Nenhuma imagem anexada</div>
+        <div style="font-size: 11px; margin-top: 4px;">Você pode colar um print diretamente com <strong>Ctrl+V</strong> ou clicar no botão "Adicionar Imagem".</div>
+      </div>
+    `;
     return;
   }
 
-  listEl.innerHTML = attachments.map(att => {
-    const fName = att.fileName || att.filename || att.originalName || att.name || 'Arquivo';
-    const ext = (fName.split('.').pop() || '').toLowerCase();
-    const isPdf = ext === 'pdf';
-    const isImg = ['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(ext);
+  // Calculate mapping images count and indices
+  const mappingImages = stagedAutoDriveImages.filter(img => img.isMapping);
 
-    let roleBadge = '';
-    if (isPdf) {
-      roleBadge = '<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;">📕 Manual PDF</span>';
-    } else if (isImg) {
-      roleBadge = '<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;">🖼️ Imagem Mapeamento</span>';
+  grid.innerHTML = stagedAutoDriveImages.map(img => {
+    const isMap = !!img.isMapping;
+    let badgeHtml = '';
+    if (isMap) {
+      if (mappingImages.length > 1) {
+        const mapNum = mappingImages.findIndex(m => String(m.id) === String(img.id)) + 1;
+        badgeHtml = `<span class="autodrive-mapping-badge">🌟 Mapeamento ${mapNum}</span>`;
+      } else {
+        badgeHtml = `<span class="autodrive-mapping-badge">🌟 Mapeamento Oficial</span>`;
+      }
     } else {
-      roleBadge = `<span style="background: rgba(100, 116, 139, 0.2); color: #94a3b8; border-radius: 4px; padding: 2px 6px; font-size: 10px;">${ext.toUpperCase()}</span>`;
+      badgeHtml = `<span style="font-size: 10px; color: #8b949e; font-weight: 600;">🖼️ Imagem Anexa</span>`;
     }
 
     return `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(13, 17, 23, 0.7); border: 1px solid var(--border-color); border-radius: 6px;">
-        <span style="font-family: Consolas, monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px;" title="${escapeHtml(fName)}">${escapeHtml(fName)}</span>
-        <div>${roleBadge}</div>
+      <div class="autodrive-image-card ${isMap ? 'is-mapping' : ''}" data-id="${escapeHtml(img.id)}">
+        <!-- Top row: Badge and Delete Button -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+          <div>
+            ${badgeHtml}
+          </div>
+          <button type="button" class="autodrive-delete-btn btn-delete-autodrive-img" data-id="${escapeHtml(img.id)}" title="Apagar esta imagem da lista (não será enviada ao Google Drive)">
+            <span>🗑️</span> <span>Apagar</span>
+          </button>
+        </div>
+
+        <!-- Thumbnail Image Container (Clickable to Lightbox with full gallery navigation) -->
+        <div class="autodrive-thumb-wrap btn-zoom-autodrive-img" data-id="${escapeHtml(img.id)}" title="Clique para ver em tela cheia (com navegação por setas)">
+          <img src="${img.objectUrl}" alt="${escapeHtml(img.name)}">
+          <div class="autodrive-thumb-zoom-overlay">
+            <span>🔍</span> <span>Ver em Tela Cheia</span>
+          </div>
+        </div>
+
+        <!-- Bottom Info & Mapping Selector -->
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: #f0f6fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(img.name)}">
+            ${escapeHtml(img.name)}
+          </div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+            ${formatBytes(img.size)}
+          </div>
+        </div>
+
+        <!-- Mapping Selection Button (Toggleable for Multiple Mappings) -->
+        <div style="margin-top: auto; padding-top: 4px;">
+          ${isMap
+            ? `<button type="button" class="autodrive-select-mapping-btn active btn-toggle-as-mapping" data-id="${escapeHtml(img.id)}" style="width: 100%;" title="Clique para desmarcar como mapeamento">✓ Mapeamento Selecionado</button>`
+            : `<button type="button" class="autodrive-select-mapping-btn btn-toggle-as-mapping" data-id="${escapeHtml(img.id)}" style="width: 100%;" title="Clique para adicionar como mapeamento">⭐ Marcar como Mapeamento</button>`
+          }
+        </div>
       </div>
     `;
   }).join('');
+
+  // Attach delete buttons
+  grid.querySelectorAll('.btn-delete-autodrive-img').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      handleDeleteAutoDriveImage(id);
+    });
+  });
+
+  // Attach toggle mapping selectors (Multiple allowed)
+  grid.querySelectorAll('.btn-toggle-as-mapping').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      handleToggleAutoDriveMapping(id);
+    });
+  });
+
+  // Attach zoom lightbox with full gallery and arrows support
+  grid.querySelectorAll('.btn-zoom-autodrive-img').forEach(wrap => {
+    wrap.addEventListener('click', () => {
+      const imgId = wrap.getAttribute('data-id');
+      const gallery = stagedAutoDriveImages.map(i => ({
+        blobUrl: i.objectUrl,
+        fileName: i.name,
+        id: i.id
+      }));
+      const idx = stagedAutoDriveImages.findIndex(i => String(i.id) === String(imgId));
+      const initialIdx = idx !== -1 ? idx : 0;
+      openImageLightbox(gallery[initialIdx].blobUrl, gallery[initialIdx].fileName, currentAutoDriveTicket?.id, null, gallery, initialIdx);
+    });
+  });
+}
+
+function handleDeleteAutoDriveImage(imgId) {
+  const idx = stagedAutoDriveImages.findIndex(img => String(img.id) === String(imgId));
+  if (idx !== -1) {
+    const removed = stagedAutoDriveImages.splice(idx, 1)[0];
+    if (removed && removed.objectUrl) {
+      try { URL.revokeObjectURL(removed.objectUrl); } catch (e) {}
+    }
+    // If no image is marked as mapping after deletion, ensure first remaining is marked
+    if (!stagedAutoDriveImages.some(img => img.isMapping) && stagedAutoDriveImages.length > 0) {
+      stagedAutoDriveImages[0].isMapping = true;
+    }
+    renderAutoDriveImagesGrid();
+    showToast('Imagem removida com sucesso');
+    const approvalBox = document.getElementById('autoDriveApprovalBox');
+    if (approvalBox) approvalBox.style.display = 'none';
+  }
+}
+
+function handleToggleAutoDriveMapping(imgId) {
+  const img = stagedAutoDriveImages.find(i => String(i.id) === String(imgId));
+  if (img) {
+    img.isMapping = !img.isMapping;
+  }
+  renderAutoDriveImagesGrid();
+  const approvalBox = document.getElementById('autoDriveApprovalBox');
+  if (approvalBox) approvalBox.style.display = 'none';
+}
+
+async function handleAddAutoDriveImageFiles(files) {
+  if (!files || files.length === 0) return;
+  for (const file of files) {
+    if (!file.type || !file.type.startsWith('image/')) continue;
+    const objectUrl = URL.createObjectURL(file);
+    stagedAutoDriveImages.push({
+      id: 'local_' + Date.now() + '_' + Math.random().toString(36).substring(2),
+      name: file.name || 'print_mapeamento.png',
+      size: file.size,
+      blob: file,
+      objectUrl,
+      isMapping: (stagedAutoDriveImages.length === 0)
+    });
+  }
+  renderAutoDriveImagesGrid();
+}
+
+async function handleAddAutoDrivePdfFile(file) {
+  if (!file) return;
+  try {
+    const buffer = await file.arrayBuffer();
+    stagedAutoDrivePdf = {
+      id: 'pdf_local_' + Date.now(),
+      name: file.name || 'manual.pdf',
+      size: file.size,
+      blob: file,
+      buffer
+    };
+    renderAutoDrivePdfCard();
+    showToast('Manual PDF adicionado');
+  } catch (err) {
+    showAppError('Erro ao carregar arquivo PDF', err);
+  }
+}
+
+function renderAutoDrivePdfCard() {
+  const container = document.getElementById('autoDrivePdfCardContainer');
+  const badge = document.getElementById('autoDrivePdfStatusBadge');
+  if (!container) return;
+
+  if (!stagedAutoDrivePdf) {
+    if (badge) {
+      badge.textContent = 'Nenhum';
+      badge.style.background = 'rgba(239, 68, 68, 0.2)';
+      badge.style.color = '#f87171';
+    }
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #0d1117; border: 1px dashed var(--border-color); border-radius: 6px;">
+        <span style="font-size: 11px; color: var(--text-muted);">Nenhum manual PDF anexado. Caso a demanda possua manual de layout, clique em "Adicionar / Substituir PDF".</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (badge) {
+    badge.textContent = '1 arquivo';
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#34d399';
+  }
+
+  container.innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px;">
+      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+        <span style="font-size: 18px;">📕</span>
+        <div style="overflow: hidden;">
+          <div style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #f0f6fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(stagedAutoDrivePdf.name)}">
+            ${escapeHtml(stagedAutoDrivePdf.name)}
+          </div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 1px;">
+            ${formatBytes(stagedAutoDrivePdf.size)}
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button type="button" class="btn-secondary" id="btnPreviewAutoDrivePdf" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;">
+          <span>👁️</span> <span>Visualizar</span>
+        </button>
+        <button type="button" class="autodrive-delete-btn" id="btnDeleteAutoDrivePdf" title="Remover PDF">
+          <span>🗑️</span> <span>Remover</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnPreviewAutoDrivePdf')?.addEventListener('click', async () => {
+    if (stagedAutoDrivePdf && window.electronAPI && window.electronAPI.openBufferTemp) {
+      const buf = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
+      window.electronAPI.openBufferTemp(stagedAutoDrivePdf.name, buf);
+    }
+  });
+
+  document.getElementById('btnDeleteAutoDrivePdf')?.addEventListener('click', () => {
+    stagedAutoDrivePdf = null;
+    renderAutoDrivePdfCard();
+    showToast('Manual PDF removido');
+  });
 }
 
 function closeAutoDriveModal() {
@@ -4657,7 +5978,260 @@ function closeAutoDriveModal() {
     modal.classList.remove('open');
     modal.style.display = 'none';
   }
+  const approvalBox = document.getElementById('autoDriveApprovalBox');
+  if (approvalBox) approvalBox.style.display = 'none';
+  const progressBox = document.getElementById('autoDriveProgressBox');
+  if (progressBox) progressBox.style.display = 'none';
+  const successBox = document.getElementById('autoDriveSuccessBox');
+  if (successBox) successBox.style.display = 'none';
+
+  // Clean up object URLs
+  stagedAutoDriveImages.forEach(img => {
+    if (img.objectUrl) {
+      try { URL.revokeObjectURL(img.objectUrl); } catch (e) {}
+    }
+  });
+  stagedAutoDriveImages = [];
+  stagedAutoDrivePdf = null;
   currentAutoDriveTicket = null;
+}
+
+async function handlePreFlightCheck() {
+  if (!currentAutoDriveTicket) return;
+
+  const btn = document.getElementById('btnLaunchAutoDriveNow');
+  const btnIcon = document.getElementById('autoDriveBtnIcon');
+  const btnText = document.getElementById('autoDriveBtnText');
+  const approvalBox = document.getElementById('autoDriveApprovalBox');
+  const approvalDetails = document.getElementById('autoDriveApprovalDetails');
+
+  const num = (document.getElementById('autoDriveNumeroLayout')?.value || '').trim();
+  const ent = (document.getElementById('autoDriveEntidade')?.value || '').trim();
+  const doc = (document.getElementById('autoDriveDocumento')?.value || '').trim();
+  const senha = (document.getElementById('autoDriveSenha')?.value || '').trim();
+  const cat = document.getElementById('autoDriveCategoria')?.value || 'BANCOS';
+
+  if (!num) {
+    showAppAlert('Por favor, informe o Número do Layout.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveNumeroLayout')?.focus();
+    return;
+  }
+  if (cat !== 'DESCONHECIDOS' && !ent) {
+    showAppAlert('Por favor, informe o Banco ou Instituição.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveEntidade')?.focus();
+    return;
+  }
+  if (!doc) {
+    showAppAlert('Por favor, informe o Nome do Sistema / Documento.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveDocumento')?.focus();
+    return;
+  }
+
+  // Collect all images marked as mapping
+  const effectiveMappings = stagedAutoDriveImages.filter(img => img.isMapping);
+  if (effectiveMappings.length === 0 && stagedAutoDriveImages.length > 0) {
+    effectiveMappings.push(stagedAutoDriveImages[0]);
+  }
+
+  if (btn) btn.disabled = true;
+  if (btnIcon) btnIcon.textContent = '⏳';
+  if (btnText) btnText.textContent = 'Verificando no Google Drive...';
+
+  try {
+    if (!window.electronAPI || !window.electronAPI.checkDriveLayout) {
+      throw new Error('Função de verificação requer execução no aplicativo Desktop Electron.');
+    }
+
+    const checkData = {
+      categoria: cat,
+      entidade: ent,
+      numero_layout: num,
+      nome_documento: doc,
+      senha,
+      pdfFiles: stagedAutoDrivePdf ? [{ name: stagedAutoDrivePdf.name, size: stagedAutoDrivePdf.size }] : [],
+      mappingImages: effectiveMappings.map(img => ({ name: img.name, size: img.size })),
+      extraImages: stagedAutoDriveImages.filter(img => !effectiveMappings.includes(img)).map(img => ({ name: img.name, size: img.size }))
+    };
+
+    const res = await window.electronAPI.checkDriveLayout(checkData);
+
+    if (!res.success) {
+      throw new Error(res.error || 'Erro desconhecido na verificação do Drive.');
+    }
+
+    if (approvalDetails) {
+      const isDirectCategory = !res.categoria?.hasEntitySubfolder || cat === 'DESCONHECIDOS';
+      const entityExists = !!(res.entity?.exists || res.entityFolder?.exists);
+      const entityName = res.entity?.matchedName || res.entity?.name || res.stdNames?.folderEntityName || ent;
+      const layoutExists = !!(res.layout?.exists || res.layoutFolder?.exists);
+      const layoutName = res.layout?.matchedName || res.layout?.name || res.stdNames?.folderLayoutName;
+      const conflicts = res.conflicts || [];
+      const existingFiles = res.existingFiles || [];
+
+      let entityStatusHtml = '';
+      if (isDirectCategory) {
+        entityStatusHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(56, 139, 253, 0.12); border: 1px solid rgba(56, 139, 253, 0.35); border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">📁</span>
+              <div>
+                <div style="font-weight: 700; color: #f0f6fc; font-size: 12px;">Destino Categoria: ${escapeHtml(res.categoria?.folderName || '1DESCONHECIDOS')}</div>
+                <div style="color: #8b949e; font-size: 11px;">Criação direta na categoria raiz (sem criar pasta intermediária de banco/sistema)</div>
+              </div>
+            </div>
+            <span style="background: rgba(56, 139, 253, 0.25); color: #58a6ff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">Subpasta Direta</span>
+          </div>
+        `;
+      } else if (entityExists) {
+        entityStatusHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(35, 134, 54, 0.1); border: 1px solid rgba(46, 160, 67, 0.3); border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">📁</span>
+              <div>
+                <div style="font-weight: 700; color: #f0f6fc; font-size: 12px;">Pasta da Entidade / Banco:</div>
+                <div style="font-family: Consolas, monospace; color: #58a6ff; font-size: 11px;">${escapeHtml(entityName)}</div>
+              </div>
+            </div>
+            <span style="background: rgba(35, 134, 54, 0.25); color: #3fb950; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">✓ Já existe no Drive</span>
+          </div>
+        `;
+      } else {
+        entityStatusHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(210, 153, 34, 0.1); border: 1px solid rgba(210, 153, 34, 0.3); border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">📁</span>
+              <div>
+                <div style="font-weight: 700; color: #f0f6fc; font-size: 12px;">Pasta da Entidade / Banco:</div>
+                <div style="font-family: Consolas, monospace; color: #e3b341; font-size: 11px;">${escapeHtml(entityName)}</div>
+              </div>
+            </div>
+            <span style="background: rgba(210, 153, 34, 0.25); color: #e3b341; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">✨ Será criada nova</span>
+          </div>
+        `;
+      }
+
+      let layoutStatusHtml = '';
+      if (layoutExists) {
+        layoutStatusHtml = `
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📂</span>
+                <div>
+                  <div style="font-weight: 700; color: #f0f6fc; font-size: 12px;">Subpasta do Layout:</div>
+                  <div style="font-family: Consolas, monospace; color: #f87171; font-size: 11px;">${escapeHtml(layoutName)}</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                ${res.layout?.webViewLink ? `
+                  <button type="button" class="btn-secondary btn-open-existing-drive-link" data-link="${escapeHtml(res.layout.webViewLink)}" style="font-size: 11px; height: 24px; padding: 0 8px; gap: 4px;" title="Ver pasta existente no Google Drive">
+                    <span>🌐</span> <span>Abrir no Drive</span>
+                  </button>
+                ` : ''}
+                <span style="background: rgba(239, 68, 68, 0.25); color: #f87171; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">⚠️ Já existe no Drive</span>
+              </div>
+            </div>
+            ${existingFiles.length > 0 ? `
+              <div style="font-size: 11px; color: #8b949e; border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 4px; margin-top: 2px;">
+                <strong>Arquivos atuais na pasta:</strong> ${existingFiles.map(f => `<code style="color: #c9d1d9;">${escapeHtml(f.name)}</code>`).join(', ')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        layoutStatusHtml = `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.3); border-radius: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">📂</span>
+              <div>
+                <div style="font-weight: 700; color: #f0f6fc; font-size: 12px;">Subpasta do Layout:</div>
+                <div style="font-family: Consolas, monospace; color: #58a6ff; font-size: 11px;">${escapeHtml(layoutName)}</div>
+              </div>
+            </div>
+            <span style="background: rgba(56, 139, 253, 0.25); color: #58a6ff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;">✨ Será criada nova</span>
+          </div>
+        `;
+      }
+
+      const pdfPlanned = res.stdNames?.pdfFilename;
+      const plannedMappings = res.stdNames?.imageFilenames || (res.stdNames?.imageFilename ? [res.stdNames.imageFilename] : []);
+      const pdfConflict = !!(res.fileConflicts?.pdfExists || conflicts.some(c => c.name.toLowerCase() === (pdfPlanned || '').toLowerCase()));
+
+      const mappingItemsHtml = plannedMappings.map((imgName, idx) => {
+        const hasConflict = existingFiles.some(f => f.name && f.name.toUpperCase() === imgName.toUpperCase());
+        const label = plannedMappings.length > 1 ? `Mapeamento ${idx + 1}:` : 'Mapeamento:';
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>🖼️</span> <strong>${label}</strong> <code style="color: #79c0ff;">${escapeHtml(imgName)}</code>
+            </span>
+            ${hasConflict
+              ? '<span style="color: #f87171; font-weight: 700;">⚠️ Já existe (será atualizado)</span>'
+              : '<span style="color: #3fb950; font-weight: 600;">✓ Novo envio</span>'
+            }
+          </div>
+        `;
+      }).join('');
+
+      const filesHtml = `
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: rgba(22, 27, 34, 0.8); border: 1px solid var(--border-color); border-radius: 6px;">
+          <div style="font-weight: 700; color: #c9d1d9; font-size: 11px; text-transform: uppercase;">Arquivos preparados para envio:</div>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📕</span> <strong>Manual PDF:</strong> <code style="color: #79c0ff;">${escapeHtml(pdfPlanned || 'Nenhum anexado')}</code>
+            </span>
+            ${pdfConflict
+              ? '<span style="color: #f87171; font-weight: 700;">⚠️ Já existe (será atualizado)</span>'
+              : (pdfPlanned ? '<span style="color: #3fb950; font-weight: 600;">✓ Novo envio</span>' : '<span style="color: #8b949e;">-</span>')
+            }
+          </div>
+          ${mappingItemsHtml || '<div style="font-size: 11px; color: #8b949e;">Nenhuma imagem de mapeamento selecionada</div>'}
+          ${senha ? `
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px; margin-top: 2px;">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <span>🔑</span> <strong>Senha do Arquivo / PDF:</strong> <code style="color: #38bdf8;">${escapeHtml(senha)}</code>
+              </span>
+              <span style="color: #38bdf8; font-weight: 600;">✓ Protegido</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      const mirrorDir = res.mirror?.targetDir || res.mirrorFolder || '';
+      const mirrorExists = !!(res.mirror?.exists || res.mirrorExists);
+      const mirrorHtml = `
+        <div style="font-size: 11px; color: #8b949e; padding: 4px 6px;">
+          💾 <strong>Espelho Local:</strong> <code style="color: #c9d1d9;">${escapeHtml(mirrorDir)}</code>
+          ${mirrorExists ? '<span style="color: #e3b341; margin-left: 6px;">(pasta local já existe)</span>' : '<span style="color: #3fb950; margin-left: 6px;">(será criada localmente)</span>'}
+        </div>
+      `;
+
+      approvalDetails.innerHTML = entityStatusHtml + layoutStatusHtml + filesHtml + mirrorHtml;
+
+      // Wire existing layout link button if present
+      approvalDetails.querySelectorAll('.btn-open-existing-drive-link').forEach(btnEl => {
+        btnEl.addEventListener('click', () => {
+          const lk = btnEl.getAttribute('data-link');
+          if (lk) {
+            if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(lk);
+            else window.open(lk, '_blank');
+          }
+        });
+      });
+    }
+
+    if (approvalBox) {
+      approvalBox.style.display = 'block';
+      approvalBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+  } catch (err) {
+    showAppError('Verificação no Google Drive', err);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnIcon) btnIcon.textContent = '🔍';
+    if (btnText) btnText.textContent = 'Verificar no Google Drive';
+  }
 }
 
 async function executeAutoDriveLaunch() {
@@ -4666,59 +6240,188 @@ async function executeAutoDriveLaunch() {
   const btn = document.getElementById('btnLaunchAutoDriveNow');
   const btnIcon = document.getElementById('autoDriveBtnIcon');
   const btnText = document.getElementById('autoDriveBtnText');
+  const approvalBox = document.getElementById('autoDriveApprovalBox');
+  const progressBox = document.getElementById('autoDriveProgressBox');
+  const progressMsg = document.getElementById('autoDriveProgressMsg');
+  const progressStepText = document.getElementById('autoDriveProgressStepText');
+  const successBox = document.getElementById('autoDriveSuccessBox');
+
+  const quick = document.getElementById('autoDriveQuickText')?.value || '';
+  const num = (document.getElementById('autoDriveNumeroLayout')?.value || '').trim();
+  const ent = (document.getElementById('autoDriveEntidade')?.value || '').trim();
+  const doc = (document.getElementById('autoDriveDocumento')?.value || '').trim();
+  const senha = (document.getElementById('autoDriveSenha')?.value || '').trim();
+  const cat = document.getElementById('autoDriveCategoria')?.value || 'BANCOS';
+  const saveMirror = document.getElementById('chkAutoDriveSaveMirror')?.checked ?? true;
+
+  if (!num) {
+    showAppAlert('Por favor, preencha o Número do Layout.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveNumeroLayout')?.focus();
+    return;
+  }
+  if (cat !== 'DESCONHECIDOS' && !ent) {
+    showAppAlert('Por favor, preencha o Banco ou Instituição.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveEntidade')?.focus();
+    return;
+  }
+  if (!doc) {
+    showAppAlert('Por favor, preencha o Nome do Sistema / Documento.', 'Campo Obrigatório', 'warning');
+    document.getElementById('autoDriveDocumento')?.focus();
+    return;
+  }
+
+  // Selected mapping images (support multiple)
+  let effectiveMappings = stagedAutoDriveImages.filter(img => img.isMapping);
+  if (effectiveMappings.length === 0 && stagedAutoDriveImages.length > 0) {
+    effectiveMappings = [stagedAutoDriveImages[0]];
+  }
+
+  if (effectiveMappings.length === 0 && !stagedAutoDrivePdf) {
+    const confirmNoMedia = await showAppConfirm(
+      'Nenhuma imagem de mapeamento nem manual PDF foi selecionado. Deseja criar apenas as pastas organizadas no Google Drive?',
+      'Criar Pastas no Google Drive',
+      { confirmText: 'Criar Pastas Apenas' }
+    );
+    if (!confirmNoMedia) return;
+  }
+
+  // Esconder caixa de aprovação ao iniciar envio
+  if (approvalBox) approvalBox.style.display = 'none';
 
   if (btn) btn.disabled = true;
   if (btnIcon) btnIcon.textContent = '⏳';
-  if (btnText) btnText.textContent = 'Iniciando AutoDrive...';
+  if (btnText) btnText.textContent = 'Sincronizando com o Drive...';
+
+  if (progressBox) progressBox.style.display = 'block';
+  if (successBox) successBox.style.display = 'none';
 
   try {
-    const ticket = currentAutoDriveTicket;
+    let pdfBuffer = null;
+    let pdfName = null;
+    if (stagedAutoDrivePdf) {
+      pdfName = stagedAutoDrivePdf.name || 'manual.pdf';
+      pdfBuffer = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
+    }
+
+    const preparedMappingImages = [];
+    for (let i = 0; i < effectiveMappings.length; i++) {
+      const mImg = effectiveMappings[i];
+      const buf = await mImg.blob.arrayBuffer();
+      preparedMappingImages.push({
+        id: mImg.id,
+        name: mImg.name,
+        buffer: buf
+      });
+    }
+
+    const payload = {
+      quick,
+      numero_layout: num,
+      entidade: ent,
+      nome_documento: doc,
+      categoria: cat,
+      senha,
+      pdfBuffer,
+      pdfName,
+      imageBuffer: preparedMappingImages[0]?.buffer || null,
+      imageName: preparedMappingImages[0]?.name || null,
+      mappingImages: preparedMappingImages,
+      saveMirror
+    };
+
+    if (window.electronAPI && window.electronAPI.uploadDriveLayout) {
+      if (progressMsg) progressMsg.textContent = 'Iniciando upload e sincronização com Google Drive...';
+
+      let unsubProgress = null;
+      if (window.electronAPI.onDriveProgress) {
+        unsubProgress = window.electronAPI.onDriveProgress((p) => {
+          if (progressMsg) progressMsg.textContent = p.message || 'Processando...';
+          if (progressStepText) progressStepText.textContent = p.step || '';
+        });
+      }
+
+      const res = await window.electronAPI.uploadDriveLayout(payload);
+      if (unsubProgress) unsubProgress();
+
+      if (!res.success) {
+        throw new Error(res.error || 'Erro ao sincronizar com Google Drive');
+      }
+
+      autoDriveLastResult = res;
+
+      // Show success screen and scroll smoothly to it
+      if (progressBox) progressBox.style.display = 'none';
+      if (successBox) {
+        successBox.style.display = 'block';
+        const sumEl = document.getElementById('autoDriveSuccessSummary');
+        if (sumEl) {
+          const mappedListHtml = (res.uploadedImages && res.uploadedImages.length > 0)
+            ? res.uploadedImages.map((upImg, idx) => `<div>🖼️ <strong>Mapeamento ${res.uploadedImages.length > 1 ? (idx + 1) + ': ' : ''}</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(upImg.filename || res.stdNames.imageFilename)}</span></div>`).join('')
+            : (res.stdNames?.imageFilename ? `<div>🖼️ <strong>Mapeamento:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.stdNames.imageFilename)}</span></div>` : '');
+
+          sumEl.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+              <div>📁 <strong>Pasta no Drive:</strong> <span style="font-family: Consolas, monospace; color: #58a6ff; font-weight: 700;">${escapeHtml(res.stdNames.folderLayoutName)}</span></div>
+              <div>📕 <strong>Manual PDF:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.stdNames.pdfFilename || 'Nenhum')}</span></div>
+              ${mappedListHtml}
+              ${senha ? `<div>🔑 <strong>Senha do Arquivo / PDF:</strong> <span style="font-family: Consolas, monospace; color: #38bdf8;">${escapeHtml(senha)}</span></div>` : ''}
+              ${res.mirror?.targetDir ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">💾 <strong>Espelho Local:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.mirror.targetDir)}</span></div>` : ''}
+            </div>
+          `;
+        }
+        successBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      // Check minimize
+      const shouldMinimize = document.getElementById('chkAutoDriveMinimizeApp')?.checked;
+      if (shouldMinimize && window.electronAPI && window.electronAPI.minimize) {
+        window.electronAPI.minimize();
+      }
+
+      // Show native notification
+      if (window.electronAPI && window.electronAPI.showNotification) {
+        window.electronAPI.showNotification('AutoDrive • Sucesso', `Layout ${res.stdNames.folderLayoutName} sincronizado com sucesso!`);
+      }
+
+    } else {
+      throw new Error('Integração com Google Drive requer execução no aplicativo Desktop Electron.');
+    }
+
+  } catch (err) {
+    if (progressBox) progressBox.style.display = 'none';
+    showAppError('Erro ao enviar layout para o Google Drive', err);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnIcon) btnIcon.textContent = '🚀';
+    if (btnText) btnText.textContent = 'Enviar para o Google Drive';
+  }
+}
+
+async function executeExternalPythonLaunch() {
+  if (!currentAutoDriveTicket) return;
+
+  try {
     const quick = document.getElementById('autoDriveQuickText')?.value || '';
     const num = document.getElementById('autoDriveNumeroLayout')?.value || '';
     const ent = document.getElementById('autoDriveEntidade')?.value || '';
     const doc = document.getElementById('autoDriveDocumento')?.value || '';
+    const senha = (document.getElementById('autoDriveSenha')?.value || '').trim();
     const cat = document.getElementById('autoDriveCategoria')?.value || 'BANCOS';
 
-    // Find PDF and Image attachments if available
+    const mappingImg = stagedAutoDriveImages.find(img => img.isMapping) || stagedAutoDriveImages[0];
     let pdfBuffer = null;
     let pdfName = null;
+    if (stagedAutoDrivePdf) {
+      pdfName = stagedAutoDrivePdf.name || 'manual.pdf';
+      pdfBuffer = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
+    }
+
     let imageBuffer = null;
     let imageName = null;
-
-    const attachments = ticket.attachments || [];
-    const pdfAtt = attachments.find(a => {
-      const n = (a.fileName || a.filename || a.originalName || a.name || '').toLowerCase();
-      return n.endsWith('.pdf');
-    });
-
-    const imgAtt = attachments.find(a => {
-      const n = (a.fileName || a.filename || a.originalName || a.name || '').toLowerCase();
-      return n.endsWith('.png') || n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.webp') || n.endsWith('.bmp');
-    });
-
-    if (pdfAtt) {
-      try {
-        if (btnText) btnText.textContent = 'Baixando manual PDF...';
-        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, pdfAtt.id);
-        pdfBuffer = await blob.arrayBuffer();
-        pdfName = pdfAtt.fileName || pdfAtt.filename || pdfAtt.originalName || pdfAtt.name || 'manual.pdf';
-      } catch (e) {
-        console.warn('Erro ao carregar PDF:', e);
-      }
+    if (mappingImg) {
+      imageName = mappingImg.name || 'mapeamento.png';
+      imageBuffer = await mappingImg.blob.arrayBuffer();
     }
-
-    if (imgAtt) {
-      try {
-        if (btnText) btnText.textContent = 'Baixando imagem...';
-        const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, imgAtt.id);
-        imageBuffer = await blob.arrayBuffer();
-        imageName = imgAtt.fileName || imgAtt.filename || imgAtt.originalName || imgAtt.name || 'mapeamento.png';
-      } catch (e) {
-        console.warn('Erro ao carregar imagem:', e);
-      }
-    }
-
-    if (btnText) btnText.textContent = 'Executando AutoDrive...';
 
     const launchData = {
       quick,
@@ -4726,6 +6429,7 @@ async function executeAutoDriveLaunch() {
       entidade: ent,
       nome_documento: doc,
       categoria: cat,
+      senha,
       pdfBuffer,
       pdfName,
       imageBuffer,
@@ -4735,27 +6439,16 @@ async function executeAutoDriveLaunch() {
     if (window.electronAPI && window.electronAPI.launchAutoDrive) {
       const res = await window.electronAPI.launchAutoDrive(launchData);
       if (!res.success) {
-        alert('Erro ao iniciar o AutoDrive: ' + res.error);
+        showAppError('Erro ao abrir AutoDrive externo', res.error || 'Falha ao executar executável');
         return;
       }
+      showToast('AutoDrive externo iniciado');
+      closeAutoDriveModal();
     } else {
-      alert('Integração com AutoDrive requer execução no aplicativo Desktop Electron.');
-      return;
+      showAppAlert('Disponível apenas no Desktop Electron.', 'Recurso Desktop', 'info');
     }
-
-    closeAutoDriveModal();
-
-    // Check if user wants to minimize app
-    const shouldMinimize = document.getElementById('chkAutoDriveMinimizeApp')?.checked;
-    if (shouldMinimize && window.electronAPI && window.electronAPI.minimize) {
-      window.electronAPI.minimize();
-    }
-
   } catch (err) {
-    alert('Erro ao executar integração do AutoDrive: ' + err.message);
-  } finally {
-    if (btn) btn.disabled = false;
-    if (btnIcon) btnIcon.textContent = '🚀';
-    if (btnText) btnText.textContent = 'Abrir no AutoDrive';
+    showAppError('Erro ao iniciar AutoDrive externo', err);
   }
 }
+

@@ -189,6 +189,92 @@ class ConciliadorAPI {
     return await response.json();
   }
 
+  async changeTicketStatus(ticketId, status, reason = undefined) {
+    if (!this.token) throw new Error('Não autenticado');
+
+    const body = { status };
+    if (reason) body.reason = reason;
+
+    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao alterar status do chamado' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+
+    return await response.json();
+  }
+
+  async linkTicketLayout(ticketId, layoutId) {
+    if (!this.token) throw new Error('Não autenticado');
+
+    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/link-layout`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ layoutId })
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao vincular layout ao chamado' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+
+    return await response.json();
+  }
+
+  async assignTicket(ticketId, assignedToId, reason = 'Atribuição de responsável pelo Organizador de Chamados') {
+    if (!this.token) throw new Error('Não autenticado');
+
+    const body = {
+      assignedToId: assignedToId || null,
+      reason: reason || 'Atribuição de responsável'
+    };
+
+    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/assignee`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao atribuir responsável ao chamado' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+
+    return await response.json();
+  }
+
+  async setTicketDates(ticketId, deliveryDueDate, clientDueDate, reason = 'Atualização de prazos pelo Organizador de Chamados') {
+    if (!this.token) throw new Error('Não autenticado');
+
+    const body = {
+      deliveryDueDate: deliveryDueDate || null,
+      clientDueDate: clientDueDate || null,
+      reason: reason || 'Atualização de prazos'
+    };
+
+    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/dates`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao atualizar prazos do chamado' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+
+    return await response.json();
+  }
+
   async archiveTicket(ticketId) {
     if (!this.token) throw new Error('Não autenticado');
 

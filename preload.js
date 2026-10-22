@@ -23,6 +23,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // AutoDrive Integration
   launchAutoDrive: (data) => ipcRenderer.invoke('launch-autodrive', data),
+  getDriveStatus: () => ipcRenderer.invoke('drive-get-status'),
+  checkDriveLayout: (data) => ipcRenderer.invoke('drive-check-layout', data),
+  uploadDriveLayout: (data) => ipcRenderer.invoke('drive-upload-layout', data),
+  openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),
+  onDriveProgress: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('drive-upload-progress', handler);
+    return () => ipcRenderer.removeListener('drive-upload-progress', handler);
+  },
 
   // Auto Updater
   checkForUpdates: () => ipcRenderer.invoke('updater-check'),
