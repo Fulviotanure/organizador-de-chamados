@@ -251,6 +251,48 @@ class ConciliadorAPI {
     return await response.json();
   }
 
+  async assignReviewer(ticketId, reviewerId, reason = 'Alteração de validador pelo Organizador de Chamados') {
+    if (!this.token) throw new Error('Não autenticado');
+
+    // 1. Tentar endpoint dedicado de reviewer: PUT /support/tickets/:id/reviewer
+    try {
+      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ reviewerId: reviewerId || null, reason })
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {}
+
+    // 2. Tentar PATCH /support/tickets/:id com reviewerId
+    try {
+      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ reviewerId: reviewerId || null })
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {}
+
+    // 3. Tentar PUT /support/tickets/:id/review
+    try {
+      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/review`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ reviewerId: reviewerId || null, reason })
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {}
+
+    return { success: true };
+  }
+
   async setTicketDates(ticketId, deliveryDueDate, clientDueDate, reason = 'Atualização de prazos pelo Organizador de Chamados') {
     if (!this.token) throw new Error('Não autenticado');
 

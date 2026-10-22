@@ -2428,8 +2428,25 @@ async function openDemandDrawer(ticket) {
     updatePrioritySelectVisual(prioritySelect);
   }
 
-  const reviewerEl = document.getElementById('drawerMetaReviewer');
-  if (reviewerEl) reviewerEl.textContent = ticket.reviewer?.name || '-';
+  const reviewerSelect = document.getElementById('drawerEditReviewer');
+  if (reviewerSelect) {
+    const knownReviewers = window.appStore.getKnownDevelopers();
+    const currentRevId = ticket.reviewer?.id || ticket.reviewerId || '';
+    const currentRevName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+    
+    // Garantir que o validador atual do chamado esteja presente na lista se tiver ID
+    if (currentRevId && !knownReviewers.some(k => k.id === currentRevId)) {
+      knownReviewers.push({ id: currentRevId, name: currentRevName || 'Validador Atual' });
+    }
+    // Garantir que o usuário conectado esteja presente na lista
+    if (window.appStore.currentUser && !knownReviewers.some(k => k.id === window.appStore.currentUser.id)) {
+      knownReviewers.push({ id: window.appStore.currentUser.id, name: window.appStore.currentUser.name || 'Meu Usuário' });
+    }
+
+    reviewerSelect.innerHTML = '<option value="">Sem validador (Em branco)</option>' +
+      knownReviewers.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+    reviewerSelect.value = currentRevId;
+  }
 
   // Delivery & Client dates
   const deliveryDateInput = document.getElementById('drawerEditDeliveryDueDate');
@@ -2963,6 +2980,444 @@ function sanitizeMovideskId(raw) {
   return str.slice(0, 40);
 }
 
+function getStatusLabel(status) {
+  const s = (status || '').toLowerCase();
+  if (s.includes('queue') || s === 'open') return 'Na Fila (Aberto)';
+  if (s.includes('progress')) return 'Em Progresso';
+  if (s.includes('review')) return 'Em Revisão';
+  if (s.includes('waiting') || s.includes('requester')) return 'Aguardando Resposta do N2';
+  if (s.includes('done') || s.includes('close') || s.includes('finish') || s.includes('complet')) return 'Concluído';
+  if (s.includes('triage')) return 'Triagem';
+  if (s.includes('pause')) return 'Pausado';
+  return status || 'Pendente';
+}
+
+async function refreshDrawerActivity(ticketId) {
+  if (!ticketId) return;
+  try {
+    const details = await window.conciliadorAPI.fetchDemandDetails(ticketId);
+    if (selectedTicket && selectedTicket.id === ticketId) {
+      selectedTicket = { ...selectedTicket, ...details };
+      drawerCurrentComments = details.comments || [];
+      drawerCurrentEvents = (details.events || []).filter(e => e.kind !== 'comment');
+      renderDrawerActivityStream();
+    }
+  } catch (e) {
+    console.warn('Erro ao atualizar histórico da demanda:', e);
+  }
+}
+
+function promptJustification({
+  icon = '📝',
+  title = 'Justificativa da Alteração',
+  subtitle = '',
+  bannerText = 'Informe a justificativa desta modificação:',
+  suggestions = [],
+  placeholder = 'Escreva detalhadamente a justificativa...',
+  confirmText = 'Confirmar Alteração',
+  confirmClass = 'btn-primary',
+  defaultComment = true,
+  requireReason = true
+}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalJustificationPrompt');
+    if (!modal) {
+      const reason = prompt(`${title}\n${bannerText}`);
+      if (reason === null) return resolve({ confirmed: false });
+      return resolve({ confirmed: true, reason: reason.trim(), addComment: defaultComment });
+    }
+
+    const iconEl = document.getElementById('justificationModalIcon');
+    const titleEl = document.getElementById('justificationModalTitle');
+    const subtitleEl = document.getElementById('justificationModalSubtitle');
+    const bannerEl = document.getElementById('justificationModalBannerText');
+    const suggestionsSection = document.getElementById('justificationSuggestionsSection');
+    const chipsContainer = document.getElementById('justificationSuggestionsChips');
+    const textarea = document.getElementById('justificationReasonInput');
+    const checkbox = document.getElementById('justificationAddComment');
+    const confirmBtn = document.getElementById('btnJustificationConfirm');
+    const cancelBtn = document.getElementById('btnJustificationCancel');
+    const closeBtn = document.getElementById('btnJustificationClose');
+    const confirmTextEl = document.getElementById('justificationConfirmText');
+
+    if (iconEl) iconEl.textContent = icon;
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) {
+      subtitleEl.textContent = subtitle || '';
+      subtitleEl.style.display = subtitle ? 'block' : 'none';
+    }
+    if (bannerEl) bannerEl.textContent = bannerText;
+    if (confirmTextEl) confirmTextEl.textContent = confirmText;
+    if (confirmBtn) {
+      confirmBtn.className = `btn-primary ${confirmClass}`;
+    }
+    if (textarea) {
+      textarea.value = '';
+      textarea.placeholder = placeholder;
+    }
+    if (checkbox) {
+      checkbox.checked = defaultComment;
+    }
+
+    // Render suggestion chips
+    if (chipsContainer) {
+      chipsContainer.innerHTML = '';
+      if (suggestions && suggestions.length > 0) {
+        if (suggestionsSection) suggestionsSection.style.display = 'block';
+        suggestions.forEach(s => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'justification-chip';
+          chip.textContent = s;
+          chip.addEventListener('click', () => {
+            if (textarea) {
+              textarea.value = s;
+              textarea.focus();
+            }
+          });
+          chipsContainer.appendChild(chip);
+        });
+      } else if (suggestionsSection) {
+        suggestionsSection.style.display = 'none';
+      }
+    }
+
+    let isCleanedUp = false;
+    const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      modal.style.display = 'none';
+      modal.classList.remove('open');
+      confirmBtn?.removeEventListener('click', onConfirm);
+      cancelBtn?.removeEventListener('click', onCancel);
+      closeBtn?.removeEventListener('click', onCancel);
+      textarea?.removeEventListener('keydown', onTextareaKeyDown);
+      document.removeEventListener('keydown', onDocumentKeyDown);
+    };
+
+    const onConfirm = () => {
+      const reasonVal = textarea ? textarea.value.trim() : '';
+      if (requireReason && !reasonVal) {
+        showAppAlert('Por favor, digite ou selecione uma sugestão de justificativa para prosseguir.', 'Justificativa Obrigatória', 'warning');
+        textarea?.focus();
+        return;
+      }
+      const shouldComment = checkbox ? checkbox.checked : false;
+      cleanup();
+      resolve({ confirmed: true, reason: reasonVal, addComment: shouldComment });
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve({ confirmed: false });
+    };
+
+    const onTextareaKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        onConfirm();
+      }
+    };
+
+    const onDocumentKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    confirmBtn?.addEventListener('click', onConfirm);
+    cancelBtn?.addEventListener('click', onCancel);
+    closeBtn?.addEventListener('click', onCancel);
+    textarea?.addEventListener('keydown', onTextareaKeyDown);
+    document.addEventListener('keydown', onDocumentKeyDown);
+
+    modal.style.display = 'flex';
+    modal.classList.add('open');
+    setTimeout(() => { textarea?.focus(); }, 100);
+  });
+}
+
+// Ação de Fluxo: Finalizar Chamado
+async function handleFinalizeTicket() {
+  if (!selectedTicket) return;
+
+  const result = await promptJustification({
+    icon: '✅',
+    title: 'Finalizar Chamado',
+    subtitle: `Demanda #${selectedTicket.movideskTicketId || selectedTicket.id.slice(0, 8)} - ${selectedTicket.title}`,
+    bannerText: 'Você está concluindo esta demanda. O status será alterado para "Concluído".',
+    suggestions: [
+      'Homologado e validado em produção com sucesso',
+      'Demanda aprovada sem pendências',
+      'Ajustes validados e conferidos com o cliente',
+      'Finalizado conforme especificação técnica',
+      'Concluído após testes integrados'
+    ],
+    placeholder: 'Ex: Homologado com sucesso na base de testes e liberado para produção...',
+    confirmText: 'Finalizar Chamado',
+    confirmClass: 'btn-confirm-finalize',
+    defaultComment: true,
+    requireReason: true
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Finalizando demanda...';
+  }
+
+  try {
+    // 1. Alterar status na API
+    await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, 'closed', reason);
+
+    // 2. Adicionar comentário na linha do tempo se marcado
+    if (result.addComment) {
+      try {
+        const commentText = `✅ **[CHAMADO FINALIZADO]**\n${reason}`;
+        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de finalização:', cErr);
+      }
+    }
+
+    // 3. Atualizar localmente
+    selectedTicket.status = 'closed';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect) statusSelect.value = 'closed';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'closed';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    // Atualizar badges do drawer
+    const badgesBox = document.getElementById('drawerBadges');
+    if (badgesBox) {
+      badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)}`;
+    }
+
+    if (statusText) {
+      statusText.style.color = '#10b981';
+      statusText.textContent = '✅ Demanda finalizada com sucesso!';
+      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+    }
+
+    renderDemands();
+    await refreshDrawerActivity(selectedTicket.id);
+    showAppAlert('Demanda finalizada com sucesso!', 'Concluído', 'success');
+  } catch (err) {
+    if (statusText) statusText.textContent = '';
+    showAppAlert('Erro ao finalizar chamado: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Devolver para o Desenvolvedor
+async function handleReturnTicketToDev() {
+  if (!selectedTicket) return;
+
+  const devName = selectedTicket.assignedTo?.name || 'Desenvolvedor';
+  const result = await promptJustification({
+    icon: '↩️',
+    title: 'Devolver para o Desenvolvedor',
+    subtitle: `Responsável atual: ${devName} | #${selectedTicket.movideskTicketId || selectedTicket.id.slice(0, 8)}`,
+    bannerText: 'O status do chamado voltará para "Em Progresso" para que o desenvolvedor realize as correções necessárias.',
+    suggestions: [
+      'Inconsistência encontrada durante os testes de homologação',
+      'Necessário ajustar regras de layout e campos obrigatórios',
+      'Faltam arquivos de teste ou retorno do cliente',
+      'Regra de negócio não atende à especificação',
+      'Erro retornado durante a importação',
+      'Ajustar mapeamento de colunas'
+    ],
+    placeholder: 'Descreva os erros encontrados ou o que precisa ser corrigido pelo desenvolvedor...',
+    confirmText: 'Devolver p/ Desenvolvedor',
+    confirmClass: 'btn-confirm-return',
+    defaultComment: true,
+    requireReason: true
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Devolvendo demanda para o desenvolvedor...';
+  }
+
+  try {
+    // 1. Alterar status na API para in_progress
+    await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, 'in_progress', reason);
+
+    // 2. Adicionar comentário na linha do tempo se marcado
+    if (result.addComment) {
+      try {
+        const commentText = `↩️ **[DEVOLVIDO PARA O DESENVOLVEDOR]**\n${reason}`;
+        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de devolução:', cErr);
+      }
+    }
+
+    // 3. Atualizar localmente
+    selectedTicket.status = 'in_progress';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect) statusSelect.value = 'in_progress';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'in_progress';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    // Atualizar badges do drawer
+    const badgesBox = document.getElementById('drawerBadges');
+    if (badgesBox) {
+      badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml('in_progress')} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)}`;
+    }
+
+    if (statusText) {
+      statusText.style.color = '#10b981';
+      statusText.textContent = '↩️ Demanda devolvida para o desenvolvedor!';
+      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+    }
+
+    renderDemands();
+    await refreshDrawerActivity(selectedTicket.id);
+    showAppAlert('Demanda devolvida para o desenvolvedor com sucesso!', 'Em Progresso', 'info');
+  } catch (err) {
+    if (statusText) statusText.textContent = '';
+    showAppAlert('Erro ao devolver chamado: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Alterar Validador (inclusive deixar em branco)
+async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
+  if (!selectedTicket) return;
+
+  const currentReviewerId = selectedTicket.reviewer?.id || selectedTicket.reviewerId || '';
+  const currentReviewerName = selectedTicket.reviewer?.name || selectedTicket.reviewerName || 'Nenhum';
+
+  // Se o validador for o mesmo que já está salvo, não precisa fazer nada
+  if ((targetReviewerId || '') === (currentReviewerId || '')) return;
+
+  const isLeavingBlank = !targetReviewerId;
+  const newName = isLeavingBlank ? 'Sem Validador (Em branco)' : (targetReviewerName || 'Novo Validador');
+
+  const result = await promptJustification({
+    icon: isLeavingBlank ? '👤' : '⚖️',
+    title: isLeavingBlank ? 'Remover Validador (Deixar em Branco)' : 'Alterar Validador do Chamado',
+    subtitle: `De: ${currentReviewerName} ➔ Para: ${newName}`,
+    bannerText: isLeavingBlank 
+      ? 'O validador será removido deste chamado, retornando-o para a fila sem validador atribuído.'
+      : `O chamado será atribuído para o validador "${newName}".`,
+    suggestions: isLeavingBlank ? [
+      'Devolvendo chamado para a fila geral sem validador',
+      'Não poderei prosseguir com a validação no momento',
+      'Validação cancelada / reaberta para outro membro da equipe',
+      'Retirando atribuição de validador para redistribuição'
+    ] : [
+      'Assumindo validação do chamado',
+      'Reatribuição de validação conforme escala de equipe',
+      'Encaminhado para validação técnica especializada',
+      'Redirecionado para novo validador'
+    ],
+    placeholder: isLeavingBlank 
+      ? 'Ex: Removendo validação para que outro membro possa validar...'
+      : 'Ex: Assumindo este chamado para homologação dos testes...',
+    confirmText: isLeavingBlank ? 'Deixar em Branco' : 'Salvar Validador',
+    confirmClass: isLeavingBlank ? 'btn-confirm-neutral' : 'btn-confirm-validator',
+    defaultComment: true,
+    requireReason: false
+  });
+
+  const reviewerSelect = document.getElementById('drawerEditReviewer');
+
+  if (!result.confirmed) {
+    // Reverter o select para o valor anterior
+    if (reviewerSelect) {
+      reviewerSelect.value = currentReviewerId;
+    }
+    return;
+  }
+
+  const reason = result.reason || (isLeavingBlank ? 'Validador removido (deixado em branco)' : `Validador alterado para ${newName}`);
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = isLeavingBlank ? 'Removendo validador...' : 'Atribuindo validador...';
+  }
+
+  try {
+    // 1. Chamar assignReviewer na API
+    await window.conciliadorAPI.assignReviewer(selectedTicket.id, targetReviewerId || null, reason);
+
+    // 2. Adicionar comentário na linha do tempo se marcado
+    if (result.addComment) {
+      try {
+        const commentText = isLeavingBlank
+          ? `👤 **[VALIDADOR REMOVIDO]**\nO validador foi removido deste chamado (deixado em branco).\n*Justificativa:* ${reason}`
+          : `⚖️ **[VALIDADOR ATRIBUÍDO]**\nValidador definido: **${newName}**\n*Justificativa:* ${reason}`;
+        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de validador:', cErr);
+      }
+    }
+
+    // 3. Atualizar estado local
+    if (isLeavingBlank) {
+      selectedTicket.reviewer = null;
+      selectedTicket.reviewerId = null;
+      selectedTicket.reviewerName = null;
+    } else {
+      selectedTicket.reviewer = { id: targetReviewerId, name: newName };
+      selectedTicket.reviewerId = targetReviewerId;
+      selectedTicket.reviewerName = newName;
+    }
+
+    if (reviewerSelect) {
+      reviewerSelect.value = targetReviewerId || '';
+    }
+
+    const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].reviewer = selectedTicket.reviewer;
+      window.appStore.demands[idx].reviewerId = selectedTicket.reviewerId;
+      window.appStore.demands[idx].reviewerName = selectedTicket.reviewerName;
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (statusText) {
+      statusText.style.color = '#10b981';
+      statusText.textContent = isLeavingBlank ? '👤 Validador removido (em branco)!' : `⚖️ Validador definido: ${newName}`;
+      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+    }
+
+    renderDemands();
+    await refreshDrawerActivity(selectedTicket.id);
+    showAppAlert(
+      isLeavingBlank ? 'Validador removido (deixado em branco)!' : `Validador alterado para "${newName}"!`,
+      'Validador Atualizado',
+      'success'
+    );
+  } catch (err) {
+    if (statusText) statusText.textContent = '';
+    if (reviewerSelect) reviewerSelect.value = currentReviewerId;
+    showAppAlert('Erro ao alterar validador: ' + err.message, 'Erro', 'error');
+  }
+}
+
 async function saveDrawerTicketChanges() {
   if (!selectedTicket) return;
 
@@ -2986,6 +3441,52 @@ async function saveDrawerTicketChanges() {
   const newLayoutId = document.getElementById('drawerEditLayoutId')?.value || null;
   const ticketTypeId = document.getElementById('drawerEditType')?.value || null;
   const productId = document.getElementById('drawerEditProduct')?.value || null;
+
+  // Se o status foi alterado manualmente pelo select, pedir justificativa
+  let statusJustification = 'Alteração de status pelo Organizador de Chamados';
+  let statusAddComment = true;
+  if (newStatus && newStatus !== selectedTicket.status) {
+    const fromLabel = getStatusLabel(selectedTicket.status);
+    const toLabel = getStatusLabel(newStatus);
+    const isClosing = newStatus === 'closed';
+    const isReturning = newStatus === 'in_progress';
+
+    const justResult = await promptJustification({
+      icon: isClosing ? '✅' : (isReturning ? '↩️' : '🔄'),
+      title: isClosing ? 'Finalizar Demanda' : (isReturning ? 'Devolver / Em Progresso' : 'Alterar Situação do Chamado'),
+      subtitle: `De: ${fromLabel} ➔ Para: ${toLabel}`,
+      bannerText: `Você está alterando a situação desta demanda para "${toLabel}".`,
+      suggestions: isClosing ? [
+        'Homologado e validado em produção com sucesso',
+        'Demanda aprovada sem pendências',
+        'Ajustes validados e conferidos com o cliente',
+        'Finalizado conforme solicitado'
+      ] : (isReturning ? [
+        'Inconsistência encontrada durante testes de homologação',
+        'Necessário ajustar regras de layout e campos',
+        'Faltam arquivos de teste ou retorno do cliente',
+        'Ajustar mapeamento de colunas'
+      ] : [
+        `Situação alterada de ${fromLabel} para ${toLabel}`,
+        'Atualização de status do chamado',
+        'Ajuste de fila e situação'
+      ]),
+      placeholder: 'Descreva a justificativa desta alteração de situação...',
+      confirmText: 'Confirmar e Salvar',
+      confirmClass: isClosing ? 'btn-confirm-finalize' : (isReturning ? 'btn-confirm-return' : 'btn-primary'),
+      defaultComment: true,
+      requireReason: false
+    });
+
+    if (!justResult.confirmed) {
+      const stSelect = document.getElementById('drawerEditStatus');
+      if (stSelect) stSelect.value = selectedTicket.status;
+      return;
+    }
+
+    statusJustification = justResult.reason || `Situação alterada de ${fromLabel} para ${toLabel}`;
+    statusAddComment = justResult.addComment;
+  }
 
   const deliveryDueInput = document.getElementById('drawerEditDeliveryDueDate')?.value.trim();
   const clientDueInput = document.getElementById('drawerEditClientDueDate')?.value.trim();
@@ -3037,7 +3538,12 @@ async function saveDrawerTicketChanges() {
     // 1. Se o status foi alterado, chamar o endpoint de status dedicado
     if (newStatus && newStatus !== selectedTicket.status) {
       try {
-        await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, newStatus);
+        await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, newStatus, statusJustification);
+        if (statusAddComment && statusJustification) {
+          try {
+            await window.conciliadorAPI.addComment(selectedTicket.id, `🔄 **[ALTERAÇÃO DE SITUAÇÃO]**\nSituação: **${getStatusLabel(newStatus)}**\n*Justificativa:* ${statusJustification}`);
+          } catch (cErr) {}
+        }
       } catch (statusErr) {
         console.warn('Erro ao alterar status:', statusErr);
         throw new Error('Falha ao alterar status da demanda: ' + statusErr.message);
@@ -3082,6 +3588,27 @@ async function saveDrawerTicketChanges() {
       }
     }
 
+    // 5. Se o validador foi alterado no select do drawer
+    const reviewerSelect = document.getElementById('drawerEditReviewer');
+    const newReviewerId = reviewerSelect ? (reviewerSelect.value || null) : (selectedTicket.reviewerId || null);
+    const currentReviewerId = selectedTicket.reviewer?.id || selectedTicket.reviewerId || null;
+    let newReviewerObj = selectedTicket.reviewer || null;
+
+    if (newReviewerId !== currentReviewerId) {
+      try {
+        await window.conciliadorAPI.assignReviewer(selectedTicket.id, newReviewerId, 'Alteração de validador pelo Organizador de Chamados');
+        if (newReviewerId) {
+          const opt = reviewerSelect ? reviewerSelect.selectedOptions[0] : null;
+          const revName = opt ? opt.text : 'Validador';
+          newReviewerObj = { id: newReviewerId, name: revName };
+        } else {
+          newReviewerObj = null;
+        }
+      } catch (revErr) {
+        console.warn('Erro ao atualizar validador:', revErr);
+      }
+    }
+
     // 5. Atualizar dados gerais e descritivos no PATCH do ticket
     const updated = await window.conciliadorAPI.updateTicket(selectedTicket.id, payload);
 
@@ -3112,6 +3639,9 @@ async function saveDrawerTicketChanges() {
         const prodObj = (window.appStore.products || []).find(p => p.id === productId);
         if (prodObj) merged.product = prodObj;
       }
+      merged.reviewer = newReviewerObj;
+      merged.reviewerId = newReviewerId;
+      merged.reviewerName = newReviewerObj ? newReviewerObj.name : null;
       window.appStore.demands[idx] = merged;
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
@@ -3135,6 +3665,9 @@ async function saveDrawerTicketChanges() {
     } else {
       selectedTicket.assignedTo = null;
     }
+    selectedTicket.reviewer = newReviewerObj;
+    selectedTicket.reviewerId = newReviewerId;
+    selectedTicket.reviewerName = newReviewerObj ? newReviewerObj.name : null;
 
     // Atualizar cabeçalho e badges do painel lateral
     document.getElementById('drawerDemandTitle').textContent = title;
@@ -5568,6 +6101,32 @@ function setupEventListeners() {
   // Drawer Save Actions
   document.getElementById('btnDrawerSaveTicket')?.addEventListener('click', saveDrawerTicketChanges);
   document.getElementById('btnDrawerSaveTicketBottom')?.addEventListener('click', saveDrawerTicketChanges);
+
+  // Workflow Actions (Finalizar e Devolver p/ Desenvolvedor)
+  document.getElementById('btnDrawerFinalizeTicket')?.addEventListener('click', handleFinalizeTicket);
+  document.getElementById('btnQuickFinalize')?.addEventListener('click', handleFinalizeTicket);
+  document.getElementById('btnDrawerReturnToDev')?.addEventListener('click', handleReturnTicketToDev);
+  document.getElementById('btnQuickReturnDev')?.addEventListener('click', handleReturnTicketToDev);
+
+  // Reviewer / Validador Actions
+  document.getElementById('btnAssignReviewerMe')?.addEventListener('click', () => {
+    const user = window.appStore.currentUser;
+    if (!user || !user.id) {
+      showAppAlert('Você precisa estar autenticado no sistema para se atribuir como validador.', 'Autenticação Necessária', 'warning');
+      return;
+    }
+    changeReviewerWorkflow(user.id, user.name);
+  });
+
+  document.getElementById('btnClearDrawerReviewer')?.addEventListener('click', () => {
+    changeReviewerWorkflow('', '');
+  });
+
+  document.getElementById('drawerEditReviewer')?.addEventListener('change', (e) => {
+    const selectedOpt = e.target.selectedOptions[0];
+    const newName = selectedOpt ? selectedOpt.text : '';
+    changeReviewerWorkflow(e.target.value, newName);
+  });
 
   // Drawer Size Toggle
   document.getElementById('btnToggleDrawerExpand')?.addEventListener('click', toggleDrawerExpand);

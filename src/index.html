@@ -384,8 +384,20 @@
         </div>
       </div>
 
-      <!-- 2. BOTÕES DE AÇÃO DE MOVIDESK, IMPORTER E DRIVE ABAIXO FIXOS -->
+      <!-- 2. BOTÕES DE AÇÃO DE FLUXO, MOVIDESK, IMPORTER E DRIVE ABAIXO FIXOS -->
       <div class="drawer-actions-fixed-bar">
+        <!-- Workflow Actions: Finalizar e Devolver -->
+        <div class="drawer-actions-fixed-group workflow-actions">
+          <button type="button" class="btn-action-fixed btn-action-finalize" id="btnDrawerFinalizeTicket" title="Finalizar e concluir chamado">
+            <span class="workflow-btn-icon">✅</span> <span>Finalizar Chamado</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-return-dev" id="btnDrawerReturnToDev" title="Devolver chamado para o desenvolvedor com justificativa">
+            <span class="workflow-btn-icon">↩️</span> <span>Devolver para o Desenvolvedor</span>
+          </button>
+        </div>
+
+        <div class="drawer-actions-fixed-separator"></div>
+
         <div class="drawer-actions-fixed-group main-actions">
           <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
             <span>🎫</span> <span>Abrir no Movidesk</span>
@@ -502,6 +514,14 @@
           <div class="drawer-prop-card">
             <div class="drawer-prop-card-header">
               <span class="drawer-prop-card-title">📌 Situação & Atribuição</span>
+              <div class="drawer-prop-card-quick-actions">
+                <button type="button" class="btn-quick-workflow btn-quick-finalize" id="btnQuickFinalize" title="Finalizar e concluir chamado">
+                  <span>✅</span> Finalizar
+                </button>
+                <button type="button" class="btn-quick-workflow btn-quick-return" id="btnQuickReturnDev" title="Devolver chamado para o desenvolvedor">
+                  <span>↩️</span> Devolver p/ Dev
+                </button>
+              </div>
             </div>
             <div class="drawer-field-row">
               <label class="drawer-field-label">Situação do Chamado</label>
@@ -531,8 +551,21 @@
               </select>
             </div>
             <div class="drawer-field-row">
-              <label class="drawer-field-label">Validador</label>
-              <div class="meta-value" id="drawerMetaReviewer" style="padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 12.5px;">-</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 5px;">
+                <label class="drawer-field-label" style="margin-bottom: 0;">Validador</label>
+                <div class="reviewer-badge-actions">
+                  <button type="button" class="btn-reviewer-pill btn-reviewer-me" id="btnAssignReviewerMe" title="Atribuir este chamado a mim como validador">
+                    <span>👤</span> Atribuir a Mim
+                  </button>
+                  <button type="button" class="btn-reviewer-pill btn-reviewer-clear" id="btnClearDrawerReviewer" title="Remover validador e deixar em branco">
+                    <span>✕</span> Deixar em Branco
+                  </button>
+                </div>
+              </div>
+              <select class="form-select" id="drawerEditReviewer">
+                <option value="">Sem validador (Em branco)</option>
+                <!-- Dynamically populated -->
+              </select>
             </div>
           </div>
 
@@ -1561,6 +1594,71 @@
       <button class="btn-primary" id="btnLoginSubmit" style="width: 100%; justify-content: center; height: 42px;">
         Conectar e Carregar Demandas
       </button>
+    </div>
+  </div>
+
+  <!-- Modal de Justificativa de Modificações (Finalizar, Devolver, Validador, etc.) -->
+  <div class="modal-overlay" id="modalJustificationPrompt" style="display: none; z-index: 10005; backdrop-filter: blur(8px);">
+    <div class="justification-modal-card">
+      <div class="justification-modal-header">
+        <div class="justification-icon-wrapper" id="justificationModalIconWrapper">
+          <span id="justificationModalIcon">📝</span>
+        </div>
+        <div class="justification-titles">
+          <h3 class="justification-title" id="justificationModalTitle">Justificativa da Modificação</h3>
+          <p class="justification-subtitle" id="justificationModalSubtitle">Chamado #...</p>
+        </div>
+        <button type="button" class="icon-btn-ghost justification-close-btn" id="btnJustificationClose" title="Fechar">✕</button>
+      </div>
+
+      <div class="justification-modal-body">
+        <div class="justification-info-banner" id="justificationModalBanner">
+          <span class="justification-banner-icon">ℹ️</span>
+          <span id="justificationModalBannerText">Informe o motivo desta alteração para registro no histórico.</span>
+        </div>
+
+        <!-- Sugestões Rápidas (Chips Clicáveis) -->
+        <div class="justification-suggestions-section" id="justificationSuggestionsSection">
+          <div class="justification-section-header">
+            <span class="justification-field-label">💡 Sugestões rápidas (clique para preencher):</span>
+          </div>
+          <div class="justification-chips-container" id="justificationSuggestionsChips">
+            <!-- Chips injetados dinamicamente via JS -->
+          </div>
+        </div>
+
+        <!-- Campo de Texto da Justificativa -->
+        <div class="form-group justification-input-group">
+          <label class="form-label justification-label-with-hint" for="justificationReasonInput">
+            <span>Descrição da Justificativa</span>
+            <span class="justification-hint">Pressione Ctrl+Enter para confirmar</span>
+          </label>
+          <textarea 
+            id="justificationReasonInput" 
+            class="justification-textarea" 
+            placeholder="Digite aqui o motivo ou justificativa detalhada desta alteração..."
+          ></textarea>
+        </div>
+
+        <!-- Opção de Publicar como Comentário na Linha do Tempo -->
+        <div class="justification-checkbox-card">
+          <label class="justification-checkbox-label" for="justificationAddComment">
+            <input type="checkbox" id="justificationAddComment" checked>
+            <div class="justification-checkbox-text">
+              <span class="justification-checkbox-title">💬 Publicar na linha do tempo / Diálogo</span>
+              <span class="justification-checkbox-desc">Adiciona esta justificativa como comentário público no chamado para que toda a equipe acompanhe</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="justification-modal-footer">
+        <button type="button" class="btn-secondary" id="btnJustificationCancel">Cancelar</button>
+        <button type="button" class="btn-primary" id="btnJustificationConfirm">
+          <span id="justificationConfirmIcon">✓</span>
+          <span id="justificationConfirmText">Confirmar Alteração</span>
+        </button>
+      </div>
     </div>
   </div>
 

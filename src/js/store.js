@@ -451,7 +451,14 @@ class AppStore {
       if (d.requestedBy && d.requestedBy.id && d.requestedBy.name) {
         devsMap.set(d.requestedBy.id, { id: d.requestedBy.id, name: d.requestedBy.name });
       }
+      if (d.reviewer && d.reviewer.id && d.reviewer.name) {
+        devsMap.set(d.reviewer.id, { id: d.reviewer.id, name: d.reviewer.name });
+      }
     });
+
+    if (this.currentUser && this.currentUser.id && this.currentUser.name) {
+      devsMap.set(this.currentUser.id, { id: this.currentUser.id, name: this.currentUser.name });
+    }
 
     return Array.from(devsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
