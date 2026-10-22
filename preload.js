@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDriveStatus: () => ipcRenderer.invoke('drive-get-status'),
   getDriveConfig: () => ipcRenderer.invoke('drive-get-config'),
   saveDriveConfig: (config) => ipcRenderer.invoke('drive-save-config', config),
+  disconnectDrive: () => ipcRenderer.invoke('drive-disconnect'),
+  clearAllCredentials: () => ipcRenderer.invoke('clear-all-credentials'),
   selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
   checkDriveLayout: (data) => ipcRenderer.invoke('drive-check-layout', data),
   uploadDriveLayout: (data) => ipcRenderer.invoke('drive-upload-layout', data),

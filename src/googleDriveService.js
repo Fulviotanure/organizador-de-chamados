@@ -110,11 +110,16 @@ class GoogleDriveService {
     return null;
   }
 
+  getDefaultMirrorPath() {
+    if (this.customMirrorDir) return this.customMirrorDir;
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    return path.join(home, 'Documents', 'OrganizadorChamados', 'Backup_Drive');
+  }
+
   getCredentials() {
     const candidatePaths = [
-      'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\credentials.json',
-      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'credentials.json'),
       this.userDataPath ? path.join(this.userDataPath, 'credentials.json') : null,
+      path.join(process.env.APPDATA || '', 'OrganizadorChamados', 'credentials.json'),
       path.join(__dirname, '..', 'credentials.json')
     ].filter(Boolean);
 
@@ -149,9 +154,8 @@ class GoogleDriveService {
     }
 
     const candidatePaths = [
-      'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\token.json',
-      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'token.json'),
       this.userDataPath ? path.join(this.userDataPath, 'token.json') : null,
+      path.join(process.env.APPDATA || '', 'OrganizadorChamados', 'token.json'),
       path.join(__dirname, '..', 'token.json')
     ].filter(Boolean);
 
@@ -226,6 +230,18 @@ class GoogleDriveService {
 
   async getStatus() {
     const stored = this.getStoredDriveConfig();
+    const hasConfiguredCreds = !!(stored && (stored.email || stored.password));
+    let refreshToken = null;
+    try {
+      refreshToken = this.getRefreshToken();
+    } catch (e) {
+      refreshToken = null;
+    }
+
+    if (!refreshToken && !hasConfiguredCreds) {
+      return { connected: false, error: 'Google Drive não configurado' };
+    }
+
     try {
       const token = await this.getAccessToken();
       const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
@@ -508,7 +524,7 @@ class GoogleDriveService {
     }
 
     // Check mirror path on local disk
-    const baseDir = data.customMirrorDir || this.customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    const baseDir = data.customMirrorDir || this.customMirrorDir || this.getDefaultMirrorPath();
     let mirrorTargetDir = path.join(baseDir, catData.folder_name);
     if (catData.has_entity_subfolder && stdNames.folderEntityName) {
       mirrorTargetDir = path.join(mirrorTargetDir, stdNames.folderEntityName);
@@ -553,7 +569,7 @@ class GoogleDriveService {
 
   saveLocalMirror({ categoriaFolderName, folderEntityName, folderLayoutName, pdfBuffer, pdfFilename, imageBuffer, imageFilename, images = [], customMirrorDir, senha }) {
     try {
-      const baseDir = customMirrorDir || this.customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+      const baseDir = customMirrorDir || this.customMirrorDir || this.getDefaultMirrorPath();
       let targetDir = path.join(baseDir, categoriaFolderName);
       if (folderEntityName) {
         targetDir = path.join(targetDir, folderEntityName);

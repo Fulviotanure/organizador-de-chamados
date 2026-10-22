@@ -685,13 +685,13 @@ async function openUserSettingsModal(promptPasswordIfMissing = false) {
         cfg = {
           email: await window.electronAPI.loadStorage('googleDriveEmail', ''),
           password: await window.electronAPI.loadStorage('googleDrivePassword', ''),
-          mirrorPath: await window.electronAPI.loadStorage('googleDriveMirrorPath', 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local')
+          mirrorPath: await window.electronAPI.loadStorage('googleDriveMirrorPath', '')
         };
       }
       if (cfg) {
-        if (inputDriveEmail && cfg.email) inputDriveEmail.value = cfg.email;
-        if (inputDrivePassword && cfg.password) inputDrivePassword.value = cfg.password;
-        if (inputMirrorPath && cfg.mirrorPath) inputMirrorPath.value = cfg.mirrorPath;
+        if (inputDriveEmail) inputDriveEmail.value = cfg.email || '';
+        if (inputDrivePassword) inputDrivePassword.value = cfg.password || '';
+        if (inputMirrorPath) inputMirrorPath.value = cfg.mirrorPath || '';
       }
 
       if (window.electronAPI.getDriveStatus) {
@@ -700,18 +700,32 @@ async function openUserSettingsModal(promptPasswordIfMissing = false) {
           if (driveStatusDot) driveStatusDot.textContent = '🟢';
           const emailDisplay = driveStatus.user?.emailAddress || cfg?.email || 'Conectado';
           if (driveEmail) driveEmail.textContent = `${driveStatus.user?.displayName || 'Google Drive'} (${emailDisplay})`;
-          if (driveStatusPill) driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+          if (driveStatusPill) {
+            driveStatusPill.style.background = 'rgba(35, 134, 54, 0.15)';
+            driveStatusPill.style.color = '#3fb950';
+            driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+          }
         } else if (cfg?.email) {
-          if (driveStatusDot) driveStatusDot.textContent = '🟢';
-          if (driveEmail) driveEmail.textContent = `Configurado: ${cfg.email}`;
-        } else {
           if (driveStatusDot) driveStatusDot.textContent = '🟡';
+          if (driveEmail) driveEmail.textContent = `Configurado: ${cfg.email}`;
+          if (driveStatusPill) {
+            driveStatusPill.style.background = 'rgba(210, 153, 34, 0.15)';
+            driveStatusPill.style.color = '#e3b341';
+            driveStatusPill.style.borderColor = 'rgba(210, 153, 34, 0.4)';
+          }
+        } else {
+          if (driveStatusDot) driveStatusDot.textContent = '⚪';
           if (driveEmail) driveEmail.textContent = 'Google Drive: Não conectado';
+          if (driveStatusPill) {
+            driveStatusPill.style.background = 'rgba(110, 118, 129, 0.15)';
+            driveStatusPill.style.color = '#8b949e';
+            driveStatusPill.style.borderColor = 'rgba(110, 118, 129, 0.3)';
+          }
         }
       }
     } catch (e) {
-      if (driveStatusDot) driveStatusDot.textContent = '🟡';
-      if (driveEmail) driveEmail.textContent = 'Google Drive: Offline';
+      if (driveStatusDot) driveStatusDot.textContent = '⚪';
+      if (driveEmail) driveEmail.textContent = 'Google Drive: Desconectado';
     }
   }
 
@@ -846,7 +860,7 @@ function setupUserSettingsHandlers() {
   // Alterar pasta de backup do espelho local via seletor nativo
   document.getElementById('btnSelectSettingsMirrorFolder')?.addEventListener('click', async () => {
     const inputPath = document.getElementById('settingsLocalMirrorPath');
-    const current = inputPath?.value || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    const current = inputPath?.value || '';
     if (window.electronAPI && window.electronAPI.selectDirectory) {
       const res = await window.electronAPI.selectDirectory(current);
       if (res && !res.canceled && res.path) {
@@ -861,7 +875,7 @@ function setupUserSettingsHandlers() {
   document.getElementById('btnSaveDriveSettings')?.addEventListener('click', async () => {
     const email = document.getElementById('settingsDriveInputEmail')?.value.trim() || '';
     const password = document.getElementById('settingsDriveInputPassword')?.value.trim() || '';
-    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value.trim() || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value.trim() || '';
 
     try {
       if (window.electronAPI && window.electronAPI.saveDriveConfig) {
@@ -881,16 +895,58 @@ function setupUserSettingsHandlers() {
         const status = await window.electronAPI.getDriveStatus();
         const driveStatusDot = document.getElementById('settingsDriveStatusDot');
         const driveEmail = document.getElementById('settingsDriveEmail');
+        const driveStatusPill = document.getElementById('settingsDriveStatusPill');
         if (status?.connected) {
           if (driveStatusDot) driveStatusDot.textContent = '🟢';
           if (driveEmail) driveEmail.textContent = `${status.user?.displayName || 'Google Drive'} (${status.user?.emailAddress || email || 'Conectado'})`;
+          if (driveStatusPill) {
+            driveStatusPill.style.background = 'rgba(35, 134, 54, 0.15)';
+            driveStatusPill.style.color = '#3fb950';
+            driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+          }
         } else if (email) {
-          if (driveStatusDot) driveStatusDot.textContent = '🟢';
+          if (driveStatusDot) driveStatusDot.textContent = '🟡';
           if (driveEmail) driveEmail.textContent = `Configurado: ${email}`;
         }
       }
     } catch (err) {
       showAppError('Erro ao Salvar Configurações do Drive', err);
+    }
+  });
+
+  // Desconectar / Limpar credenciais do Google Drive
+  document.getElementById('btnDisconnectDrive')?.addEventListener('click', async () => {
+    const ok = await showAppConfirm('Deseja realmente desconectar e limpar as credenciais do Google Drive deste computador?', 'Desconectar Google Drive', { isDanger: true, confirmText: 'Desconectar' });
+    if (ok) {
+      if (window.electronAPI && window.electronAPI.disconnectDrive) {
+        await window.electronAPI.disconnectDrive();
+      } else if (window.electronAPI && window.electronAPI.saveStorage) {
+        await window.electronAPI.saveStorage('googleDriveEmail', '');
+        await window.electronAPI.saveStorage('googleDrivePassword', '');
+        await window.electronAPI.saveStorage('googleDriveMirrorPath', '');
+      }
+
+      const emailInput = document.getElementById('settingsDriveInputEmail');
+      const pwdInput = document.getElementById('settingsDriveInputPassword');
+      const mirrorInput = document.getElementById('settingsLocalMirrorPath');
+      if (emailInput) emailInput.value = '';
+      if (pwdInput) pwdInput.value = '';
+      if (mirrorInput) mirrorInput.value = '';
+
+      const driveStatusDot = document.getElementById('settingsDriveStatusDot');
+      const driveEmail = document.getElementById('settingsDriveEmail');
+      const driveStatusPill = document.getElementById('settingsDriveStatusPill');
+
+      if (driveStatusDot) driveStatusDot.textContent = '⚪';
+      if (driveEmail) driveEmail.textContent = 'Google Drive: Não conectado';
+      if (driveStatusPill) {
+        driveStatusPill.style.background = 'rgba(110, 118, 129, 0.15)';
+        driveStatusPill.style.color = '#8b949e';
+        driveStatusPill.style.borderColor = 'rgba(110, 118, 129, 0.3)';
+      }
+
+      await checkGoogleDriveStatus();
+      showAppAlert('Credenciais do Google Drive removidas com sucesso! O sistema está pronto para uma nova conexão.', 'Drive Desconectado', 'info');
     }
   });
 
@@ -932,9 +988,11 @@ function setupUserSettingsHandlers() {
 
   // Abrir espelho local
   document.getElementById('btnOpenSettingsMirrorFolder')?.addEventListener('click', () => {
-    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
-    if (window.electronAPI && window.electronAPI.openPath) {
+    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value || '';
+    if (mirrorPath && window.electronAPI && window.electronAPI.openPath) {
       window.electronAPI.openPath(mirrorPath);
+    } else {
+      showAppAlert('Nenhuma pasta de backup configurada ou pasta ainda não selecionada.', 'Pasta Não Definida', 'info');
     }
   });
 
@@ -5960,12 +6018,12 @@ async function checkGoogleDriveStatus() {
           pillEl.style.borderColor = 'rgba(46, 160, 67, 0.4)';
         }
       } else {
-        if (dotEl) dotEl.textContent = '🟡';
-        if (emailEl) emailEl.textContent = 'Drive não autenticado';
+        if (dotEl) dotEl.textContent = '⚪';
+        if (emailEl) emailEl.textContent = 'Drive não configurado';
         if (pillEl) {
-          pillEl.style.background = 'rgba(210, 153, 34, 0.15)';
-          pillEl.style.color = '#e3b341';
-          pillEl.style.borderColor = 'rgba(210, 153, 34, 0.4)';
+          pillEl.style.background = 'rgba(110, 118, 129, 0.15)';
+          pillEl.style.color = '#8b949e';
+          pillEl.style.borderColor = 'rgba(110, 118, 129, 0.3)';
         }
       }
     } else {
@@ -5973,8 +6031,8 @@ async function checkGoogleDriveStatus() {
       if (emailEl) emailEl.textContent = 'Disponível no Desktop';
     }
   } catch (err) {
-    if (dotEl) dotEl.textContent = '🔴';
-    if (emailEl) emailEl.textContent = 'Erro de conexão';
+    if (dotEl) dotEl.textContent = '⚪';
+    if (emailEl) emailEl.textContent = 'Drive não conectado';
   } finally {
     isGoogleDriveChecking = false;
   }
@@ -6159,15 +6217,15 @@ async function openAutoDriveModal(ticket) {
   // Update dynamic mirror notice path in modal
   const noticePathEl = document.getElementById('autoDriveMirrorNoticePath');
   if (noticePathEl) {
-    let currentMirror = 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    let currentMirror = '';
     if (window.electronAPI?.getDriveConfig) {
       const cfg = await window.electronAPI.getDriveConfig();
       if (cfg?.mirrorPath) currentMirror = cfg.mirrorPath;
     } else if (window.electronAPI?.loadStorage) {
-      currentMirror = (await window.electronAPI.loadStorage('googleDriveMirrorPath', currentMirror)) || currentMirror;
+      currentMirror = (await window.electronAPI.loadStorage('googleDriveMirrorPath', '')) || '';
     }
-    noticePathEl.textContent = currentMirror;
-    noticePathEl.title = currentMirror;
+    noticePathEl.textContent = currentMirror || 'Pasta padrão do sistema';
+    noticePathEl.title = currentMirror || 'Pasta padrão';
   }
 
   const parsed = parseDemandForAutoDrive(ticket);

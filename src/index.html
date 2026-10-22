@@ -1453,7 +1453,7 @@
           <div class="form-group" style="margin-bottom: 12px;">
             <label class="form-label" style="font-size: 11px; color: #8b949e;">PASTA DO ESPELHO LOCAL (BACKUP NO PC)</label>
             <div style="display: flex; gap: 8px;">
-              <input type="text" class="form-input" id="settingsLocalMirrorPath" placeholder="C:\caminho\para\pasta\de\backup" style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="C:\Users\fulvi\Desktop\PROJETOS\autodrive\espelho_local">
+              <input type="text" class="form-input" id="settingsLocalMirrorPath" placeholder="Ex: C:\MeusBackups\Espelho_Local" style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="">
               <button type="button" class="btn-secondary" id="btnSelectSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;" title="Escolher pasta no computador">
                 <span>📂</span> Alterar
               </button>
@@ -1467,10 +1467,15 @@
           </div>
 
           <!-- Ações do Drive -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
-            <button type="button" class="btn-secondary" id="btnTestDriveConnection" style="height: 32px; font-size: 11px; padding: 0 14px; gap: 6px;">
-              <span>🔄</span> Testar Conexão Drive
-            </button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary" id="btnTestDriveConnection" style="height: 32px; font-size: 11px; padding: 0 14px; gap: 6px;">
+                <span>🔄</span> Testar Conexão Drive
+              </button>
+              <button type="button" class="btn-secondary" id="btnDisconnectDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; color: #f87171; border-color: rgba(239, 68, 68, 0.35);" title="Desconectar e remover credenciais do Google Drive salvas neste computador">
+                <span>🚪</span> Limpar / Desconectar Drive
+              </button>
+            </div>
             <button type="button" class="btn-primary" id="btnSaveDriveSettings" style="height: 32px; font-size: 12px; padding: 0 16px; gap: 6px;">
               <span>💾</span> Salvar Configurações do Drive
             </button>

@@ -157,13 +157,74 @@ const driveService = new GoogleDriveService({
   configuredPassword: initialStorage.googleDrivePassword || null
 });
 
+function getDefaultMirrorPath() {
+  const documentsDir = app.getPath('documents');
+  return path.join(documentsDir, 'OrganizadorChamados', 'Backup_Drive');
+}
+
 ipcMain.handle('drive-get-config', () => {
   const store = loadJsonFile('storage.json', {});
   return {
     email: store.googleDriveEmail || '',
     password: store.googleDrivePassword || '',
-    mirrorPath: store.googleDriveMirrorPath || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local'
+    mirrorPath: store.googleDriveMirrorPath || getDefaultMirrorPath()
   };
+});
+
+ipcMain.handle('drive-disconnect', async () => {
+  try {
+    const store = loadJsonFile('storage.json', {});
+    delete store.googleDriveEmail;
+    delete store.googleDrivePassword;
+    delete store.googleDriveMirrorPath;
+    saveJsonFile('storage.json', store);
+
+    if (driveService) {
+      driveService.setDriveConfig({ email: '', password: '', mirrorPath: '' });
+      driveService.cachedAccessToken = null;
+      driveService.tokenExpiry = 0;
+    }
+
+    const userTokenPath = path.join(app.getPath('userData'), 'token.json');
+    if (fs.existsSync(userTokenPath)) {
+      try { fs.unlinkSync(userTokenPath); } catch (e) {}
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error in drive-disconnect:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('clear-all-credentials', async () => {
+  try {
+    const store = loadJsonFile('storage.json', {});
+    delete store.token;
+    delete store.currentUser;
+    delete store.savedCredentials;
+    delete store.googleDriveEmail;
+    delete store.googleDrivePassword;
+    delete store.cachedDemands;
+    delete store.lastSync;
+    saveJsonFile('storage.json', store);
+
+    if (driveService) {
+      driveService.setDriveConfig({ email: '', password: '', mirrorPath: '' });
+      driveService.cachedAccessToken = null;
+      driveService.tokenExpiry = 0;
+    }
+
+    const userTokenPath = path.join(app.getPath('userData'), 'token.json');
+    if (fs.existsSync(userTokenPath)) {
+      try { fs.unlinkSync(userTokenPath); } catch (e) {}
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error in clear-all-credentials:', err);
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('drive-save-config', async (event, config = {}) => {
@@ -263,7 +324,7 @@ ipcMain.handle('open-path', async (event, targetPath) => {
 // Launch AutoDrive Desktop with prefilled demand data (External Python fallback)
 ipcMain.handle('launch-autodrive', async (event, data) => {
   try {
-    const autodriveDir = data?.customPath || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive';
+    const autodriveDir = data?.customPath || path.join(app.getPath('documents'), 'AutoDrive');
     if (!fs.existsSync(autodriveDir)) {
       return { success: false, error: `Diretório do AutoDrive não encontrado em: ${autodriveDir}` };
     }
@@ -300,9 +361,12 @@ ipcMain.handle('launch-autodrive', async (event, data) => {
 
     // Find Python executable
     const knownPythonPaths = [
-      'C:\\Users\\fulvi\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python314', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
       'python.exe',
-      'python'
+      'python',
+      'py'
     ];
 
     let pythonExe = 'python';
@@ -344,6 +408,9 @@ function sendUpdaterStatus(payload) {
 if (autoUpdater) {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableDifferentialDownload = false;
+  autoUpdater.disableWebInstaller = false;
+  autoUpdater.logger = console;
   if (!app.isPackaged) {
     autoUpdater.forceDevUpdateConfig = true;
   }
