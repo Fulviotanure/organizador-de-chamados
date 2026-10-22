@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -149,7 +149,64 @@ ipcMain.handle('open-buffer-temp', async (event, { fileName, buffer }) => {
 
 // Google Drive & AutoDrive Native Integration
 const { GoogleDriveService } = require('./src/googleDriveService');
-const driveService = new GoogleDriveService();
+const initialStorage = loadJsonFile('storage.json', {});
+const driveService = new GoogleDriveService({
+  userDataPath: app.getPath('userData'),
+  customMirrorDir: initialStorage.googleDriveMirrorPath || null,
+  configuredEmail: initialStorage.googleDriveEmail || null,
+  configuredPassword: initialStorage.googleDrivePassword || null
+});
+
+ipcMain.handle('drive-get-config', () => {
+  const store = loadJsonFile('storage.json', {});
+  return {
+    email: store.googleDriveEmail || '',
+    password: store.googleDrivePassword || '',
+    mirrorPath: store.googleDriveMirrorPath || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local'
+  };
+});
+
+ipcMain.handle('drive-save-config', async (event, config = {}) => {
+  try {
+    const store = loadJsonFile('storage.json', {});
+    if (config.email !== undefined) store.googleDriveEmail = config.email;
+    if (config.password !== undefined) store.googleDrivePassword = config.password;
+    if (config.mirrorPath !== undefined) store.googleDriveMirrorPath = config.mirrorPath;
+    saveJsonFile('storage.json', store);
+
+    if (driveService) {
+      driveService.setDriveConfig({
+        email: config.email,
+        password: config.password,
+        mirrorPath: config.mirrorPath
+      });
+    }
+
+    const status = await driveService.getStatus();
+    return { success: true, status };
+  } catch (err) {
+    console.error('Error in drive-save-config:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('select-directory', async (event, defaultPath) => {
+  try {
+    const store = loadJsonFile('storage.json', {});
+    const targetDefault = defaultPath || store.googleDriveMirrorPath || undefined;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Selecione a Pasta de Backup (Espelho Local)',
+      defaultPath: targetDefault && fs.existsSync(targetDefault) ? targetDefault : undefined,
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+    return { canceled: false, path: result.filePaths[0] };
+  } catch (err) {
+    return { canceled: true, error: err.message };
+  }
+});
 
 ipcMain.handle('drive-get-status', async () => {
   try {
@@ -159,8 +216,12 @@ ipcMain.handle('drive-get-status', async () => {
   }
 });
 
-ipcMain.handle('drive-check-layout', async (event, data) => {
+ipcMain.handle('drive-check-layout', async (event, data = {}) => {
   try {
+    const store = loadJsonFile('storage.json', {});
+    if (!data.customMirrorDir && store.googleDriveMirrorPath) {
+      data.customMirrorDir = store.googleDriveMirrorPath;
+    }
     const result = await driveService.checkLayoutPreFlight(data);
     return { success: true, ...result };
   } catch (err) {
@@ -169,8 +230,12 @@ ipcMain.handle('drive-check-layout', async (event, data) => {
   }
 });
 
-ipcMain.handle('drive-upload-layout', async (event, data) => {
+ipcMain.handle('drive-upload-layout', async (event, data = {}) => {
   try {
+    const store = loadJsonFile('storage.json', {});
+    if (!data.customMirrorDir && store.googleDriveMirrorPath) {
+      data.customMirrorDir = store.googleDriveMirrorPath;
+    }
     const result = await driveService.processLayoutUpload(data, (progress) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('drive-upload-progress', progress);

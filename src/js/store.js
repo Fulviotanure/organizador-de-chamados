@@ -13,6 +13,7 @@ class AppStore {
       status: [],
       type: [],
       assignedTo: [],
+      reviewer: [],
       database: '',
       date: [],
       label: []
@@ -760,6 +761,38 @@ class AppStore {
         if (!matchesDev) return false;
       }
 
+      // 6b. Fixed Filter: Reviewer criteria
+      if (criteria.reviewerId) {
+        if (criteria.reviewerId === '__NONE__' || criteria.reviewerId === 'none') {
+          const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+          const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+          if (!hasNoRev) return false;
+        } else if (ticket.reviewerId !== criteria.reviewerId && ticket.reviewer?.id !== criteria.reviewerId) {
+          return false;
+        }
+      }
+      if (criteria.reviewerName) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        if (criteria.reviewerName === '__NONE__' || criteria.reviewerName === 'none') {
+          if (!hasNoRev) return false;
+        } else {
+          if (hasNoRev || revName.toLowerCase() !== criteria.reviewerName.toLowerCase()) return false;
+        }
+      }
+      if (criteria.unassignedReviewerOnly) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        if (!hasNoRev) return false;
+      }
+      if (criteria.isMyReview && this.currentUser) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || '';
+        const isMyReview = ticket.reviewerId === this.currentUser.id ||
+                           ticket.reviewer?.id === this.currentUser.id ||
+                           revName.toLowerCase().includes(this.currentUser.name?.toLowerCase());
+        if (!isMyReview) return false;
+      }
+
       // 7. Fixed Filter: Database / Client criteria
       if (criteria.database) {
         const db = (ticket.clientDatabase || '').toLowerCase();
@@ -858,6 +891,21 @@ class AppStore {
           return devName.toLowerCase() === dev.toLowerCase();
         });
         if (!matchesDev) return false;
+      }
+
+      // Quick Reviewer Filter
+      const selReviewers = this._normalizeFilterArray(this.quickFilters.reviewer);
+      if (selReviewers.length > 0) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        const matchesRev = selReviewers.some(rev => {
+          if (rev === '__NONE__' || rev === 'none' || rev === 'unassigned') {
+            return hasNoRev;
+          }
+          if (hasNoRev) return false;
+          return revName.toLowerCase() === rev.toLowerCase();
+        });
+        if (!matchesRev) return false;
       }
 
       if (this.quickFilters.database) {
@@ -1007,6 +1055,38 @@ class AppStore {
           return devName.toLowerCase() === dev.toLowerCase();
         });
         if (!matchesDev) return false;
+      }
+
+      // Reviewer criteria in countForFilter
+      if (criteria.reviewerId) {
+        if (criteria.reviewerId === '__NONE__' || criteria.reviewerId === 'none') {
+          const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+          const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+          if (!hasNoRev) return false;
+        } else if (ticket.reviewerId !== criteria.reviewerId && ticket.reviewer?.id !== criteria.reviewerId) {
+          return false;
+        }
+      }
+      if (criteria.reviewerName) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        if (criteria.reviewerName === '__NONE__' || criteria.reviewerName === 'none') {
+          if (!hasNoRev) return false;
+        } else {
+          if (hasNoRev || revName.toLowerCase() !== criteria.reviewerName.toLowerCase()) return false;
+        }
+      }
+      if (criteria.unassignedReviewerOnly) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        if (!hasNoRev) return false;
+      }
+      if (criteria.isMyReview && this.currentUser) {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || '';
+        const isMyReview = ticket.reviewerId === this.currentUser.id ||
+                           ticket.reviewer?.id === this.currentUser.id ||
+                           revName.toLowerCase().includes(this.currentUser.name?.toLowerCase());
+        if (!isMyReview) return false;
       }
 
       if (criteria.database) {

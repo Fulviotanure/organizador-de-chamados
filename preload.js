@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // AutoDrive Integration
   launchAutoDrive: (data) => ipcRenderer.invoke('launch-autodrive', data),
   getDriveStatus: () => ipcRenderer.invoke('drive-get-status'),
+  getDriveConfig: () => ipcRenderer.invoke('drive-get-config'),
+  saveDriveConfig: (config) => ipcRenderer.invoke('drive-save-config', config),
+  selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
   checkDriveLayout: (data) => ipcRenderer.invoke('drive-check-layout', data),
   uploadDriveLayout: (data) => ipcRenderer.invoke('drive-upload-layout', data),
   openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),

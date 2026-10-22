@@ -668,21 +668,46 @@ async function openUserSettingsModal(promptPasswordIfMissing = false) {
     }
   }
 
-  // 3. Status do Google Drive
+  // 3. Status e Configurações do Google Drive
   const driveStatusPill = document.getElementById('settingsDriveStatusPill');
   const driveStatusDot = document.getElementById('settingsDriveStatusDot');
   const driveEmail = document.getElementById('settingsDriveEmail');
+  const inputDriveEmail = document.getElementById('settingsDriveInputEmail');
+  const inputDrivePassword = document.getElementById('settingsDriveInputPassword');
+  const inputMirrorPath = document.getElementById('settingsLocalMirrorPath');
 
-  if (window.electronAPI && window.electronAPI.getDriveStatus) {
+  if (window.electronAPI) {
     try {
-      const driveStatus = await window.electronAPI.getDriveStatus();
-      if (driveStatus && driveStatus.connected) {
-        if (driveStatusDot) driveStatusDot.textContent = '🟢';
-        if (driveEmail) driveEmail.textContent = `${driveStatus.user?.displayName || 'Google Drive'} (${driveStatus.user?.emailAddress || 'Conectado'})`;
-        if (driveStatusPill) driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
-      } else {
-        if (driveStatusDot) driveStatusDot.textContent = '🟡';
-        if (driveEmail) driveEmail.textContent = 'Google Drive: Não conectado';
+      let cfg = null;
+      if (window.electronAPI.getDriveConfig) {
+        cfg = await window.electronAPI.getDriveConfig();
+      } else if (window.electronAPI.loadStorage) {
+        cfg = {
+          email: await window.electronAPI.loadStorage('googleDriveEmail', ''),
+          password: await window.electronAPI.loadStorage('googleDrivePassword', ''),
+          mirrorPath: await window.electronAPI.loadStorage('googleDriveMirrorPath', 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local')
+        };
+      }
+      if (cfg) {
+        if (inputDriveEmail && cfg.email) inputDriveEmail.value = cfg.email;
+        if (inputDrivePassword && cfg.password) inputDrivePassword.value = cfg.password;
+        if (inputMirrorPath && cfg.mirrorPath) inputMirrorPath.value = cfg.mirrorPath;
+      }
+
+      if (window.electronAPI.getDriveStatus) {
+        const driveStatus = await window.electronAPI.getDriveStatus();
+        if (driveStatus && driveStatus.connected) {
+          if (driveStatusDot) driveStatusDot.textContent = '🟢';
+          const emailDisplay = driveStatus.user?.emailAddress || cfg?.email || 'Conectado';
+          if (driveEmail) driveEmail.textContent = `${driveStatus.user?.displayName || 'Google Drive'} (${emailDisplay})`;
+          if (driveStatusPill) driveStatusPill.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+        } else if (cfg?.email) {
+          if (driveStatusDot) driveStatusDot.textContent = '🟢';
+          if (driveEmail) driveEmail.textContent = `Configurado: ${cfg.email}`;
+        } else {
+          if (driveStatusDot) driveStatusDot.textContent = '🟡';
+          if (driveEmail) driveEmail.textContent = 'Google Drive: Não conectado';
+        }
       }
     } catch (e) {
       if (driveStatusDot) driveStatusDot.textContent = '🟡';
@@ -803,6 +828,108 @@ function setupUserSettingsHandlers() {
     document.getElementById('btnLogout')?.click();
   });
 
+  // Toggle visualização da senha do Google Drive
+  document.getElementById('btnToggleShowDrivePassword')?.addEventListener('click', () => {
+    const pwdInput = document.getElementById('settingsDriveInputPassword');
+    const toggleBtn = document.getElementById('btnToggleShowDrivePassword');
+    if (pwdInput && toggleBtn) {
+      if (pwdInput.type === 'password') {
+        pwdInput.type = 'text';
+        toggleBtn.textContent = '🙈 Ocultar';
+      } else {
+        pwdInput.type = 'password';
+        toggleBtn.textContent = '👁️ Ver';
+      }
+    }
+  });
+
+  // Alterar pasta de backup do espelho local via seletor nativo
+  document.getElementById('btnSelectSettingsMirrorFolder')?.addEventListener('click', async () => {
+    const inputPath = document.getElementById('settingsLocalMirrorPath');
+    const current = inputPath?.value || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    if (window.electronAPI && window.electronAPI.selectDirectory) {
+      const res = await window.electronAPI.selectDirectory(current);
+      if (res && !res.canceled && res.path) {
+        if (inputPath) inputPath.value = res.path;
+      }
+    } else {
+      showAppAlert('A seleção de pastas requer o aplicativo Desktop Electron.', 'Desktop Necessário', 'info');
+    }
+  });
+
+  // Salvar configurações do Google Drive e pasta de backup
+  document.getElementById('btnSaveDriveSettings')?.addEventListener('click', async () => {
+    const email = document.getElementById('settingsDriveInputEmail')?.value.trim() || '';
+    const password = document.getElementById('settingsDriveInputPassword')?.value.trim() || '';
+    const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value.trim() || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+
+    try {
+      if (window.electronAPI && window.electronAPI.saveDriveConfig) {
+        const res = await window.electronAPI.saveDriveConfig({ email, password, mirrorPath });
+        if (!res.success) throw new Error(res.error || 'Erro ao salvar configurações do Drive');
+      } else if (window.electronAPI && window.electronAPI.saveStorage) {
+        await window.electronAPI.saveStorage('googleDriveEmail', email);
+        await window.electronAPI.saveStorage('googleDrivePassword', password);
+        await window.electronAPI.saveStorage('googleDriveMirrorPath', mirrorPath);
+      }
+
+      showAppAlert('Configurações de acesso do Google Drive e pasta de backup salvas com sucesso!', 'Drive Salvo', 'success');
+
+      // Atualizar status e pílula visual
+      await checkGoogleDriveStatus();
+      if (window.electronAPI && window.electronAPI.getDriveStatus) {
+        const status = await window.electronAPI.getDriveStatus();
+        const driveStatusDot = document.getElementById('settingsDriveStatusDot');
+        const driveEmail = document.getElementById('settingsDriveEmail');
+        if (status?.connected) {
+          if (driveStatusDot) driveStatusDot.textContent = '🟢';
+          if (driveEmail) driveEmail.textContent = `${status.user?.displayName || 'Google Drive'} (${status.user?.emailAddress || email || 'Conectado'})`;
+        } else if (email) {
+          if (driveStatusDot) driveStatusDot.textContent = '🟢';
+          if (driveEmail) driveEmail.textContent = `Configurado: ${email}`;
+        }
+      }
+    } catch (err) {
+      showAppError('Erro ao Salvar Configurações do Drive', err);
+    }
+  });
+
+  // Testar Conexão Google Drive
+  document.getElementById('btnTestDriveConnection')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnTestDriveConnection');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Testando...';
+    }
+
+    try {
+      const email = document.getElementById('settingsDriveInputEmail')?.value.trim() || '';
+      const password = document.getElementById('settingsDriveInputPassword')?.value.trim() || '';
+      const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value.trim() || '';
+
+      if (window.electronAPI && window.electronAPI.saveDriveConfig) {
+        await window.electronAPI.saveDriveConfig({ email, password, mirrorPath });
+      }
+
+      if (window.electronAPI && window.electronAPI.getDriveStatus) {
+        const status = await window.electronAPI.getDriveStatus();
+        if (status && status.connected) {
+          showAppAlert(`Conexão com Google Drive estabelecida com sucesso!\n\nConta: ${status.user?.emailAddress || email || 'Ativa'}\nNome: ${status.user?.displayName || 'Google Drive'}`, 'Conexão Estabelecida', 'success');
+        } else {
+          showAppAlert(`Não foi possível conectar ao Google Drive:\n\n${status?.error || 'Verifique as credenciais ou token informado.'}`, 'Falha de Conexão', 'warning');
+        }
+      }
+    } catch (err) {
+      showAppError('Erro ao Testar Conexão com Google Drive', err);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🔄</span> Testar Conexão Drive';
+      }
+      await checkGoogleDriveStatus();
+    }
+  });
+
   // Abrir espelho local
   document.getElementById('btnOpenSettingsMirrorFolder')?.addEventListener('click', () => {
     const mirrorPath = document.getElementById('settingsLocalMirrorPath')?.value || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
@@ -890,6 +1017,7 @@ function populateDeveloperSelects() {
   });
 
   const modalDevSelect = document.getElementById('modalFilterDev');
+  const modalRevSelect = document.getElementById('modalFilterReviewer');
   const sortedDevs = Array.from(devs).sort((a, b) => a.localeCompare(b));
 
   if (modalDevSelect) {
@@ -908,7 +1036,24 @@ function populateDeveloperSelects() {
     modalDevSelect.value = currentVal || '';
   }
 
+  if (modalRevSelect) {
+    const currentVal = modalRevSelect.value;
+    modalRevSelect.innerHTML = `
+      <option value="">Qualquer Validador</option>
+      <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
+      <option value="__NONE__">👤 Sem validador (Não definido)</option>
+    `;
+    sortedDevs.forEach(dev => {
+      const opt = document.createElement('option');
+      opt.value = dev;
+      opt.textContent = dev;
+      modalRevSelect.appendChild(opt);
+    });
+    modalRevSelect.value = currentVal || '';
+  }
+
   renderFilterDropdownOptions('assignedTo');
+  renderFilterDropdownOptions('reviewer');
   populateLabelSelects();
 }
 
@@ -1074,7 +1219,6 @@ function renderTableView(demands) {
     const statusBadge = getStatusBadgeHtml(t.status);
     const layoutCode = t.layout?.code || (typeof t.layout === 'number' || typeof t.layout === 'string' ? t.layout : null);
     const dateBadge = renderDateBadge(t.deliveryDueDate || t.clientDueDate);
-    const createdStr = formatCreatedAt(t.createdAt);
 
     return `
       <tr data-id="${t.id}" class="${isIgnored ? 'row-ignored' : ''}">
@@ -1106,8 +1250,12 @@ function renderTableView(demands) {
         <td>
           <span style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(t.assignedTo?.name || 'Não atribuído')}</span>
         </td>
+        <td>
+          ${t.reviewer?.name || t.reviewerName || (typeof t.reviewer === 'string' && t.reviewer ? t.reviewer : '') ? `
+            <span style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(t.reviewer?.name || t.reviewerName || t.reviewer)}</span>
+          ` : '<span style="color: var(--text-muted);">-</span>'}
+        </td>
         <td>${dateBadge}</td>
-        <td style="font-size: 11px; color: var(--text-muted);">${createdStr}</td>
         <td style="text-align: right;">
           <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
             <button class="icon-btn-ghost btn-toggle-ignore" data-id="${t.id}" title="${isIgnored ? 'Restaurar chamado (remover de ignorados)' : 'Ignorar chamado (ocultar das listas)'}" style="font-size: 12px;">
@@ -4565,6 +4713,7 @@ function openNewFilterModal() {
   document.getElementById('modalFilterLabel').value = '';
   document.getElementById('modalFilterType').value = '';
   document.getElementById('modalFilterDev').value = '';
+  document.getElementById('modalFilterReviewer').value = '';
   document.getElementById('modalFilterDatabase').value = '';
   document.getElementById('modalFilterDeadline').value = '';
 
@@ -4606,6 +4755,11 @@ function openEditFilterModal(filter) {
   } else {
     document.getElementById('modalFilterDev').value = c.isMyDemands ? 'CURRENT_USER' : (c.developerName || '');
   }
+  if (c.unassignedReviewerOnly || c.reviewerName === '__NONE__' || c.reviewerId === '__NONE__') {
+    document.getElementById('modalFilterReviewer').value = '__NONE__';
+  } else {
+    document.getElementById('modalFilterReviewer').value = c.isMyReview ? 'CURRENT_USER' : (c.reviewerName || '');
+  }
   document.getElementById('modalFilterDatabase').value = c.database || '';
   document.getElementById('modalFilterDeadline').value = c.deadline || '';
 
@@ -4645,6 +4799,7 @@ async function saveFilterModal() {
   const labelVal = document.getElementById('modalFilterLabel')?.value;
   const typeVal = document.getElementById('modalFilterType').value;
   const devVal = document.getElementById('modalFilterDev').value;
+  const revVal = document.getElementById('modalFilterReviewer')?.value;
   const dbVal = document.getElementById('modalFilterDatabase').value.trim();
   const deadlineVal = document.getElementById('modalFilterDeadline').value;
 
@@ -4675,6 +4830,15 @@ async function saveFilterModal() {
     criteria.unassignedOnly = true;
   } else if (devVal) {
     criteria.developerName = devVal;
+  }
+
+  if (revVal === 'CURRENT_USER') {
+    criteria.isMyReview = true;
+  } else if (revVal === '__NONE__') {
+    criteria.reviewerName = '__NONE__';
+    criteria.unassignedReviewerOnly = true;
+  } else if (revVal) {
+    criteria.reviewerName = revVal;
   }
   if (dbVal) criteria.database = dbVal;
   if (deadlineVal) criteria.deadline = deadlineVal;
@@ -4784,6 +4948,43 @@ const filterConfigs = {
       return list;
     }
   },
+  reviewer: {
+    btnId: 'btnFilterReviewer',
+    textId: 'btnFilterReviewerText',
+    badgeId: 'btnFilterReviewerBadge',
+    clearId: 'btnFilterReviewerClear',
+    panelId: 'panelFilterReviewer',
+    listId: 'listFilterReviewer',
+    searchId: 'searchFilterReviewer',
+    actionAllId: 'actionReviewerAll',
+    actionClearId: 'actionReviewerClear',
+    labelPrefix: 'Validador:',
+    defaultText: 'Qualquer',
+    pluralText: 'selecionados',
+    getOptions: () => {
+      const list = [
+        { value: '__NONE__', label: 'Sem validador', icon: '👤', isSpecial: true }
+      ];
+      const reviewers = new Set();
+      if (window.appStore) {
+        window.appStore.getKnownDevelopers().forEach(d => {
+          if (d && d.name && d.name !== 'Não atribuído' && d.name !== '-') reviewers.add(d.name);
+        });
+        if (Array.isArray(window.appStore.demands)) {
+          window.appStore.demands.forEach(t => {
+            const revName = t.reviewer?.name || t.reviewerName || (typeof t.reviewer === 'string' ? t.reviewer : '');
+            if (revName && revName !== '-' && revName !== 'Não atribuído') {
+              reviewers.add(revName);
+            }
+          });
+        }
+      }
+      Array.from(reviewers).sort((a, b) => a.localeCompare(b)).forEach(name => {
+        list.push({ value: name, label: name, icon: '👤' });
+      });
+      return list;
+    }
+  },
   label: {
     btnId: 'btnFilterLabel',
     textId: 'btnFilterLabelText',
@@ -4887,7 +5088,7 @@ function updateFilterDropdownButton(key) {
     const val = selectedValues[0];
     let label = val;
     if (val === '__NONE__') {
-      label = key === 'assignedTo' ? 'Nenhum' : (key === 'label' ? 'Sem etiquetas' : 'Nenhum');
+      label = key === 'assignedTo' ? 'Nenhum' : (key === 'reviewer' ? 'Sem validador' : (key === 'label' ? 'Sem etiquetas' : 'Nenhum'));
     } else {
       const options = typeof config.getOptions === 'function' ? config.getOptions() : config.options;
       const found = options.find(o => o.value === val);
@@ -4908,7 +5109,7 @@ function updateFilterDropdownButton(key) {
 
     const options = typeof config.getOptions === 'function' ? config.getOptions() : config.options;
     const names = selectedValues.map(v => {
-      if (v === '__NONE__') return key === 'assignedTo' ? 'Nenhum responsável' : 'Sem etiquetas';
+      if (v === '__NONE__') return key === 'assignedTo' ? 'Nenhum responsável' : (key === 'reviewer' ? 'Sem validador' : 'Sem etiquetas');
       const f = options.find(o => o.value === v);
       return f ? f.label : v;
     });
@@ -5108,6 +5309,7 @@ function setupEventListeners() {
       status: [],
       type: [],
       assignedTo: [],
+      reviewer: [],
       database: '',
       date: [],
       label: []
@@ -5132,11 +5334,13 @@ function setupEventListeners() {
     const sArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.status);
     const tArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.type);
     const dArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.assignedTo);
+    const rArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.reviewer);
     const lArr = window.appStore._normalizeFilterArray(window.appStore.quickFilters.label);
 
     if (sArr.length > 0) document.getElementById('modalFilterStatus').value = sArr[0];
     if (tArr.length > 0) document.getElementById('modalFilterType').value = tArr[0];
     if (dArr.length > 0) document.getElementById('modalFilterDev').value = dArr[0];
+    if (rArr.length > 0) document.getElementById('modalFilterReviewer').value = rArr[0];
     if (lArr.length > 0) document.getElementById('modalFilterLabel').value = lArr[0];
   });
 
@@ -5952,6 +6156,20 @@ async function openAutoDriveModal(ticket) {
   // Check Drive status in background
   checkGoogleDriveStatus();
 
+  // Update dynamic mirror notice path in modal
+  const noticePathEl = document.getElementById('autoDriveMirrorNoticePath');
+  if (noticePathEl) {
+    let currentMirror = 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    if (window.electronAPI?.getDriveConfig) {
+      const cfg = await window.electronAPI.getDriveConfig();
+      if (cfg?.mirrorPath) currentMirror = cfg.mirrorPath;
+    } else if (window.electronAPI?.loadStorage) {
+      currentMirror = (await window.electronAPI.loadStorage('googleDriveMirrorPath', currentMirror)) || currentMirror;
+    }
+    noticePathEl.textContent = currentMirror;
+    noticePathEl.title = currentMirror;
+  }
+
   const parsed = parseDemandForAutoDrive(ticket);
 
   const inputQuick = document.getElementById('autoDriveQuickText');
@@ -6378,12 +6596,14 @@ async function handlePreFlightCheck() {
       throw new Error('Função de verificação requer execução no aplicativo Desktop Electron.');
     }
 
+    const savedMirrorDir = document.getElementById('settingsLocalMirrorPath')?.value || undefined;
     const checkData = {
       categoria: cat,
       entidade: ent,
       numero_layout: num,
       nome_documento: doc,
       senha,
+      customMirrorDir: savedMirrorDir,
       pdfFiles: stagedAutoDrivePdf ? [{ name: stagedAutoDrivePdf.name, size: stagedAutoDrivePdf.size }] : [],
       mappingImages: effectiveMappings.map(img => ({ name: img.name, size: img.size })),
       extraImages: stagedAutoDriveImages.filter(img => !effectiveMappings.includes(img)).map(img => ({ name: img.name, size: img.size }))
@@ -6650,6 +6870,7 @@ async function executeAutoDriveLaunch() {
       });
     }
 
+    const savedMirrorDir = document.getElementById('settingsLocalMirrorPath')?.value || undefined;
     const payload = {
       quick,
       numero_layout: num,
@@ -6662,7 +6883,8 @@ async function executeAutoDriveLaunch() {
       imageBuffer: preparedMappingImages[0]?.buffer || null,
       imageName: preparedMappingImages[0]?.name || null,
       mappingImages: preparedMappingImages,
-      saveMirror
+      saveMirror,
+      customMirrorDir: savedMirrorDir
     };
 
     if (window.electronAPI && window.electronAPI.uploadDriveLayout) {

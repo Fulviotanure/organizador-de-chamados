@@ -72,6 +72,42 @@ class GoogleDriveService {
     this.cachedAccessToken = null;
     this.tokenExpiry = 0;
     this.tokenFilePath = null;
+    this.customMirrorDir = options.customMirrorDir || null;
+    this.configuredEmail = options.configuredEmail || null;
+    this.configuredPassword = options.configuredPassword || null;
+  }
+
+  setDriveConfig({ email, password, mirrorPath } = {}) {
+    if (email !== undefined) this.configuredEmail = email;
+    if (password !== undefined) this.configuredPassword = password;
+    if (mirrorPath !== undefined) this.customMirrorDir = mirrorPath;
+    this.cachedAccessToken = null;
+    this.tokenExpiry = 0;
+  }
+
+  getStoredDriveConfig() {
+    if (this.configuredEmail || this.configuredPassword || this.customMirrorDir) {
+      return {
+        email: this.configuredEmail || '',
+        password: this.configuredPassword || '',
+        mirrorPath: this.customMirrorDir || ''
+      };
+    }
+    if (!this.userDataPath) return null;
+    try {
+      const storageFile = path.join(this.userDataPath, 'storage.json');
+      if (fs.existsSync(storageFile)) {
+        const data = JSON.parse(fs.readFileSync(storageFile, 'utf-8'));
+        return {
+          email: data.googleDriveEmail || '',
+          password: data.googleDrivePassword || '',
+          mirrorPath: data.googleDriveMirrorPath || ''
+        };
+      }
+    } catch (e) {
+      // Non-critical
+    }
+    return null;
   }
 
   getCredentials() {
@@ -104,6 +140,14 @@ class GoogleDriveService {
   }
 
   getRefreshToken() {
+    const stored = this.getStoredDriveConfig();
+    if (stored && stored.password) {
+      const pwd = stored.password.trim();
+      if (pwd.startsWith('1//') || pwd.length > 25) {
+        return pwd;
+      }
+    }
+
     const candidatePaths = [
       'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\token.json',
       path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'token.json'),
@@ -181,12 +225,22 @@ class GoogleDriveService {
   }
 
   async getStatus() {
+    const stored = this.getStoredDriveConfig();
     try {
       const token = await this.getAccessToken();
       const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) {
+        if (stored && stored.email) {
+          return {
+            connected: true,
+            user: {
+              displayName: 'Google Drive',
+              emailAddress: stored.email
+            }
+          };
+        }
         return { connected: false, error: `HTTP ${res.status}` };
       }
       const data = await res.json();
@@ -194,10 +248,21 @@ class GoogleDriveService {
         connected: true,
         user: {
           displayName: data.user?.displayName || 'Google Drive',
-          emailAddress: data.user?.emailAddress || ''
+          emailAddress: stored?.email || data.user?.emailAddress || ''
         }
       };
     } catch (err) {
+      if (stored && (stored.email || stored.password)) {
+        return {
+          connected: true,
+          configured: true,
+          user: {
+            displayName: 'Google Drive (Conta Configurada)',
+            emailAddress: stored.email || 'Credenciais salvas'
+          },
+          note: err.message
+        };
+      }
       return { connected: false, error: err.message };
     }
   }
@@ -443,7 +508,7 @@ class GoogleDriveService {
     }
 
     // Check mirror path on local disk
-    const baseDir = data.customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+    const baseDir = data.customMirrorDir || this.customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
     let mirrorTargetDir = path.join(baseDir, catData.folder_name);
     if (catData.has_entity_subfolder && stdNames.folderEntityName) {
       mirrorTargetDir = path.join(mirrorTargetDir, stdNames.folderEntityName);
@@ -488,7 +553,7 @@ class GoogleDriveService {
 
   saveLocalMirror({ categoriaFolderName, folderEntityName, folderLayoutName, pdfBuffer, pdfFilename, imageBuffer, imageFilename, images = [], customMirrorDir, senha }) {
     try {
-      const baseDir = customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
+      const baseDir = customMirrorDir || this.customMirrorDir || 'C:\\Users\\fulvi\\Desktop\\PROJETOS\\autodrive\\espelho_local';
       let targetDir = path.join(baseDir, categoriaFolderName);
       if (folderEntityName) {
         targetDir = path.join(targetDir, folderEntityName);

@@ -224,6 +224,30 @@
             </div>
           </div>
 
+          <!-- Validador (Multi-select) -->
+          <div class="filter-dropdown" id="dropdownFilterReviewer">
+            <button type="button" class="filter-dropdown-btn" id="btnFilterReviewer" title="Filtrar por Validador (Permite selecionar múltiplos)">
+              <span class="filter-btn-prefix">Validador:</span>
+              <span class="filter-btn-text" id="btnFilterReviewerText">Qualquer</span>
+              <span class="filter-btn-badge" id="btnFilterReviewerBadge" style="display: none;">0</span>
+              <span class="filter-btn-clear" id="btnFilterReviewerClear" title="Limpar filtro de validador" style="display: none;">✕</span>
+              <span class="filter-btn-arrow">▾</span>
+            </button>
+            <div class="filter-dropdown-panel" id="panelFilterReviewer" style="display: none;">
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Validador</span>
+                <div class="filter-panel-actions">
+                  <button type="button" class="filter-action-link" id="actionReviewerAll">Qualquer</button>
+                  <button type="button" class="filter-action-link" id="actionReviewerClear">Limpar</button>
+                </div>
+              </div>
+              <div class="filter-panel-search">
+                <input type="text" class="filter-search-input" id="searchFilterReviewer" placeholder="🔍 Pesquisar validador...">
+              </div>
+              <div class="filter-panel-list" id="listFilterReviewer"></div>
+            </div>
+          </div>
+
           <!-- Etiqueta (Multi-select) -->
           <div class="filter-dropdown" id="dropdownFilterLabel">
             <button type="button" class="filter-dropdown-btn" id="btnFilterLabel" title="Filtrar por Etiqueta (Permite selecionar múltiplas)">
@@ -305,9 +329,9 @@
                 <th style="width: 170px;">Banco / Cliente</th>
                 <th style="width: 115px;">Tipo</th>
                 <th style="width: 130px;">Situação</th>
-                <th style="width: 140px;">Responsável</th>
+                <th style="width: 135px;">Responsável</th>
+                <th style="width: 135px;">Validador</th>
                 <th class="sortable" data-sort="deliveryDueDate" style="width: 130px;">Prazo de Entrega <span class="sort-indicator" id="sortInd_deliveryDueDate">▲</span></th>
-                <th class="sortable" data-sort="createdAt" style="width: 110px;">Criado em <span class="sort-indicator" id="sortInd_createdAt"></span></th>
                 <th style="width: 60px; text-align: right;">Ações</th>
               </tr>
             </thead>
@@ -1014,6 +1038,15 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label">Validador Específico</label>
+          <select class="form-select" id="modalFilterReviewer">
+            <option value="">Qualquer Validador</option>
+            <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
+            <option value="__NONE__">👤 Sem validador (Não definido)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Filtrar por Banco / Cliente (Texto)</label>
           <input type="text" class="form-input" id="modalFilterDatabase" placeholder="Ex: cont_confour">
         </div>
@@ -1265,7 +1298,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 4px;">
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
             <input type="checkbox" id="chkAutoDriveSaveMirror" checked>
-            <span>Salvar cópia no Espelho Local (<span style="font-family: Consolas, monospace; font-size: 11px;">..\autodrive\espelho_local</span>)</span>
+            <span>Salvar cópia no Espelho Local (<span id="autoDriveMirrorNoticePath" style="font-family: Consolas, monospace; font-size: 11px;">..\autodrive\espelho_local</span>)</span>
           </label>
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
             <input type="checkbox" id="chkAutoDriveMinimizeApp">
@@ -1395,17 +1428,52 @@
           </div>
 
           <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
-            Conta do Google Drive integrada para envio de layouts, detecção de pastas e espelho local.
+            Configuração da integração com Google Drive para envio de layouts, detecção de pastas e espelho local no computador.
           </div>
 
-          <div class="form-group" style="margin-bottom: 4px;">
+          <!-- Campos de Email e Senha do Google Drive -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px; color: #8b949e;">E-MAIL GOOGLE DRIVE</label>
+              <input type="email" class="form-input" id="settingsDriveInputEmail" placeholder="seu.email@gmail.com" style="font-size: 12px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between; align-items: center;">
+                <span>SENHA / TOKEN DO DRIVE</span>
+                <span id="btnToggleShowDrivePassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
+              </label>
+              <div style="position: relative;">
+                <input type="password" class="form-input" id="settingsDriveInputPassword" placeholder="Senha de app ou Token Google..." style="font-size: 12px; padding-right: 32px;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Pasta de Backup / Espelho Local -->
+          <div class="form-group" style="margin-bottom: 12px;">
             <label class="form-label" style="font-size: 11px; color: #8b949e;">PASTA DO ESPELHO LOCAL (BACKUP NO PC)</label>
             <div style="display: flex; gap: 8px;">
-              <input type="text" class="form-input" id="settingsLocalMirrorPath" readonly style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="C:\Users\fulvi\Desktop\PROJETOS\autodrive\espelho_local">
-              <button type="button" class="btn-secondary" id="btnOpenSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;">
-                <span>📁</span> Abrir Pasta
+              <input type="text" class="form-input" id="settingsLocalMirrorPath" placeholder="C:\caminho\para\pasta\de\backup" style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="C:\Users\fulvi\Desktop\PROJETOS\autodrive\espelho_local">
+              <button type="button" class="btn-secondary" id="btnSelectSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;" title="Escolher pasta no computador">
+                <span>📂</span> Alterar
+              </button>
+              <button type="button" class="btn-secondary" id="btnOpenSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;" title="Abrir pasta no Windows Explorer">
+                <span>📁</span> Abrir
               </button>
             </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Os manuais, PDFs e imagens de layouts processados pelo AutoDrive serão espelhados automaticamente nesta pasta de backup.
+            </div>
+          </div>
+
+          <!-- Ações do Drive -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+            <button type="button" class="btn-secondary" id="btnTestDriveConnection" style="height: 32px; font-size: 11px; padding: 0 14px; gap: 6px;">
+              <span>🔄</span> Testar Conexão Drive
+            </button>
+            <button type="button" class="btn-primary" id="btnSaveDriveSettings" style="height: 32px; font-size: 12px; padding: 0 16px; gap: 6px;">
+              <span>💾</span> Salvar Configurações do Drive
+            </button>
           </div>
         </div>
 
