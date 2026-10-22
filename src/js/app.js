@@ -950,6 +950,84 @@ function setupUserSettingsHandlers() {
     }
   });
 
+  // 1. Conectar via Login Google (OAuth no navegador)
+  document.getElementById('btnOAuthLoginDrive')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnOAuthLoginDrive');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Abrindo Navegador...';
+    }
+    try {
+      if (window.electronAPI && window.electronAPI.startDriveOAuth) {
+        showAppAlert('Uma página do navegador será aberta para você fazer login na sua conta Google e autorizar o acesso.\n\nApós autorizar no navegador, o aplicativo conectará automaticamente!', 'Login Google', 'info');
+        const res = await window.electronAPI.startDriveOAuth();
+        if (res && res.success) {
+          showAppAlert(`Google Drive conectado com sucesso!\n\nConta: ${res.userEmail || res.status?.user?.emailAddress || 'Conectada'}`, 'Conexão Realizada', 'success');
+          await checkGoogleDriveStatus();
+        } else {
+          showAppAlert(res.error || 'Não foi possível concluir o login do Google Drive.', 'Falha na Autorização', 'warning');
+        }
+      } else {
+        showAppAlert('O login via navegador requer a execução no aplicativo desktop.', 'Recurso Desktop', 'info');
+      }
+    } catch (err) {
+      showAppError('Erro ao Conectar com Google Drive', err);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🌐</span> Conectar com Conta Google (Login)';
+      }
+      await checkGoogleDriveStatus();
+    }
+  });
+
+  // 2. Sincronizar com AutoDrive Local
+  document.getElementById('btnSyncAutoDrive')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnSyncAutoDrive');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Buscando...';
+    }
+    try {
+      if (window.electronAPI && window.electronAPI.syncAutoDriveLocal) {
+        const res = await window.electronAPI.syncAutoDriveLocal();
+        if (res && res.success) {
+          showAppAlert(`Credenciais do AutoDrive vinculadas com sucesso!\n\nConta: ${res.status?.user?.emailAddress || res.status?.user?.displayName || 'Ativa'}`, 'AutoDrive Vinculado', 'success');
+          await checkGoogleDriveStatus();
+        } else {
+          showAppAlert(`Não foi possível importar do AutoDrive:\n\n${res.error || 'Nenhum token encontrado.'}\n\nVocê também pode conectar clicando em "Conectar com Conta Google (Login)" ou importando o token.json.`, 'AutoDrive Não Encontrado', 'warning');
+        }
+      }
+    } catch (err) {
+      showAppError('Erro ao Sincronizar com AutoDrive', err);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡</span> Sincronizar com AutoDrive Local';
+      }
+      await checkGoogleDriveStatus();
+    }
+  });
+
+  // 3. Importar token.json manualmente
+  document.getElementById('btnImportDriveToken')?.addEventListener('click', async () => {
+    try {
+      if (window.electronAPI && window.electronAPI.importDriveToken) {
+        const res = await window.electronAPI.importDriveToken();
+        if (res && !res.canceled) {
+          if (res.success) {
+            showAppAlert(`Token importado com sucesso!\n\nConta: ${res.status?.user?.emailAddress || res.status?.user?.displayName || 'Conectada'}`, 'Token Importado', 'success');
+            await checkGoogleDriveStatus();
+          } else {
+            showAppAlert(`Falha ao importar arquivo:\n\n${res.error || 'Arquivo inválido.'}`, 'Erro no Arquivo', 'warning');
+          }
+        }
+      }
+    } catch (err) {
+      showAppError('Erro ao Importar Token', err);
+    }
+  });
+
   // Testar Conexão Google Drive
   document.getElementById('btnTestDriveConnection')?.addEventListener('click', async () => {
     const btn = document.getElementById('btnTestDriveConnection');
@@ -6003,27 +6081,49 @@ async function checkGoogleDriveStatus() {
   const emailEl = document.getElementById('autoDriveAccountEmail');
   const pillEl = document.getElementById('autoDriveAccountStatus');
 
+  const setDotEl = document.getElementById('settingsDriveStatusDot');
+  const setEmailEl = document.getElementById('settingsDriveEmail');
+  const setPillEl = document.getElementById('settingsDriveStatusPill');
+
   if (emailEl) emailEl.textContent = 'Verificando Google Drive...';
   if (dotEl) dotEl.textContent = '⏳';
+  if (setEmailEl) setEmailEl.textContent = 'Verificando Google Drive...';
+  if (setDotEl) setDotEl.textContent = '⏳';
 
   try {
     if (window.electronAPI && window.electronAPI.getDriveStatus) {
       const status = await window.electronAPI.getDriveStatus();
-      if (status.connected) {
+      if (status && status.connected) {
+        const emailText = status.user?.emailAddress || 'Conectado';
+        const displayLabel = status.user?.displayName ? `${status.user.displayName} (${emailText})` : `Drive: ${emailText}`;
         if (dotEl) dotEl.textContent = '🟢';
-        if (emailEl) emailEl.textContent = `Drive: ${status.user?.emailAddress || 'Conectado'}`;
+        if (emailEl) emailEl.textContent = `Drive: ${emailText}`;
         if (pillEl) {
           pillEl.style.background = 'rgba(35, 134, 54, 0.15)';
           pillEl.style.color = '#3fb950';
           pillEl.style.borderColor = 'rgba(46, 160, 67, 0.4)';
         }
+        if (setDotEl) setDotEl.textContent = '🟢';
+        if (setEmailEl) setEmailEl.textContent = displayLabel;
+        if (setPillEl) {
+          setPillEl.style.background = 'rgba(35, 134, 54, 0.15)';
+          setPillEl.style.color = '#3fb950';
+          setPillEl.style.borderColor = 'rgba(46, 160, 67, 0.4)';
+        }
       } else {
         if (dotEl) dotEl.textContent = '⚪';
-        if (emailEl) emailEl.textContent = 'Drive não configurado';
+        if (emailEl) emailEl.textContent = 'Drive não conectado';
         if (pillEl) {
           pillEl.style.background = 'rgba(110, 118, 129, 0.15)';
           pillEl.style.color = '#8b949e';
           pillEl.style.borderColor = 'rgba(110, 118, 129, 0.3)';
+        }
+        if (setDotEl) setDotEl.textContent = '⚪';
+        if (setEmailEl) setEmailEl.textContent = 'Google Drive: Não conectado';
+        if (setPillEl) {
+          setPillEl.style.background = 'rgba(110, 118, 129, 0.15)';
+          setPillEl.style.color = '#8b949e';
+          setPillEl.style.borderColor = 'rgba(110, 118, 129, 0.3)';
         }
       }
     } else {
@@ -6033,6 +6133,8 @@ async function checkGoogleDriveStatus() {
   } catch (err) {
     if (dotEl) dotEl.textContent = '⚪';
     if (emailEl) emailEl.textContent = 'Drive não conectado';
+    if (setDotEl) setDotEl.textContent = '⚪';
+    if (setEmailEl) setEmailEl.textContent = 'Google Drive: Não conectado';
   } finally {
     isGoogleDriveChecking = false;
   }
@@ -6654,6 +6756,30 @@ async function handlePreFlightCheck() {
       throw new Error('Função de verificação requer execução no aplicativo Desktop Electron.');
     }
 
+    // Verificar se o Google Drive está conectado antes de tentar a busca
+    if (window.electronAPI.getDriveStatus) {
+      const driveStatus = await window.electronAPI.getDriveStatus();
+      if (!driveStatus || !driveStatus.connected) {
+        if (btn) btn.disabled = false;
+        if (btnIcon) btnIcon.textContent = '🔍';
+        if (btnText) btnText.textContent = 'Verificar no Google Drive';
+
+        const openSettings = await showAppConfirm(
+          'O Google Drive não está conectado neste computador.\n\nPara verificar layouts e enviar arquivos, conecte sua conta Google ou sincronize com o AutoDrive nas Configurações.\n\nDeseja abrir as Configurações agora?',
+          'Google Drive Não Conectado',
+          { confirmText: 'Abrir Configurações', cancelText: 'Agora Não' }
+        );
+        if (openSettings) {
+          document.getElementById('ticketModal')?.classList.remove('active');
+          document.getElementById('settingsModal')?.classList.add('active');
+          setTimeout(() => {
+            document.getElementById('settingsDriveStatusPill')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 150);
+        }
+        return;
+      }
+    }
+
     const savedMirrorDir = document.getElementById('settingsLocalMirrorPath')?.value || undefined;
     const checkData = {
       categoria: cat,
@@ -6840,7 +6966,22 @@ async function handlePreFlightCheck() {
     }
 
   } catch (err) {
-    showAppError('Verificação no Google Drive', err);
+    if (err.message && (err.message.includes('Google Drive não está conectado') || err.message.includes('refresh_token'))) {
+      const openSettings = await showAppConfirm(
+        'O Google Drive não está conectado neste computador.\n\nPara verificar layouts e enviar arquivos, conecte sua conta Google ou sincronize com o AutoDrive nas Configurações.\n\nDeseja abrir as Configurações agora?',
+        'Google Drive Não Conectado',
+        { confirmText: 'Abrir Configurações', cancelText: 'Agora Não' }
+      );
+      if (openSettings) {
+        document.getElementById('ticketModal')?.classList.remove('active');
+        document.getElementById('settingsModal')?.classList.add('active');
+        setTimeout(() => {
+          document.getElementById('settingsDriveStatusPill')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    } else {
+      showAppError('Verificação no Google Drive', err);
+    }
   } finally {
     if (btn) btn.disabled = false;
     if (btnIcon) btnIcon.textContent = '🔍';
@@ -7005,7 +7146,15 @@ async function executeAutoDriveLaunch() {
 
   } catch (err) {
     if (progressBox) progressBox.style.display = 'none';
-    showAppError('Erro ao enviar layout para o Google Drive', err);
+    if (err.message && (err.message.includes('Google Drive não está conectado') || err.message.includes('refresh_token'))) {
+      showAppAlert(
+        'O Google Drive não está conectado neste computador.\n\nAcesse as Configurações ⚙️ para conectar sua conta Google ou sincronizar com o AutoDrive.',
+        'Google Drive Não Conectado',
+        'warning'
+      );
+    } else {
+      showAppError('Erro ao enviar layout para o Google Drive', err);
+    }
   } finally {
     if (btn) btn.disabled = false;
     if (btnIcon) btnIcon.textContent = '🚀';

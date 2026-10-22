@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('el
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 let autoUpdater = null;
 try {
   const updaterModule = require('electron-updater');
@@ -193,6 +194,225 @@ ipcMain.handle('drive-disconnect', async () => {
     return { success: true };
   } catch (err) {
     console.error('Error in drive-disconnect:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('drive-start-oauth', async () => {
+  return new Promise((resolve) => {
+    try {
+      const creds = driveService.getCredentials();
+      if (!creds || !creds.client_id) {
+        return resolve({ success: false, error: 'Credenciais de aplicação Google Drive não encontradas.' });
+      }
+
+      let server = null;
+      let timeoutId = null;
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (server) {
+          try { server.close(); } catch (e) {}
+        }
+      };
+
+      server = http.createServer(async (req, res) => {
+        try {
+          const reqUrl = new URL(req.url, 'http://127.0.0.1');
+          const code = reqUrl.searchParams.get('code');
+          const error = reqUrl.searchParams.get('error');
+
+          if (error) {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(`
+              <html><body style="font-family: sans-serif; text-align: center; padding: 40px; background: #0f172a; color: #fff;">
+                <h2 style="color: #ef4444;">❌ Autorização Cancelada</h2>
+                <p>O acesso ao Google Drive não foi autorizado (${error}).</p>
+                <p>Você pode fechar esta aba e tentar novamente no Organizador de Chamados.</p>
+              </body></html>
+            `);
+            cleanup();
+            return resolve({ success: false, error: `Autorização cancelada: ${error}` });
+          }
+
+          if (code) {
+            const redirectUri = `http://127.0.0.1:${server.address().port}`;
+            const tokenRes = await fetch(creds.token_uri || 'https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                code,
+                client_id: creds.client_id,
+                client_secret: creds.client_secret,
+                redirect_uri: redirectUri,
+                grant_type: 'authorization_code'
+              }).toString()
+            });
+
+            if (!tokenRes.ok) {
+              const errText = await tokenRes.text();
+              cleanup();
+              return resolve({ success: false, error: `Falha na autenticação (HTTP ${tokenRes.status}): ${errText}` });
+            }
+
+            const tokenData = await tokenRes.json();
+            const userTokenPath = path.join(app.getPath('userData'), 'token.json');
+            fs.writeFileSync(userTokenPath, JSON.stringify(tokenData, null, 2), 'utf-8');
+
+            let userEmail = '';
+            try {
+              const aboutRes = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+                headers: { Authorization: `Bearer ${tokenData.access_token}` }
+              });
+              if (aboutRes.ok) {
+                const aboutData = await aboutRes.json();
+                userEmail = aboutData.user?.emailAddress || '';
+              }
+            } catch (e) {}
+
+            const store = loadJsonFile('storage.json', {});
+            if (userEmail) store.googleDriveEmail = userEmail;
+            saveJsonFile('storage.json', store);
+
+            driveService.setDriveConfig({ email: userEmail });
+
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(`
+              <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 50px; background: #0f172a; color: #f8fafc;">
+                <div style="max-width: 480px; margin: 0 auto; background: #1e293b; padding: 32px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                  <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+                  <h2 style="color: #38bdf8; margin: 0 0 12px;">Google Drive Conectado!</h2>
+                  <p style="color: #94a3b8; line-height: 1.6; margin: 0 0 20px;">
+                    Sua conta ${userEmail ? `<strong>(${userEmail})</strong> ` : ''}foi vinculada com sucesso ao <strong>Organizador de Chamados</strong>.
+                  </p>
+                  <div style="font-size: 13px; color: #64748b; background: #0f172a; padding: 10px; border-radius: 6px;">
+                    Você já pode fechar esta aba e voltar ao aplicativo.
+                  </div>
+                </div>
+              </body></html>
+            `);
+
+            cleanup();
+            const status = await driveService.getStatus();
+            return resolve({ success: true, userEmail, status });
+          }
+        } catch (err) {
+          cleanup();
+          return resolve({ success: false, error: err.message });
+        }
+      });
+
+      server.listen(0, '127.0.0.1', () => {
+        const port = server.address().port;
+        const redirectUri = `http://127.0.0.1:${port}`;
+        const scopes = [
+          'https://www.googleapis.com/auth/drive',
+          'https://www.googleapis.com/auth/userinfo.email',
+          'https://www.googleapis.com/auth/userinfo.profile'
+        ].join(' ');
+
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${encodeURIComponent(creds.client_id)}&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+          `response_type=code&` +
+          `scope=${encodeURIComponent(scopes)}&` +
+          `access_type=offline&` +
+          `prompt=consent`;
+
+        shell.openExternal(authUrl);
+      });
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        resolve({ success: false, error: 'Tempo limite esgotado para login (5 minutos).' });
+      }, 300000);
+    } catch (err) {
+      resolve({ success: false, error: err.message });
+    }
+  });
+});
+
+ipcMain.handle('drive-sync-autodrive', async () => {
+  try {
+    const candidatePaths = [
+      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'token.json'),
+      path.join(process.env.USERPROFILE || '', 'Desktop', 'PROJETOS', 'autodrive', 'token.json')
+    ];
+
+    let foundTokenPath = candidatePaths.find(p => fs.existsSync(p));
+    if (!foundTokenPath) {
+      return { success: false, error: 'Nenhum token do AutoDrive encontrado em AppData\\Local\\AutoDrive ou na pasta do projeto.' };
+    }
+
+    const tokenContent = fs.readFileSync(foundTokenPath, 'utf-8');
+    const userTokenPath = path.join(app.getPath('userData'), 'token.json');
+    fs.writeFileSync(userTokenPath, tokenContent, 'utf-8');
+
+    // Also copy credentials if present
+    const candidateCreds = [
+      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'credentials.json'),
+      path.join(process.env.USERPROFILE || '', 'Desktop', 'PROJETOS', 'autodrive', 'credentials.json')
+    ];
+    let foundCredsPath = candidateCreds.find(p => fs.existsSync(p));
+    if (foundCredsPath) {
+      const credsContent = fs.readFileSync(foundCredsPath, 'utf-8');
+      fs.writeFileSync(path.join(app.getPath('userData'), 'credentials.json'), credsContent, 'utf-8');
+    }
+
+    if (driveService) {
+      driveService.cachedAccessToken = null;
+      driveService.tokenExpiry = 0;
+    }
+
+    const status = await driveService.getStatus();
+    if (status.connected) {
+      const store = loadJsonFile('storage.json', {});
+      store.googleDriveEmail = status.user?.emailAddress || store.googleDriveEmail || '';
+      saveJsonFile('storage.json', store);
+    }
+
+    return { success: true, status };
+  } catch (err) {
+    console.error('Error in drive-sync-autodrive:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('drive-import-token', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Selecione o arquivo token.json ou credentials.json do Google Drive',
+      filters: [{ name: 'Arquivos JSON (*.json)', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    const filePath = result.filePaths[0];
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+    const userTokenPath = path.join(app.getPath('userData'), 'token.json');
+    const userCredsPath = path.join(app.getPath('userData'), 'credentials.json');
+
+    if (raw.refresh_token || raw.token) {
+      fs.writeFileSync(userTokenPath, JSON.stringify(raw, null, 2), 'utf-8');
+    } else if (raw.installed || raw.web || raw.client_id) {
+      fs.writeFileSync(userCredsPath, JSON.stringify(raw, null, 2), 'utf-8');
+    } else {
+      return { success: false, error: 'O arquivo JSON selecionado não contém um token ou credencial válida do Google.' };
+    }
+
+    if (driveService) {
+      driveService.cachedAccessToken = null;
+      driveService.tokenExpiry = 0;
+    }
+
+    const status = await driveService.getStatus();
+    return { success: true, status };
+  } catch (err) {
+    console.error('Error in drive-import-token:', err);
     return { success: false, error: err.message };
   }
 });

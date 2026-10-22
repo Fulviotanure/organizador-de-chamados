@@ -119,6 +119,8 @@ class GoogleDriveService {
   getCredentials() {
     const candidatePaths = [
       this.userDataPath ? path.join(this.userDataPath, 'credentials.json') : null,
+      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'credentials.json'),
+      path.join(process.env.USERPROFILE || '', 'Desktop', 'PROJETOS', 'autodrive', 'credentials.json'),
       path.join(process.env.APPDATA || '', 'OrganizadorChamados', 'credentials.json'),
       path.join(__dirname, '..', 'credentials.json')
     ].filter(Boolean);
@@ -155,6 +157,8 @@ class GoogleDriveService {
 
     const candidatePaths = [
       this.userDataPath ? path.join(this.userDataPath, 'token.json') : null,
+      path.join(process.env.LOCALAPPDATA || '', 'AutoDrive', 'token.json'),
+      path.join(process.env.USERPROFILE || '', 'Desktop', 'PROJETOS', 'autodrive', 'token.json'),
       path.join(process.env.APPDATA || '', 'OrganizadorChamados', 'token.json'),
       path.join(__dirname, '..', 'token.json')
     ].filter(Boolean);
@@ -186,7 +190,7 @@ class GoogleDriveService {
     const refreshToken = this.getRefreshToken();
 
     if (!refreshToken) {
-      throw new Error('Nenhum refresh_token do Google Drive encontrado.');
+      throw new Error('Google Drive não está conectado neste computador. Acesse as Configurações ⚙️ para conectar sua conta.');
     }
 
     const params = new URLSearchParams({

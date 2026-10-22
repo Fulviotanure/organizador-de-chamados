@@ -1431,6 +1431,24 @@
             Configuração da integração com Google Drive para envio de layouts, detecção de pastas e espelho local no computador.
           </div>
 
+          <!-- Opções Rápidas de Conexão com Google Drive -->
+          <div style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 600; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <span>⚡</span> CONEXÃO RÁPIDA COM O GOOGLE DRIVE
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn-primary" id="btnOAuthLoginDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px; background: #2563eb;">
+                <span>🌐</span> Conectar com Conta Google (Login)
+              </button>
+              <button type="button" class="btn-secondary" id="btnSyncAutoDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px;" title="Importar credenciais do AutoDrive instalado neste computador">
+                <span>⚡</span> Sincronizar com AutoDrive Local
+              </button>
+              <button type="button" class="btn-secondary" id="btnImportDriveToken" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px;" title="Importar arquivo token.json ou credentials.json manualmente">
+                <span>📁</span> Importar token.json
+              </button>
+            </div>
+          </div>
+
           <!-- Campos de Email e Senha do Google Drive -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
