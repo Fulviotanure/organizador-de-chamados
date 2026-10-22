@@ -2943,6 +2943,26 @@ async function submitComment() {
   }
 }
 
+function sanitizeMovideskId(raw) {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+
+  // Se o usuário colou URL completa do Movidesk: https://.../Ticket/Edit/12345
+  const urlMatch = str.match(/Ticket\/(?:Edit\/)?(\d+)/i);
+  if (urlMatch && urlMatch[1]) {
+    return String(urlMatch[1]).slice(0, 40);
+  }
+
+  // Se tiver prefixo de hashtag ou número puro: #12345 ou 12345
+  const hashMatch = str.match(/^#?(\d+)$/);
+  if (hashMatch && hashMatch[1]) {
+    return String(hashMatch[1]).slice(0, 40);
+  }
+
+  return str.slice(0, 40);
+}
+
 async function saveDrawerTicketChanges() {
   if (!selectedTicket) return;
 
@@ -2961,8 +2981,8 @@ async function saveDrawerTicketChanges() {
   const assignedToId = document.getElementById('drawerEditAssignedTo')?.value || null;
   const priority = normalizePriorityToApi(document.getElementById('drawerEditPriority')?.value);
   const clientDatabase = document.getElementById('drawerEditDatabase')?.value.trim() || null;
-  const movideskRaw = document.getElementById('drawerEditMovidesk')?.value.trim();
-  const movideskTicketId = movideskRaw ? parseInt(movideskRaw, 10) : null;
+  const movideskRaw = document.getElementById('drawerEditMovidesk')?.value;
+  const movideskTicketId = sanitizeMovideskId(movideskRaw);
   const newLayoutId = document.getElementById('drawerEditLayoutId')?.value || null;
   const ticketTypeId = document.getElementById('drawerEditType')?.value || null;
   const productId = document.getElementById('drawerEditProduct')?.value || null;
@@ -2979,11 +2999,16 @@ async function saveDrawerTicketChanges() {
     title,
     priority,
     clientDatabase,
-    movideskTicketId,
     typeId: ticketTypeId,
     productId,
     labelIds: Array.from(selectedDrawerLabels)
   };
+
+  if (movideskTicketId) {
+    payload.movideskTicketId = movideskTicketId;
+  } else if (selectedTicket.movideskTicketId) {
+    payload.movideskTicketId = null;
+  }
 
   // Se o usuário abriu e editou a descrição
   const editWrapper = document.getElementById('drawerDescEditWrapper');
@@ -4773,7 +4798,10 @@ async function submitCreateTicket() {
 
     if (layoutId) payload.layoutId = layoutId;
     if (database) payload.clientDatabase = database;
-    if (movidesk) payload.movideskTicketId = parseInt(movidesk, 10);
+    if (movidesk) {
+      const cleanMovi = sanitizeMovideskId(movidesk);
+      if (cleanMovi) payload.movideskTicketId = cleanMovi;
+    }
     if (dueDate) {
       payload.deliveryDueDate = new Date(dueDate + 'T23:59:59.000Z').toISOString();
     }
