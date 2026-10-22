@@ -480,7 +480,7 @@ if (autoUpdater) {
     setTimeout(() => {
       try {
         console.log('Reiniciando automaticamente para aplicar atualização...');
-        autoUpdater.quitAndInstall(false, true);
+        autoUpdater.quitAndInstall(true, true);
       } catch (err) {
         console.error('Erro ao reiniciar para aplicar atualização:', err);
       }
@@ -507,7 +507,7 @@ ipcMain.handle('updater-check', async () => {
 
 ipcMain.handle('updater-restart-install', () => {
   if (autoUpdater) {
-    autoUpdater.quitAndInstall(false, true);
+    autoUpdater.quitAndInstall(true, true);
   }
 });
 
