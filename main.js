@@ -686,25 +686,15 @@ if (autoUpdater) {
       status: 'downloaded',
       version: info.version,
       percent: 100,
-      message: `Versão ${info.version} baixada! Reiniciando e aplicando atualização...`
+      message: `Versão ${info.version} pronta! Reinicie para atualizar.`
     });
 
     if (Notification.isSupported()) {
       new Notification({
-        title: 'Instalando Atualização',
-        body: `A versão ${info.version} foi baixada com sucesso. O sistema reiniciará automaticamente para concluir a instalação.`
+        title: 'Atualização Pronta',
+        body: `A versão ${info.version} foi baixada em segundo plano. Reinicie quando quiser para aplicar.`
       }).show();
     }
-
-    // Reiniciar sozinho logo após baixar conforme solicitação do usuário
-    setTimeout(() => {
-      try {
-        console.log('Reiniciando automaticamente para aplicar atualização...');
-        autoUpdater.quitAndInstall(true, true);
-      } catch (err) {
-        console.error('Erro ao reiniciar para aplicar atualização:', err);
-      }
-    }, 2200);
   });
 }
 

@@ -1738,6 +1738,24 @@
         </div>
       </div>
     </div>
+  <!-- Notificação Flutuante Estilo Discord (Atualização Pronta sem Bloquear a Tela) -->
+  <div id="discordUpdateToast" class="discord-update-toast" style="display: none;">
+    <div class="discord-toast-icon-wrapper">
+      <span>🚀</span>
+    </div>
+    <div class="discord-toast-content">
+      <div class="discord-toast-title">
+        <span>Atualização Pronta!</span>
+        <span class="discord-toast-badge" id="discordToastBadge">Nova versão</span>
+      </div>
+      <div class="discord-toast-desc" id="discordToastDesc">A nova versão foi baixada em segundo plano. Reinicie quando quiser para aplicar.</div>
+    </div>
+    <div class="discord-toast-actions">
+      <button type="button" class="btn-discord-restart" id="btnDiscordToastRestart">
+        <span>🔄</span> Reiniciar
+      </button>
+      <button type="button" class="btn-discord-later" id="btnDiscordToastLater" title="Lembrar mais tarde">✕</button>
+    </div>
   </div>
 
   <!-- Scripts -->

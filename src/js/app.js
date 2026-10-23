@@ -284,17 +284,20 @@ window.showAppError = showAppError;
 window.translateErrorMessage = translateErrorMessage;
 
 // Auto-updater UI integration (GitHub Releases)
+let isUpdateReadyToInstall = false;
+
 function setupAutoUpdaterRenderer() {
   if (!window.electronAPI) return;
 
-  const updateModal = document.getElementById('appUpdateProgressModal');
-  const updateBar = document.getElementById('appUpdateProgressBar');
-  const updatePercentText = document.getElementById('appUpdatePercentText');
-  const updateStatusText = document.getElementById('appUpdateStatusText');
-  const updateSpeedText = document.getElementById('appUpdateSpeedText');
-  const updateBytesText = document.getElementById('appUpdateBytesText');
-  const updateVersionEl = document.getElementById('appUpdateVersion');
-  const updateNoteText = document.getElementById('appUpdateInfoNoteText');
+  const banner = document.getElementById('updateBanner');
+  const text = document.getElementById('updateBannerText');
+  const btnRestart = document.getElementById('btnRestartUpdate');
+  const btnCheckUpdates = document.getElementById('btnCheckUpdates');
+  const discordToast = document.getElementById('discordUpdateToast');
+  const discordToastBadge = document.getElementById('discordToastBadge');
+  const discordToastDesc = document.getElementById('discordToastDesc');
+  const btnDiscordToastRestart = document.getElementById('btnDiscordToastRestart');
+  const btnDiscordToastLater = document.getElementById('btnDiscordToastLater');
 
   if (window.electronAPI.getAppVersion) {
     window.electronAPI.getAppVersion().then(v => {
@@ -303,122 +306,123 @@ function setupAutoUpdaterRenderer() {
     });
   }
 
-  function showUpdateHud(show = true) {
-    if (updateModal) {
-      updateModal.style.display = show ? 'flex' : 'none';
+  function handleTriggerRestart() {
+    if (window.electronAPI.restartAndInstallUpdate) {
+      window.electronAPI.restartAndInstallUpdate();
     }
   }
+
+  btnRestart?.addEventListener('click', handleTriggerRestart);
+  btnDiscordToastRestart?.addEventListener('click', handleTriggerRestart);
+  btnDiscordToastLater?.addEventListener('click', () => {
+    if (discordToast) discordToast.style.display = 'none';
+  });
 
   if (window.electronAPI.onUpdaterStatus) {
     window.electronAPI.onUpdaterStatus(data => {
       console.log('Updater status received:', data);
-      const banner = document.getElementById('updateBanner');
-      const text = document.getElementById('updateBannerText');
-      const btnRestart = document.getElementById('btnRestartUpdate');
 
       if (data.status === 'checking') {
-        if (banner && text) {
+        if (banner && text && banner.dataset.manualCheck === 'true') {
           banner.style.display = 'inline-flex';
+          banner.style.background = 'rgba(56, 189, 248, 0.15)';
+          banner.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          text.style.color = '#38bdf8';
           text.textContent = 'Verificando atualizações...';
         }
-        if (btnRestart) btnRestart.style.display = 'none';
       } else if (data.status === 'available') {
-        showUpdateHud(true);
-        if (updateVersionEl) {
-          updateVersionEl.textContent = data.version ? `Instalando versão v${data.version}` : 'Baixando nova versão...';
+        // Baixa 100% em segundo plano SEM interromper o usuário com modal
+        if (banner && text) {
+          banner.style.display = 'inline-flex';
+          banner.style.background = 'rgba(56, 189, 248, 0.15)';
+          banner.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          text.style.color = '#38bdf8';
+          text.textContent = data.version ? `⬇️ Baixando v${data.version} em 2º plano...` : '⬇️ Baixando atualização em 2º plano...';
         }
-        if (updateStatusText) {
-          updateStatusText.textContent = 'Iniciando download da atualização...';
+        if (btnCheckUpdates) {
+          btnCheckUpdates.innerHTML = '<span>⬇️</span> Baixando...';
         }
-        if (updateBar) {
-          updateBar.style.width = '6%';
-          updateBar.classList.remove('is-complete');
-        }
-        if (updatePercentText) updatePercentText.textContent = '6%';
-        if (btnRestart) btnRestart.style.display = 'none';
       } else if (data.status === 'downloading') {
-        showUpdateHud(true);
         const p = data.percent || 0;
-        if (updateBar) {
-          updateBar.style.width = `${Math.max(6, p)}%`;
-          updateBar.classList.remove('is-complete');
-        }
-        if (updatePercentText) updatePercentText.textContent = `${p}%`;
-        if (updateStatusText) {
-          updateStatusText.textContent = `Baixando atualização do sistema (${p}%)...`;
-        }
-        if (updateSpeedText) {
-          updateSpeedText.textContent = data.speed ? `Velocidade: ${data.speed}` : 'Baixando...';
-        }
-        if (updateBytesText) {
-          updateBytesText.textContent = (data.transferred && data.total) ? `${data.transferred} / ${data.total}` : '';
-        }
         if (banner && text) {
           banner.style.display = 'inline-flex';
-          text.textContent = `Baixando atualização: ${p}%`;
+          text.textContent = `⬇️ Baixando atualização em 2º plano (${p}%)...`;
         }
-        if (btnRestart) btnRestart.style.display = 'none';
+        if (btnCheckUpdates) {
+          btnCheckUpdates.innerHTML = `<span>⬇️</span> Baixando ${p}%`;
+        }
       } else if (data.status === 'downloaded') {
-        showUpdateHud(true);
-        if (updateBar) {
-          updateBar.style.width = '100%';
-          updateBar.classList.add('is-complete');
-        }
-        if (updatePercentText) updatePercentText.textContent = '100%';
-        if (updateStatusText) {
-          updateStatusText.textContent = '✨ Download concluído com sucesso!';
-        }
-        if (updateSpeedText) updateSpeedText.textContent = 'Finalizado';
-        if (updateBytesText) updateBytesText.textContent = 'Pronto para instalar';
-        if (updateNoteText) {
-          updateNoteText.textContent = '🚀 Reiniciando o aplicativo automaticamente para concluir a instalação...';
-        }
+        isUpdateReadyToInstall = true;
+        const verStr = data.version ? `v${data.version}` : 'Nova versão';
+
+        // 1. Banner superior estilo Discord com botão verde de reiniciar
         if (banner && text) {
           banner.style.display = 'inline-flex';
-          text.textContent = 'Atualização baixada! Reiniciando aplicativo...';
+          banner.style.background = 'rgba(34, 197, 94, 0.2)';
+          banner.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+          text.style.color = '#4ade80';
+          text.textContent = `✨ ${verStr} pronta!`;
         }
-        if (btnRestart) btnRestart.style.display = 'none';
+        if (btnRestart) {
+          btnRestart.style.display = 'inline-flex';
+          btnRestart.className = 'btn-discord-restart';
+          btnRestart.innerHTML = '<span>🔄</span> Reiniciar para Atualizar';
+        }
 
-        // Reinicia sozinho logo após baixar, conforme solicitado
-        setTimeout(() => {
-          if (window.electronAPI.restartAndInstallUpdate) {
-            window.electronAPI.restartAndInstallUpdate();
+        // 2. Botão no rodapé esquerdo transforma-se em "Reiniciar para Atualizar"
+        if (btnCheckUpdates) {
+          btnCheckUpdates.innerHTML = '<span>🚀</span> Reiniciar para Atualizar';
+          btnCheckUpdates.classList.add('btn-restart-ready');
+          btnCheckUpdates.title = 'Clique para reiniciar e aplicar a nova versão imediatamente';
+        }
+
+        // 3. Notificação flutuante discreta tipo Discord no canto da tela (não bloqueante)
+        if (discordToast) {
+          if (discordToastBadge) discordToastBadge.textContent = verStr;
+          if (discordToastDesc) {
+            discordToastDesc.textContent = `A atualização ${verStr} foi baixada em segundo plano. Reinicie quando quiser para aplicar.`;
           }
-        }, 2200);
-
+          discordToast.style.display = 'flex';
+        }
       } else if (data.status === 'not-available') {
-        showUpdateHud(false);
-        if (banner && text) {
+        if (banner && text && banner.dataset.manualCheck === 'true') {
           banner.style.display = 'inline-flex';
+          banner.style.background = 'rgba(56, 189, 248, 0.15)';
+          banner.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+          text.style.color = '#38bdf8';
           text.textContent = 'Organizador de Chamados já está na versão mais recente.';
           if (btnRestart) btnRestart.style.display = 'none';
-          setTimeout(() => { banner.style.display = 'none'; }, 4000);
+          setTimeout(() => { banner.style.display = 'none'; delete banner.dataset.manualCheck; }, 4000);
         }
       } else if (data.status === 'error') {
-        showUpdateHud(false);
-        console.warn('Updater status error:', data.message);
-        if (banner && text) {
+        if (banner && text && banner.dataset.manualCheck === 'true') {
           banner.style.display = 'inline-flex';
           text.textContent = data.message || 'Erro ao verificar atualizações';
           if (btnRestart) btnRestart.style.display = 'none';
-          setTimeout(() => { banner.style.display = 'none'; }, 5000);
+          setTimeout(() => { banner.style.display = 'none'; delete banner.dataset.manualCheck; }, 5000);
         }
       }
     });
   }
 
   document.getElementById('btnCheckUpdates')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btnCheckUpdates');
-    const banner = document.getElementById('updateBanner');
-    const text = document.getElementById('updateBannerText');
-    if (btn) btn.innerHTML = '<span>⏳</span> Checando...';
+    // Se a atualização já estiver baixada, o clique reinicia direto!
+    if (isUpdateReadyToInstall) {
+      handleTriggerRestart();
+      return;
+    }
+
+    if (banner) banner.dataset.manualCheck = 'true';
+    if (btnCheckUpdates) btnCheckUpdates.innerHTML = '<span>⏳</span> Checando...';
     if (banner && text) {
       banner.style.display = 'inline-flex';
       text.textContent = 'Buscando atualizações no GitHub...';
     }
     try {
       const res = await window.electronAPI.checkForUpdates();
-      if (btn) btn.innerHTML = '<span>🔄</span> Atualizar';
+      if (!isUpdateReadyToInstall && btnCheckUpdates) {
+        btnCheckUpdates.innerHTML = '<span>🔄</span> Atualizar';
+      }
       if (res && !res.success) {
         if (banner && text) {
           text.textContent = res.error || 'Não foi possível verificar atualizações no momento.';
@@ -426,7 +430,7 @@ function setupAutoUpdaterRenderer() {
         }
       }
     } catch (e) {
-      if (btn) btn.innerHTML = '<span>🔄</span> Atualizar';
+      if (btnCheckUpdates) btnCheckUpdates.innerHTML = '<span>🔄</span> Atualizar';
       if (banner && text) {
         text.textContent = e.message || 'Erro ao checar atualizações';
         setTimeout(() => { banner.style.display = 'none'; }, 5000);
