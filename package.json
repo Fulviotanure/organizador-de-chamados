@@ -1,6 +1,6 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
   "main": "main.js",
   "scripts": {
@@ -29,7 +29,7 @@
       "provider": "github",
       "owner": "Fulviotanure",
       "repo": "organizador-de-chamados",
-      "releaseType": "release"
+      "releaseType": "draft"
     },
     "win": {
       "target": [
@@ -43,7 +43,7 @@
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Organizador de Chamados",
-      "differentialPackage": "store-asar"
+      "differentialPackage": true
     },
     "files": [
       "main.js",
