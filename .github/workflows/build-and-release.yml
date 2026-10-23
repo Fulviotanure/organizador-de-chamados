@@ -46,6 +46,18 @@ jobs:
         run: |
           Write-Host "Verificando e garantindo que a release seja publicada como Latest..."
           try {
+            $targetTag = $env:GITHUB_REF_NAME
+            if (-not $targetTag -or $targetTag -eq 'main') {
+              $pkg = Get-Content package.json | ConvertFrom-Json
+              $targetTag = "v$($pkg.version)"
+            }
+
+            Write-Host "Garantindo que todos os artefatos (.exe, .blockmap, .yml) estejam na release $targetTag..."
+            Get-ChildItem -Path dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' } | ForEach-Object {
+              Write-Host "Enviando: $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)..."
+              gh release upload $targetTag $_.FullName --clobber
+            }
+
             $releases = @(gh release list --limit 10 --json tagName,isDraft | ConvertFrom-Json)
             foreach ($rel in $releases) {
               if ($rel.isDraft) {
@@ -54,12 +66,6 @@ jobs:
               }
             }
 
-            # Garantir que a versao atual seja explicitamente marcada como latest
-            $targetTag = $env:GITHUB_REF_NAME
-            if (-not $targetTag -or $targetTag -eq 'main') {
-              $pkg = Get-Content package.json | ConvertFrom-Json
-              $targetTag = "v$($pkg.version)"
-            }
             Write-Host "Definindo $targetTag como release Latest no GitHub..."
             gh release edit $targetTag --latest --draft=false
           } catch {

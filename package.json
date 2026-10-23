@@ -1,6 +1,6 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
   "main": "main.js",
   "scripts": {
@@ -43,6 +43,7 @@
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Organizador de Chamados",
+      "artifactName": "Organizador-de-Chamados-Setup-${version}.${ext}",
       "differentialPackage": true
     },
     "files": [
