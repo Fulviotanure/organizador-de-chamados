@@ -439,18 +439,22 @@ function setupAutoUpdaterRenderer() {
 async function initApplication() {
   await window.appStore.init();
 
-  // Check login
+  // Check login & persistent credentials
   if (!window.appStore.token) {
     // If we have saved credentials, try auto-login
-    if (window.appStore.savedCredentials) {
+    if (window.appStore.savedCredentials?.email && window.appStore.savedCredentials?.password) {
       try {
+        console.log('[Auto-Login] Executando auto-login inicial com credenciais salvas...');
         await doLogin(window.appStore.savedCredentials.email, window.appStore.savedCredentials.password, true);
         return;
       } catch (e) {
-        console.warn('Auto-login failed, showing login screen:', e);
+        console.warn('Auto-login inicial falhou, exibindo tela de login:', e);
+        showLoginOverlay();
+        return;
       }
     }
     showLoginOverlay();
+    return;
   } else {
     updateUserProfileUI();
     renderFixedFiltersList();
@@ -484,9 +488,15 @@ function showLoginOverlay() {
     overlay.style.display = 'flex';
     const emailInput = document.getElementById('loginEmail');
     const pwdInput = document.getElementById('loginPassword');
+    const remInput = document.getElementById('loginRemember');
+    if (remInput) remInput.checked = true;
+
     if (window.appStore && window.appStore.savedCredentials) {
-      if (emailInput && !emailInput.value) {
+      if (emailInput) {
         emailInput.value = window.appStore.savedCredentials.email || '';
+      }
+      if (pwdInput && window.appStore.savedCredentials.password) {
+        pwdInput.value = window.appStore.savedCredentials.password;
       }
     }
     if (pwdInput && !pwdInput.value && emailInput?.value) {
@@ -524,6 +534,7 @@ async function doLogin(email, password, remember = true) {
       errBox.style.display = 'block';
     }
     showLoginOverlay();
+    throw err;
   } finally {
     if (btnSubmit) btnSubmit.innerText = 'Conectar e Carregar Demandas';
   }
@@ -1132,7 +1143,18 @@ async function syncDemands() {
   } catch (err) {
     console.error('Error syncing demands:', err);
     if (err.message === 'UNAUTHORIZED') {
-      showLoginOverlay();
+      if (window.appStore.savedCredentials?.email && window.appStore.savedCredentials?.password) {
+        try {
+          console.warn('[SyncDemands] UNAUTHORIZED detectado. Realizando auto-relogin com credenciais salvas...');
+          await doLogin(window.appStore.savedCredentials.email, window.appStore.savedCredentials.password, true);
+          return;
+        } catch (reLoginErr) {
+          console.error('[SyncDemands] Falha no auto-login ao sincronizar:', reLoginErr);
+          showLoginOverlay();
+        }
+      } else {
+        showLoginOverlay();
+      }
     } else {
       if (syncDot) syncDot.style.backgroundColor = 'var(--status-error)';
       if (syncText) syncText.textContent = 'Erro ao sincronizar';
@@ -1473,9 +1495,10 @@ function renderKanbanView(demands) {
   if (!container) return;
 
   const columns = [
-    { id: 'queued', title: 'Na Fila', color: 'var(--status-queue)', statusMatch: ['queued'] },
-    { id: 'in_progress', title: 'Em Progresso', color: 'var(--status-progress)', statusMatch: ['in_progress', 'progress'] },
+    { id: 'queued', title: 'Na Fila', color: 'var(--status-queue)', statusMatch: ['queued', 'open', 'triage'] },
+    { id: 'in_progress', title: 'Em Desenvolvimento', color: 'var(--status-progress)', statusMatch: ['in_progress', 'progress'] },
     { id: 'waiting', title: 'Aguardando N2', color: 'var(--status-waiting)', statusMatch: ['waiting', 'waiting_creator', 'waiting_requester'] },
+    { id: 'paused', title: 'Pausado', color: '#f59e0b', statusMatch: ['paused'] },
     { id: 'review', title: 'Em Revisão', color: 'var(--status-review)', statusMatch: ['review'] },
     { id: 'closed', title: 'Concluído', color: 'var(--status-closed)', statusMatch: ['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'] }
   ];
@@ -1493,6 +1516,37 @@ function renderKanbanView(demands) {
       const layoutCode = t.layout?.code || (typeof t.layout === 'number' || typeof t.layout === 'string' ? t.layout : null);
       const dateBadge = renderDateBadge(t.deliveryDueDate || t.clientDueDate);
       const initials = t.assignedTo?.name ? t.assignedTo.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?';
+
+      const s = (t.status || '').toLowerCase();
+      let quickActionsHtml = '';
+      if (s === 'review') {
+        quickActionsHtml = `
+          <div class="kanban-card-quick-actions">
+            <button type="button" class="btn-card-workflow btn-quick-finalize btn-kanban-action" data-action="finalize" data-id="${t.id}" title="Finalizar chamado">✅ Finalizar</button>
+            <button type="button" class="btn-card-workflow btn-quick-return btn-kanban-action" data-action="return" data-id="${t.id}" title="Devolver para o desenvolvedor">↩️ Devolver</button>
+          </div>
+        `;
+      } else if (s === 'waiting_requester' || s === 'waiting' || s === 'waiting_creator' || s === 'paused') {
+        quickActionsHtml = `
+          <div class="kanban-card-quick-actions">
+            <button type="button" class="btn-card-workflow btn-quick-resume btn-kanban-action" data-action="resume" data-id="${t.id}" title="Retomar desenvolvimento">▶️ Retomar</button>
+          </div>
+        `;
+      } else if (s === 'queued' || s === 'open' || s === 'triage') {
+        quickActionsHtml = `
+          <div class="kanban-card-quick-actions">
+            <button type="button" class="btn-card-workflow btn-quick-start btn-kanban-action" data-action="start" data-id="${t.id}" title="Iniciar desenvolvimento">🚀 Iniciar</button>
+          </div>
+        `;
+      } else if (s === 'in_progress' || s === 'progress') {
+        quickActionsHtml = `
+          <div class="kanban-card-quick-actions">
+            <button type="button" class="btn-card-workflow btn-quick-pause btn-kanban-action" data-action="pause" data-id="${t.id}" title="Pausar desenvolvimento">⏸️ Pausar</button>
+            <button type="button" class="btn-card-workflow btn-quick-waiting btn-kanban-action" data-action="wait" data-id="${t.id}" title="Aguardar resposta de quem abriu">⏳ Aguardar</button>
+            <button type="button" class="btn-card-workflow btn-quick-review btn-kanban-action" data-action="review" data-id="${t.id}" title="Enviar para revisão">📤 Revisão</button>
+          </div>
+        `;
+      }
 
       return `
         <div class="kanban-card" data-id="${t.id}">
@@ -1529,6 +1583,7 @@ function renderKanbanView(demands) {
               </button>
             </div>
           </div>
+          ${quickActionsHtml}
         </div>
       `;
     }).join('');
@@ -1553,10 +1608,29 @@ function renderKanbanView(demands) {
   // Click card to open drawer
   container.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive')) return;
+      if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive') || e.target.closest('.btn-kanban-action')) return;
       const ticketId = card.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
       if (ticket) openDemandDrawer(ticket);
+    });
+  });
+
+  // Kanban workflow action buttons
+  container.querySelectorAll('.btn-kanban-action').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const ticketId = btn.dataset.id;
+      const ticket = window.appStore.demands.find(d => d.id === ticketId);
+      if (!ticket) return;
+
+      if (action === 'start') await handleStartTicket(ticket);
+      else if (action === 'pause') await handlePauseTicket(ticket);
+      else if (action === 'wait') await handleWaitRequesterTicket(ticket);
+      else if (action === 'review') await handleSendToReviewTicket(ticket);
+      else if (action === 'resume') await handleResumeTicket(ticket);
+      else if (action === 'finalize') await handleFinalizeTicket(ticket);
+      else if (action === 'return') await handleReturnTicketToDev(ticket);
     });
   });
 
@@ -2389,13 +2463,14 @@ async function openDemandDrawer(ticket) {
   document.getElementById('drawerDemandTitle').textContent = ticket.title || '';
 
   // Badges
+  const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
   const badgesBox = document.getElementById('drawerBadges');
   if (badgesBox) {
-    badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml(ticket.status)} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+    const ignoredBadge = isDrawerIgnored ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>' : '';
+    badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml(ticket.status)} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
   }
 
   // Action buttons
-  const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
   const btnDrawerIgnore = document.getElementById('btnToggleDrawerIgnore');
   if (btnDrawerIgnore) {
     btnDrawerIgnore.innerHTML = isDrawerIgnored ? '<span>↩️</span> Reativar Chamado' : '<span>🚫</span> Ignorar Chamado';
@@ -2555,6 +2630,10 @@ async function openDemandDrawer(ticket) {
   // Switch to Details tab by default
   switchDrawerTab('details');
 
+  // Render dynamic workflow buttons and same layout open tickets
+  renderDrawerWorkflowButtons(ticket);
+  renderSameLayoutTickets(ticket);
+
   overlay?.classList.add('open');
   drawer?.classList.add('open');
 
@@ -2562,6 +2641,10 @@ async function openDemandDrawer(ticket) {
   try {
     const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
     selectedTicket = { ...ticket, ...details };
+
+    // Refresh dynamic workflow buttons and same layout with fresh API details
+    renderDrawerWorkflowButtons(selectedTicket);
+    renderSameLayoutTickets(selectedTicket);
 
     // Update layout title if full details have layout name
     const finalLayoutCode = details.layout?.code || layoutCode;
@@ -3138,14 +3221,15 @@ function promptJustification({
   });
 }
 
-// Ação de Fluxo: Finalizar Chamado
-async function handleFinalizeTicket() {
-  if (!selectedTicket) return;
+// Ação de Fluxo: Finalizar Chamado (Status: closed)
+async function handleFinalizeTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
 
   const result = await promptJustification({
     icon: '✅',
     title: 'Finalizar Chamado',
-    subtitle: `Demanda #${selectedTicket.movideskTicketId || selectedTicket.id.slice(0, 8)} - ${selectedTicket.title}`,
+    subtitle: `Demanda #${ticket.number || ticket.movideskTicketId || ticket.id.slice(0, 8)} - ${ticket.title}`,
     bannerText: 'Você está concluindo esta demanda. O status será alterado para "Concluído".',
     suggestions: [
       'Homologado e validado em produção com sucesso',
@@ -3165,31 +3249,31 @@ async function handleFinalizeTicket() {
 
   const reason = result.reason;
   const statusText = document.getElementById('drawerSaveStatusText');
-  if (statusText) {
+  if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
     statusText.textContent = 'Finalizando demanda...';
   }
 
   try {
     // 1. Alterar status na API
-    await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, 'closed', reason);
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'closed', reason);
 
     // 2. Adicionar comentário na linha do tempo se marcado
     if (result.addComment) {
       try {
         const commentText = `✅ **[CHAMADO FINALIZADO]**\n${reason}`;
-        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
       } catch (cErr) {
         console.warn('Erro ao postar comentário de finalização:', cErr);
       }
     }
 
     // 3. Atualizar localmente
-    selectedTicket.status = 'closed';
+    ticket.status = 'closed';
     const statusSelect = document.getElementById('drawerEditStatus');
-    if (statusSelect) statusSelect.value = 'closed';
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'closed';
 
-    const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
       window.appStore.demands[idx].status = 'closed';
       if (typeof window.appStore.saveDemandsCache === 'function') {
@@ -3197,37 +3281,41 @@ async function handleFinalizeTicket() {
       }
     }
 
-    // Atualizar badges do drawer
-    const badgesBox = document.getElementById('drawerBadges');
-    if (badgesBox) {
-      badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)}`;
-    }
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
 
-    if (statusText) {
-      statusText.style.color = '#10b981';
-      statusText.textContent = '✅ Demanda finalizada com sucesso!';
-      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      if (statusText) {
+        statusText.style.color = '#10b981';
+        statusText.textContent = '✅ Demanda finalizada com sucesso!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
     }
 
     renderDemands();
-    await refreshDrawerActivity(selectedTicket.id);
     showAppAlert('Demanda finalizada com sucesso!', 'Concluído', 'success');
   } catch (err) {
-    if (statusText) statusText.textContent = '';
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao finalizar chamado: ' + err.message, 'Erro', 'error');
   }
 }
 
-// Ação de Fluxo: Devolver para o Desenvolvedor
-async function handleReturnTicketToDev() {
-  if (!selectedTicket) return;
+// Ação de Fluxo: Devolver para o Desenvolvedor (Status: in_progress)
+async function handleReturnTicketToDev(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
 
-  const devName = selectedTicket.assignedTo?.name || 'Desenvolvedor';
+  const devName = ticket.assignedTo?.name || 'Desenvolvedor';
   const result = await promptJustification({
     icon: '↩️',
     title: 'Devolver para o Desenvolvedor',
-    subtitle: `Responsável atual: ${devName} | #${selectedTicket.movideskTicketId || selectedTicket.id.slice(0, 8)}`,
-    bannerText: 'O status do chamado voltará para "Em Progresso" para que o desenvolvedor realize as correções necessárias.',
+    subtitle: `Responsável atual: ${devName} | #${ticket.number || ticket.movideskTicketId || ticket.id.slice(0, 8)}`,
+    bannerText: 'O status do chamado voltará para "Em Desenvolvimento" para que o desenvolvedor realize as correções necessárias.',
     suggestions: [
       'Inconsistência encontrada durante os testes de homologação',
       'Necessário ajustar regras de layout e campos obrigatórios',
@@ -3247,31 +3335,31 @@ async function handleReturnTicketToDev() {
 
   const reason = result.reason;
   const statusText = document.getElementById('drawerSaveStatusText');
-  if (statusText) {
+  if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
     statusText.textContent = 'Devolvendo demanda para o desenvolvedor...';
   }
 
   try {
     // 1. Alterar status na API para in_progress
-    await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, 'in_progress', reason);
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
 
     // 2. Adicionar comentário na linha do tempo se marcado
     if (result.addComment) {
       try {
         const commentText = `↩️ **[DEVOLVIDO PARA O DESENVOLVEDOR]**\n${reason}`;
-        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
       } catch (cErr) {
         console.warn('Erro ao postar comentário de devolução:', cErr);
       }
     }
 
     // 3. Atualizar localmente
-    selectedTicket.status = 'in_progress';
+    ticket.status = 'in_progress';
     const statusSelect = document.getElementById('drawerEditStatus');
-    if (statusSelect) statusSelect.value = 'in_progress';
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'in_progress';
 
-    const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
       window.appStore.demands[idx].status = 'in_progress';
       if (typeof window.appStore.saveDemandsCache === 'function') {
@@ -3279,25 +3367,793 @@ async function handleReturnTicketToDev() {
       }
     }
 
-    // Atualizar badges do drawer
-    const badgesBox = document.getElementById('drawerBadges');
-    if (badgesBox) {
-      badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml('in_progress')} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)}`;
-    }
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('in_progress')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
 
-    if (statusText) {
-      statusText.style.color = '#10b981';
-      statusText.textContent = '↩️ Demanda devolvida para o desenvolvedor!';
-      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      if (statusText) {
+        statusText.style.color = '#10b981';
+        statusText.textContent = '↩️ Demanda devolvida para o desenvolvedor!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
     }
 
     renderDemands();
-    await refreshDrawerActivity(selectedTicket.id);
-    showAppAlert('Demanda devolvida para o desenvolvedor com sucesso!', 'Em Progresso', 'info');
+    showAppAlert('Demanda devolvida para o desenvolvedor com sucesso!', 'Em Desenvolvimento', 'info');
   } catch (err) {
-    if (statusText) statusText.textContent = '';
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao devolver chamado: ' + err.message, 'Erro', 'error');
   }
+}
+
+// Ação de Fluxo: Iniciar Demanda (Status: in_progress)
+async function handleStartTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
+
+  const result = await promptJustification({
+    icon: '🚀',
+    title: 'Iniciar Desenvolvimento',
+    subtitle: `Demanda #${ticket.number || ticket.id.slice(0, 8)} - ${ticket.title}`,
+    bannerText: 'O status do chamado passará para "Em Desenvolvimento" e a contagem de tempo de produção será ativada.',
+    suggestions: [
+      'Iniciando desenvolvimento e implementação',
+      'Assumindo demanda da fila para execução',
+      'Iniciando análise técnica e desenvolvimento de layout',
+      'Iniciando correções e testes na base'
+    ],
+    placeholder: 'Observações de início (opcional)...',
+    confirmText: 'Iniciar Demanda',
+    confirmClass: 'btn-confirm-start',
+    defaultComment: false,
+    requireReason: false
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason || 'Desenvolvimento iniciado';
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText && ticket === selectedTicket) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Iniciando demanda...';
+  }
+
+  try {
+    // Se o chamado não tiver desenvolvedor atribuído e o usuário logado tiver ID, atribui automaticamente
+    if (!ticket.assignedTo?.id && window.appStore.currentUser?.id) {
+      try {
+        await window.conciliadorAPI.assignTicket(ticket.id, window.appStore.currentUser.id, 'Atribuído automaticamente ao iniciar');
+        ticket.assignedTo = {
+          id: window.appStore.currentUser.id,
+          name: window.appStore.currentUser.name || window.appStore.currentUser.email
+        };
+      } catch (assignErr) {
+        console.warn('Não foi possível auto-atribuir ao iniciar:', assignErr);
+      }
+    }
+
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
+
+    if (result.addComment && result.reason) {
+      try {
+        const commentText = `🚀 **[DESENVOLVIMENTO INICIADO]**\n${reason}`;
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de início:', cErr);
+      }
+    }
+
+    ticket.status = 'in_progress';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'in_progress';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'in_progress';
+      if (ticket.assignedTo) window.appStore.demands[idx].assignedTo = ticket.assignedTo;
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('in_progress')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
+
+      if (statusText) {
+        statusText.style.color = '#10b981';
+        statusText.textContent = '🚀 Demanda iniciada com sucesso!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
+    }
+
+    renderDemands();
+    showAppAlert('Demanda iniciada com sucesso!', 'Em Desenvolvimento', 'success');
+  } catch (err) {
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
+    showAppAlert('Erro ao iniciar chamado: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Pausar Chamado (Status: paused)
+async function handlePauseTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
+
+  const result = await promptJustification({
+    icon: '⏸️',
+    title: 'Pausar Chamado',
+    subtitle: `Demanda #${ticket.number || ticket.id.slice(0, 8)} - ${ticket.title}`,
+    bannerText: 'O chamado será pausado. O cronômetro de produção será congelado temporariamente.',
+    suggestions: [
+      'Pausa para intervalo / almoço',
+      'Aguardando liberação de acesso ou arquivo adicional',
+      'Priorização temporária de outro chamado urgente',
+      'Pausa técnica no desenvolvimento'
+    ],
+    placeholder: 'Informe o motivo da pausa...',
+    confirmText: 'Pausar Chamado',
+    confirmClass: 'btn-confirm-pause',
+    defaultComment: true,
+    requireReason: true
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText && ticket === selectedTicket) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Pausando demanda...';
+  }
+
+  try {
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'paused', reason);
+
+    if (result.addComment) {
+      try {
+        const commentText = `⏸️ **[CHAMADO PAUSADO]**\n${reason}`;
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de pausa:', cErr);
+      }
+    }
+
+    ticket.status = 'paused';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'paused';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'paused';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('paused')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
+
+      if (statusText) {
+        statusText.style.color = '#f59e0b';
+        statusText.textContent = '⏸️ Demanda pausada!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
+    }
+
+    renderDemands();
+    showAppAlert('Demanda pausada com sucesso!', 'Pausado', 'warning');
+  } catch (err) {
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
+    showAppAlert('Erro ao pausar chamado: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Aguardar Quem Abriu / N2 (Status: waiting_requester)
+async function handleWaitRequesterTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
+
+  const reqName = ticket.requestedBy?.name || 'Solicitante';
+  const result = await promptJustification({
+    icon: '⏳',
+    title: 'Aguardar Quem Abriu (N2)',
+    subtitle: `Solicitante: ${reqName} | #${ticket.number || ticket.id.slice(0, 8)}`,
+    bannerText: 'O status passará para "Aguardando Resposta do N2". O SLA fica congelado até a resposta.',
+    suggestions: [
+      'Inconsistência nos dados fornecidos pelo cliente. Aguardando esclarecimento.',
+      'Aguardando envio de arquivo de exemplo para teste',
+      'Necessário alinhamento de regra de negócio com o cliente',
+      'Dúvida de especificação aguardando resposta do solicitante'
+    ],
+    placeholder: 'Descreva a dúvida ou informação que você precisa de quem abriu o chamado...',
+    confirmText: 'Aguardar Resposta',
+    confirmClass: 'btn-confirm-waiting',
+    defaultComment: true,
+    requireReason: true
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText && ticket === selectedTicket) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Alterando para aguardando quem abriu...';
+  }
+
+  try {
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'waiting_requester', reason);
+
+    if (result.addComment) {
+      try {
+        const commentText = `⏳ **[AGUARDANDO QUEM ABRIU]**\n${reason}`;
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de aguardo:', cErr);
+      }
+    }
+
+    ticket.status = 'waiting_requester';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'waiting_requester';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'waiting_requester';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('waiting_requester')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
+
+      if (statusText) {
+        statusText.style.color = '#38bdf8';
+        statusText.textContent = '⏳ Demanda aguardando resposta de quem abriu!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
+    }
+
+    renderDemands();
+    showAppAlert('Demanda colocada em espera por resposta do solicitante!', 'Aguardando N2', 'info');
+  } catch (err) {
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
+    showAppAlert('Erro ao alterar status: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Enviar para Revisão (Status: review)
+async function handleSendToReviewTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
+
+  const currentRevName = ticket.reviewer?.name || ticket.reviewerName || 'Nenhum definido';
+  const result = await promptJustification({
+    icon: '📤',
+    title: 'Enviar para Revisão',
+    subtitle: `Validador: ${currentRevName} | #${ticket.number || ticket.id.slice(0, 8)}`,
+    bannerText: 'O chamado será encaminhado para a etapa de "Em Revisão" para homologação.',
+    suggestions: [
+      'Desenvolvimento concluído e testado localmente. Pronto para homologação.',
+      'Layout criado conforme especificações técnicas. Aguardando validação.',
+      'Ajustes realizados e validados na base de teste. Liberado para revisão.',
+      'Correções concluídas. Aguardando teste final do validador.'
+    ],
+    placeholder: 'Descreva os testes realizados ou instruções para o validador...',
+    confirmText: 'Enviar para Revisão',
+    confirmClass: 'btn-confirm-review',
+    defaultComment: true,
+    requireReason: true
+  });
+
+  if (!result.confirmed) return;
+
+  const reason = result.reason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText && ticket === selectedTicket) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = 'Enviando para revisão...';
+  }
+
+  try {
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'review', reason);
+
+    if (result.addComment) {
+      try {
+        const commentText = `📤 **[ENVIADO PARA REVISÃO]**\n${reason}`;
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de envio para revisão:', cErr);
+      }
+    }
+
+    ticket.status = 'review';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'review';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'review';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('review')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
+
+      if (statusText) {
+        statusText.style.color = '#c084fc';
+        statusText.textContent = '📤 Demanda enviada para revisão com sucesso!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
+    }
+
+    renderDemands();
+    showAppAlert('Demanda enviada para revisão com sucesso!', 'Em Revisão', 'success');
+  } catch (err) {
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
+    showAppAlert('Erro ao enviar para revisão: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Ação de Fluxo: Retomar Desenvolvimento (Status: in_progress)
+async function handleResumeTicket(targetTicket = null) {
+  const ticket = targetTicket || selectedTicket;
+  if (!ticket) return;
+
+  const isClosed = ticket.status === 'closed' || ticket.status === 'done';
+  const isPaused = ticket.status === 'paused';
+  const result = await promptJustification({
+    icon: isClosed ? '🔄' : '▶️',
+    title: isClosed ? 'Reabrir Chamado' : 'Retomar Desenvolvimento',
+    subtitle: `Demanda #${ticket.number || ticket.id.slice(0, 8)} - ${ticket.title}`,
+    bannerText: isClosed
+      ? 'O chamado será reaberto e voltará para o status "Em Desenvolvimento".'
+      : (isPaused 
+        ? 'O chamado sairá da pausa e voltará para "Em Desenvolvimento".' 
+        : 'O chamado sairá de espera e voltará para desenvolvimento ativo ("Em Progresso").'),
+    suggestions: isClosed ? [
+      'Reabrindo para ajustes solicitados pelo cliente',
+      'Correção necessária após homologação',
+      'Novas alterações solicitadas no layout',
+      'Dúvidas reabertas pelo solicitante'
+    ] : (isPaused ? [
+      'Retomando desenvolvimento após pausa',
+      'Ambiente liberado, continuando implementação',
+      'Retomando prioridade do chamado'
+    ] : [
+      'Retomando desenvolvimento após resposta do solicitante',
+      'Informações recebidas, continuando ajustes',
+      'Dúvidas esclarecidas, prosseguindo com a demanda'
+    ]),
+    placeholder: isClosed ? 'Motivo da reabertura do chamado (opcional)...' : 'Observações de retomada (opcional)...',
+    confirmText: isClosed ? 'Reabrir Chamado' : 'Retomar Demanda',
+    confirmClass: isClosed ? 'btn-confirm-review' : 'btn-confirm-start',
+    defaultComment: isClosed,
+    requireReason: false
+  });
+
+  if (!result.confirmed) return;
+
+  const defaultReason = isClosed ? 'Chamado reaberto para novos ajustes' : 'Desenvolvimento retomado';
+  const reason = result.reason || defaultReason;
+  const statusText = document.getElementById('drawerSaveStatusText');
+  if (statusText && ticket === selectedTicket) {
+    statusText.style.color = 'var(--accent-primary)';
+    statusText.textContent = isClosed ? 'Reabrindo chamado...' : 'Retomando demanda...';
+  }
+
+  try {
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
+
+    if (result.addComment && result.reason) {
+      try {
+        const commentPrefix = isClosed ? '🔄 **[CHAMADO REABERTO]**\n' : '▶️ **[DESENVOLVIMENTO RETOMADO]**\n';
+        const commentText = `${commentPrefix}${reason}`;
+        await window.conciliadorAPI.addComment(ticket.id, commentText);
+      } catch (cErr) {
+        console.warn('Erro ao postar comentário de retomada/reabertura:', cErr);
+      }
+    }
+
+    ticket.status = 'in_progress';
+    const statusSelect = document.getElementById('drawerEditStatus');
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'in_progress';
+
+    const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
+    if (idx !== -1) {
+      window.appStore.demands[idx].status = 'in_progress';
+      if (typeof window.appStore.saveDemandsCache === 'function') {
+        await window.appStore.saveDemandsCache();
+      }
+    }
+
+    if (ticket === selectedTicket) {
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('in_progress')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+      }
+      renderDrawerWorkflowButtons(ticket);
+      renderSameLayoutTickets(ticket);
+
+      if (statusText) {
+        statusText.style.color = '#2dd4bf';
+        statusText.textContent = isClosed ? '🔄 Chamado reaberto com sucesso!' : '▶️ Demanda retomada com sucesso!';
+        setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      }
+      await refreshDrawerActivity(ticket.id);
+    }
+
+    renderDemands();
+    showAppAlert(isClosed ? 'Chamado reaberto para desenvolvimento!' : 'Demanda retomada para desenvolvimento!', isClosed ? 'Chamado Reaberto' : 'Em Desenvolvimento', 'success');
+  } catch (err) {
+    if (statusText && ticket === selectedTicket) statusText.textContent = '';
+    showAppAlert('Erro ao processar chamado: ' + err.message, 'Erro', 'error');
+  }
+}
+
+// Gera o HTML dos botões de fluxo de acordo com o status e o container
+function getWorkflowButtonsHtml(status, isQuick = false) {
+  status = (status || 'open').toLowerCase();
+
+  if (isQuick) {
+    if (status === 'review') {
+      return `
+        <button type="button" class="btn-quick-workflow btn-quick-finalize" data-action="finalize" title="Finalizar e concluir chamado">
+          <span>✅</span> Finalizar
+        </button>
+        <button type="button" class="btn-quick-workflow btn-quick-return" data-action="return-dev" title="Devolver para o desenvolvedor">
+          <span>↩️</span> Devolver p/ Dev
+        </button>
+      `;
+    }
+    if (status === 'waiting_requester' || status === 'waiting' || status === 'waiting_creator' || status === 'paused') {
+      return `
+        <button type="button" class="btn-quick-workflow btn-quick-resume" data-action="resume" title="Retomar chamado">
+          <span>▶️</span> Retomar
+        </button>
+      `;
+    }
+    if (status === 'queued' || status === 'open' || status === 'triage') {
+      return `
+        <button type="button" class="btn-quick-workflow btn-quick-start" data-action="start" title="Iniciar desenvolvimento">
+          <span>🚀</span> Iniciar
+        </button>
+      `;
+    }
+    if (status === 'in_progress' || status === 'progress') {
+      return `
+        <button type="button" class="btn-quick-workflow btn-quick-pause" data-action="pause" title="Pausar">
+          <span>⏸️</span> Pausar
+        </button>
+        <button type="button" class="btn-quick-workflow btn-quick-waiting" data-action="waiting" title="Aguardar Quem Abriu">
+          <span>⏳</span> Aguardar
+        </button>
+        <button type="button" class="btn-quick-workflow btn-quick-review" data-action="review" title="Enviar para Revisão">
+          <span>📤</span> Revisão
+        </button>
+      `;
+    }
+    if (status === 'closed' || status === 'done') {
+      return `
+        <button type="button" class="btn-quick-workflow btn-quick-resume" data-action="reopen" title="Reabrir chamado">
+          <span>🔄</span> Reabrir
+        </button>
+      `;
+    }
+    return '';
+  }
+
+  // Ações no Fim do Chamado (junto do botão Salvar Alterações / Salvar Interação)
+  if (status === 'review') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-finalize" data-action="finalize" title="Finalizar e homologar chamado">
+        <span>✅</span> <span>Finalizar Chamado</span>
+      </button>
+      <button type="button" class="btn-bottom-action btn-bottom-return" data-action="return-dev" title="Devolver chamado para o desenvolvedor com justificativa">
+        <span>↩️</span> <span>Devolver para o Dev</span>
+      </button>
+    `;
+  }
+  if (status === 'waiting_requester' || status === 'waiting' || status === 'waiting_creator') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-resume" data-action="resume" title="Retomar desenvolvimento ativo do chamado">
+        <span>▶️</span> <span>Retomar Desenvolvimento</span>
+      </button>
+    `;
+  }
+  if (status === 'queued' || status === 'open' || status === 'triage') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-start" data-action="start" title="Iniciar desenvolvimento desta demanda">
+        <span>🚀</span> <span>Iniciar Demanda</span>
+      </button>
+    `;
+  }
+  if (status === 'in_progress' || status === 'progress') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-pause" data-action="pause" title="Pausar desenvolvimento temporariamente">
+        <span>⏸️</span> <span>Pausar</span>
+      </button>
+      <button type="button" class="btn-bottom-action btn-bottom-waiting" data-action="waiting" title="Colocar chamado em espera por resposta de quem abriu (N2)">
+        <span>⏳</span> <span>Aguardar Quem Abriu</span>
+      </button>
+      <button type="button" class="btn-bottom-action btn-bottom-review" data-action="review" title="Enviar chamado concluído para revisão e homologação">
+        <span>📤</span> <span>Enviar para Revisão</span>
+      </button>
+    `;
+  }
+  if (status === 'paused') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-resume" data-action="resume" title="Retomar desenvolvimento da demanda">
+        <span>▶️</span> <span>Retomar Desenvolvimento</span>
+      </button>
+    `;
+  }
+  if (status === 'closed' || status === 'done') {
+    return `
+      <button type="button" class="btn-bottom-action btn-bottom-reopen" data-action="reopen" title="Reabrir demanda concluída para novos ajustes e correções">
+        <span>🔄</span> <span>Reabrir Chamado</span>
+      </button>
+    `;
+  }
+  return '';
+}
+
+// Renderiza os botões dinâmicos de fluxo no final do chamado (junto de salvar alterações e interações) e no card
+function renderDrawerWorkflowButtons(ticket) {
+  const bottomContainer = document.getElementById('drawerBottomWorkflowActionsContainer');
+  const commentContainer = document.getElementById('drawerCommentWorkflowActionsContainer');
+  const quickContainer = document.getElementById('drawerQuickWorkflowActionsContainer');
+  const topContainer = document.getElementById('drawerWorkflowActionsContainer');
+
+  const targets = [
+    { el: bottomContainer, isQuick: false },
+    { el: commentContainer, isQuick: false },
+    { el: quickContainer, isQuick: true },
+    { el: topContainer, isQuick: false }
+  ];
+
+  if (!ticket) {
+    targets.forEach(t => { if (t.el) t.el.innerHTML = ''; });
+    return;
+  }
+
+  const status = ticket.status || 'open';
+  const bottomHtml = getWorkflowButtonsHtml(status, false);
+  const quickHtml = getWorkflowButtonsHtml(status, true);
+
+  targets.forEach(({ el, isQuick }) => {
+    if (!el) return;
+    el.innerHTML = isQuick ? quickHtml : bottomHtml;
+
+    el.querySelectorAll('[data-action]').forEach(btn => {
+      const action = btn.getAttribute('data-action');
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (action === 'finalize') handleFinalizeTicket(ticket);
+        else if (action === 'return-dev') handleReturnTicketToDev(ticket);
+        else if (action === 'start') handleStartTicket(ticket);
+        else if (action === 'pause') handlePauseTicket(ticket);
+        else if (action === 'waiting') handleWaitRequesterTicket(ticket);
+        else if (action === 'review') handleSendToReviewTicket(ticket);
+        else if (action === 'resume' || action === 'reopen') handleResumeTicket(ticket);
+      });
+    });
+  });
+}
+
+// Helper: Extrair código e ID de layout de um chamado
+function getTicketLayoutInfo(ticket) {
+  if (!ticket) return { code: null, name: null, id: null };
+  const id = ticket.layoutId || ticket.layout?.id || null;
+  let code = ticket.layout?.code || (typeof ticket.layout === 'number' || typeof ticket.layout === 'string' ? ticket.layout : null);
+  let name = ticket.layout?.name || '';
+  
+  // Fallback: se não tiver no objeto, tentar extrair do título caso seja "14 - ERRO..." ou "3024 - NOVO LAYOUT..."
+  if (!code && ticket.title) {
+    const match = ticket.title.match(/^\s*(\d{2,5})\s*[-–—]/) || ticket.title.match(/layout\s*(\d{2,5})/i);
+    if (match) {
+      code = parseInt(match[1], 10);
+    }
+  }
+  return { code, name, id };
+}
+
+// Helper: Buscar chamados abertos que compartilham o mesmo layout
+function getOpenTicketsWithSameLayout(targetLayoutCode, targetLayoutId, excludeTicketId = null) {
+  if (!targetLayoutCode && !targetLayoutId) return [];
+  const allDemands = window.appStore?.demands || [];
+  const closedStatuses = ['closed', 'done', 'finished', 'completed', 'concluido', 'finalizado'];
+
+  return allDemands.filter(t => {
+    if (excludeTicketId && t.id === excludeTicketId) return false;
+    const s = (t.status || '').toLowerCase();
+    if (closedStatuses.includes(s)) return false; // Apenas chamados ABERTOS!
+
+    const info = getTicketLayoutInfo(t);
+    if (targetLayoutId && info.id && info.id === targetLayoutId) return true;
+    if (targetLayoutCode && info.code && String(info.code).trim() === String(targetLayoutCode).trim()) return true;
+    return false;
+  });
+}
+
+// Renderiza a seção de chamados com o mesmo layout no Drawer
+function renderSameLayoutTickets(ticket) {
+  const card = document.getElementById('drawerSameLayoutCard');
+  const content = document.getElementById('drawerSameLayoutContent');
+  const countBadge = document.getElementById('drawerSameLayoutCountBadge');
+  const titleEl = document.getElementById('drawerSameLayoutCardTitle');
+  if (!card || !content) return;
+
+  const layoutInfo = getTicketLayoutInfo(ticket);
+  if (!layoutInfo.code && !layoutInfo.id) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const openTickets = getOpenTicketsWithSameLayout(layoutInfo.code, layoutInfo.id, ticket.id);
+  card.style.display = 'block';
+
+  if (titleEl) {
+    titleEl.textContent = `📐 Chamados Abertos com o Layout ${layoutInfo.code || ''} ${layoutInfo.name ? '(' + layoutInfo.name + ')' : ''}`;
+  }
+
+  if (openTickets.length === 0) {
+    card.classList.remove('has-conflicts');
+    if (countBadge) {
+      countBadge.textContent = 'Exclusivo';
+      countBadge.className = 'badge';
+      countBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+      countBadge.style.color = '#34d399';
+    }
+    content.innerHTML = `
+      <div class="same-layout-empty">
+        <span>✅</span>
+        <span>Nenhum outro chamado aberto para este layout. O responsável atual tem exclusividade.</span>
+      </div>
+    `;
+    return;
+  }
+
+  // Se houver chamados abertos: ALERTA DE CONFLITO / TRABALHO SIMULTÂNEO
+  card.classList.add('has-conflicts');
+  if (countBadge) {
+    countBadge.textContent = `${openTickets.length} em aberto`;
+    countBadge.className = 'badge';
+    countBadge.style.background = 'rgba(245, 158, 11, 0.25)';
+    countBadge.style.color = '#fbbf24';
+  }
+
+  content.innerHTML = `
+    <div style="font-size: 11.5px; color: #fbbf24; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+      <span>⚠️</span>
+      <span><strong>Atenção:</strong> Existem <strong>${openTickets.length}</strong> outro(s) chamado(s) em aberto para o mesmo layout! Verifique quem está atuando:</span>
+    </div>
+    <div class="same-layout-list">
+      ${openTickets.map(ot => {
+        const devName = ot.assignedTo?.name || 'Não atribuído';
+        const initials = devName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+        const reqName = ot.requestedBy?.name || 'Solicitante não informado';
+        return `
+          <div class="same-layout-item" data-ticket-id="${ot.id}" title="Clique para abrir e ver este chamado">
+            <div class="same-layout-main">
+              <span class="same-layout-num">#${ot.number}</span>
+              <span class="same-layout-title">${escapeHtml(ot.title)}</span>
+            </div>
+            <div class="same-layout-meta">
+              <span class="same-layout-dev" title="Desenvolvedor responsável">
+                <span class="same-layout-dev-avatar">${initials}</span>
+                <span>${escapeHtml(devName)}</span>
+              </span>
+              ${getStatusBadgeHtml(ot.status)}
+              <span style="font-size: 11px; color: var(--text-muted); white-space: nowrap;" title="Solicitante">👤 ${escapeHtml(reqName)}</span>
+              <button type="button" class="icon-btn-ghost btn-open-same-layout" data-id="${ot.id}" style="padding: 2px 6px; font-size: 11px;" title="Abrir Demanda">
+                ➔
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  // Attach click listeners to open that ticket
+  content.querySelectorAll('.same-layout-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      const tId = item.dataset.ticketId;
+      const target = window.appStore.demands.find(d => d.id === tId);
+      if (target) {
+        openDemandDrawer(target);
+      }
+    });
+  });
+}
+
+// Verifica e alerta chamados abertos no Modal de Novo Chamado
+function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
+  const alertBox = document.getElementById('newTicketSameLayoutAlert');
+  if (!alertBox) return;
+
+  if (!targetLayoutCode && !targetLayoutId) {
+    alertBox.style.display = 'none';
+    alertBox.innerHTML = '';
+    return;
+  }
+
+  const openTickets = getOpenTicketsWithSameLayout(targetLayoutCode, targetLayoutId, null);
+  if (openTickets.length === 0) {
+    alertBox.style.display = 'block';
+    alertBox.style.background = 'rgba(16, 185, 129, 0.08)';
+    alertBox.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    alertBox.innerHTML = `
+      <div style="font-size: 12px; color: #34d399; display: flex; align-items: center; gap: 6px;">
+        <span>✓</span> <span>Nenhum chamado em aberto para o Layout ${escapeHtml(String(targetLayoutCode || ''))}.</span>
+      </div>
+    `;
+    return;
+  }
+
+  alertBox.style.display = 'block';
+  alertBox.style.background = 'rgba(245, 158, 11, 0.12)';
+  alertBox.style.borderColor = 'rgba(245, 158, 11, 0.45)';
+  alertBox.innerHTML = `
+    <div class="new-ticket-alert-header">
+      <span>⚠️</span>
+      <span>Atenção: Já existe(m) ${openTickets.length} chamado(s) aberto(s) com este Layout!</span>
+    </div>
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px;">
+      Quem está com chamado aberto deste layout:
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px;">
+      ${openTickets.map(ot => {
+        const devName = ot.assignedTo?.name || 'Não atribuído';
+        return `
+          <div class="new-ticket-alert-item">
+            <div>
+              <strong style="color: #38bdf8;">#${ot.number}</strong>
+              <span style="margin-left: 6px; color: #f3f4f6;">${escapeHtml(ot.title)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="color: #a5b4fc; font-weight: 600;">Dev: ${escapeHtml(devName)}</span>
+              ${getStatusBadgeHtml(ot.status)}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 // Ação de Fluxo: Alterar Validador (inclusive deixar em branco)
@@ -5084,6 +5940,7 @@ function openCreateTicketModal() {
     layoutTag.innerHTML = '';
     layoutTag.style.display = 'none';
   }
+  checkNewTicketLayoutConflicts(null, null);
 
   // Populate Types
   const typeSelect = document.getElementById('newTicketType');
@@ -5141,6 +5998,12 @@ function setupLayoutAutocomplete() {
   input.addEventListener('input', (e) => {
     const rawQuery = e.target.value.trim();
     clearTimeout(layoutSearchDebounce);
+
+    if (/^\d{2,5}$/.test(rawQuery)) {
+      checkNewTicketLayoutConflicts(rawQuery, null);
+    } else if (!rawQuery) {
+      checkNewTicketLayoutConflicts(null, null);
+    }
 
     if (!rawQuery) {
       dropdown.style.display = 'none';
@@ -5240,6 +6103,9 @@ function setupLayoutAutocomplete() {
             input.value = '';
             dropdown.style.display = 'none';
 
+            // Alerta se já houver chamados abertos para este layout
+            checkNewTicketLayoutConflicts(code, id);
+
             if (tagBox) {
               tagBox.innerHTML = `
                 <span class="selected-layout-pill">
@@ -5253,6 +6119,7 @@ function setupLayoutAutocomplete() {
                 hiddenId.value = '';
                 tagBox.innerHTML = '';
                 tagBox.style.display = 'none';
+                checkNewTicketLayoutConflicts(null, null);
               });
             }
           });
@@ -6261,8 +7128,20 @@ function setupEventListeners() {
         btn.innerHTML = isNowIgnored ? '<span>↩️</span> Reativar Chamado' : '<span>🚫</span> Ignorar Chamado';
         btn.style.color = isNowIgnored ? '#10b981' : '';
       }
+      const badgesBox = document.getElementById('drawerBadges');
+      if (badgesBox) {
+        const ignoredBadge = isNowIgnored ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>' : '';
+        badgesBox.innerHTML = `${getTypeBadgeHtml(selectedTicket.ticketType?.name)} ${getStatusBadgeHtml(selectedTicket.status)} ${getPriorityBadgeHtml(selectedTicket.priority)} ${getLabelsBadgesHtml(selectedTicket.labels)} ${ignoredBadge}`;
+      }
       renderFixedFiltersList();
       renderDemands();
+      showAppAlert(
+        isNowIgnored 
+          ? 'Chamado marcado como ignorado e mantido no filtro "Chamados Ignorados".' 
+          : 'Chamado reativado com sucesso e retornado para as listas principais!',
+        isNowIgnored ? 'Chamado Ignorado' : 'Chamado Reativado',
+        'info'
+      );
     }
   });
 

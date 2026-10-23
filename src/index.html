@@ -384,20 +384,8 @@
         </div>
       </div>
 
-      <!-- 2. BOTÕES DE AÇÃO DE FLUXO, MOVIDESK, IMPORTER E DRIVE ABAIXO FIXOS -->
+      <!-- 2. BOTÕES DE LINKS EXTERNOS E FERRAMENTAS ABAIXO DO TÍTULO -->
       <div class="drawer-actions-fixed-bar">
-        <!-- Workflow Actions: Finalizar e Devolver -->
-        <div class="drawer-actions-fixed-group workflow-actions">
-          <button type="button" class="btn-action-fixed btn-action-finalize" id="btnDrawerFinalizeTicket" title="Finalizar e concluir chamado">
-            <span class="workflow-btn-icon">✅</span> <span>Finalizar Chamado</span>
-          </button>
-          <button type="button" class="btn-action-fixed btn-action-return-dev" id="btnDrawerReturnToDev" title="Devolver chamado para o desenvolvedor com justificativa">
-            <span class="workflow-btn-icon">↩️</span> <span>Devolver para o Desenvolvedor</span>
-          </button>
-        </div>
-
-        <div class="drawer-actions-fixed-separator"></div>
-
         <div class="drawer-actions-fixed-group main-actions">
           <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
             <span>🎫</span> <span>Abrir no Movidesk</span>
@@ -514,13 +502,8 @@
           <div class="drawer-prop-card">
             <div class="drawer-prop-card-header">
               <span class="drawer-prop-card-title">📌 Situação & Atribuição</span>
-              <div class="drawer-prop-card-quick-actions">
-                <button type="button" class="btn-quick-workflow btn-quick-finalize" id="btnQuickFinalize" title="Finalizar e concluir chamado">
-                  <span>✅</span> Finalizar
-                </button>
-                <button type="button" class="btn-quick-workflow btn-quick-return" id="btnQuickReturnDev" title="Devolver chamado para o desenvolvedor">
-                  <span>↩️</span> Devolver p/ Dev
-                </button>
+              <div class="drawer-prop-card-quick-actions" id="drawerQuickWorkflowActionsContainer">
+                <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
               </div>
             </div>
             <div class="drawer-field-row">
@@ -665,6 +648,19 @@
             </div>
           </div>
 
+          <!-- Card de Chamados Abertos com o Mesmo Layout -->
+          <div class="drawer-prop-card drawer-same-layout-card" id="drawerSameLayoutCard" style="grid-column: span 2; display: none;">
+            <div class="drawer-prop-card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="drawer-prop-card-title" id="drawerSameLayoutCardTitle" style="font-weight: 700; color: #e2e8f0;">📐 Chamados com este Layout</span>
+              </div>
+              <span class="badge" id="drawerSameLayoutCountBadge" style="font-size: 11px; padding: 2px 8px; font-weight: 600;">0 abertos</span>
+            </div>
+            <div id="drawerSameLayoutContent" class="drawer-same-layout-content">
+              <!-- Renderizado dinamicamente via renderSameLayoutTickets() -->
+            </div>
+          </div>
+
           <!-- Card 5: Metadados do Sistema -->
           <div class="drawer-prop-card" style="grid-column: span 2; background: rgba(255,255,255,0.015);">
             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);">
@@ -675,12 +671,17 @@
           </div>
         </div>
 
-        <!-- 5. BOTÃO DE SALVAR ALTERAÇÃO SÓ NO FIM DO CHAMADO -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color);">
-          <div id="drawerSaveStatusText" style="font-size: 12.5px; color: #10b981; font-weight: 500;"></div>
-          <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
-            <span>💾</span> Salvar Alterações da Demanda
-          </button>
+        <!-- 5. BOTÕES DE FLUXO (REABRIR, FINALIZAR, INICIAR, ETC) E SALVAR ALTERAÇÕES NO FIM DO CHAMADO -->
+        <div class="drawer-bottom-actions-bar" id="drawerBottomActionsBar">
+          <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
+          <div class="drawer-bottom-actions-right">
+            <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer">
+              <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, Devolver, etc. -->
+            </div>
+            <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
+              <span>💾</span> Salvar Alterações da Demanda
+            </button>
+          </div>
         </div>
       </div>
 
@@ -706,18 +707,23 @@
           </div>
         </div>
 
-        <!-- Quick Reply Box -->
+        <!-- Quick Reply Box (Interações e Diálogo) -->
         <div class="comment-input-box">
           <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Responder ou adicionar comentário</span>
+            <span>Responder ou adicionar interação</span>
             <span style="font-size: 11px; color: var(--text-muted);">Pressione Ctrl+Enter para enviar</span>
           </label>
-          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, esclarecimento ou observação para a equipe..."></textarea>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-            <span id="commentSendStatus" style="font-size: 11.5px; color: var(--accent-primary); font-weight: 500;"></span>
-            <button class="btn-primary" id="btnSubmitComment" style="height: 34px; font-size: 12px; gap: 6px;">
-              <span>💬</span> Enviar Resposta
-            </button>
+          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, esclarecimento, parecer ou observação para a equipe..."></textarea>
+          <div class="comment-input-actions-bar">
+            <span id="commentSendStatus" class="comment-send-status"></span>
+            <div class="comment-input-actions-right">
+              <div class="drawer-comment-workflow-actions" id="drawerCommentWorkflowActionsContainer">
+                <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, etc. -->
+              </div>
+              <button class="btn-primary btn-save-interaction" id="btnSubmitComment">
+                <span>💬</span> Salvar Interação
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -786,6 +792,8 @@
             <input type="hidden" id="newTicketLayoutId">
             <div id="layoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
             <div id="selectedLayoutTag" style="display: none; margin-top: 6px;"></div>
+            <!-- Alert de Chamados Abertos para o Layout Escolhido em Novo Chamado -->
+            <div id="newTicketSameLayoutAlert" class="new-ticket-same-layout-alert" style="display: none; margin-top: 8px;"></div>
           </div>
 
           <!-- 3. TICKET MOVIDESK & 4. BANCO DE DADOS -->

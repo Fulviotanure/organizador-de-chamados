@@ -5,6 +5,7 @@ class ConciliadorAPI {
   constructor() {
     this.token = null;
     this.user = null;
+    this._isRelogging = false;
   }
 
   setToken(token) {
@@ -47,11 +48,46 @@ class ConciliadorAPI {
     return data;
   }
 
+  // Interceptor que renova a sessão automaticamente em caso de HTTP 401 usando credenciais salvas
+  async fetchWithAuth(url, options = {}, isRetry = false) {
+    const headers = {
+      ...this.getHeaders(),
+      ...(options.headers || {})
+    };
+    const reqOptions = {
+      ...options,
+      headers
+    };
+
+    const response = await fetch(url, reqOptions);
+
+    if (response.status === 401 && !isRetry && !this._isRelogging) {
+      const creds = window.appStore?.savedCredentials;
+      if (creds && creds.email && creds.password) {
+        this._isRelogging = true;
+        try {
+          console.warn('[ConciliadorAPI] Sessão expirada (401). Renovando autenticação com credenciais salvas...');
+          const loginData = await this.login(creds.email, creds.password);
+          if (window.appStore && typeof window.appStore.saveAuth === 'function') {
+            await window.appStore.saveAuth(loginData.accessToken, loginData.user, creds);
+          }
+          this._isRelogging = false;
+          // Reexecuta a requisição com o novo token válido
+          return await this.fetchWithAuth(url, options, true);
+        } catch (reloginErr) {
+          this._isRelogging = false;
+          console.error('[ConciliadorAPI] Erro ao renovar credenciais salvas:', reloginErr);
+        }
+      }
+    }
+
+    return response;
+  }
+
   async fetchCurrentUser() {
     if (!this.token) return null;
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
-      method: 'GET',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/auth/me`, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -65,9 +101,8 @@ class ConciliadorAPI {
   async fetchAllDemands(limit = 500) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/tickets?page=1&limit=${limit}`, {
-      method: 'GET',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/tickets?page=1&limit=${limit}`, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -89,9 +124,8 @@ class ConciliadorAPI {
   async fetchDemandDetails(ticketId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`, {
-      method: 'GET',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -104,9 +138,8 @@ class ConciliadorAPI {
   async fetchProducts() {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/products`, {
-      method: 'GET',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/products`, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -123,9 +156,8 @@ class ConciliadorAPI {
       ? `${API_BASE_URL}/support/layouts?search=${encodeURIComponent(query)}&limit=${limit}`
       : `${API_BASE_URL}/support/layouts?limit=${limit}`;
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(url, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -138,9 +170,8 @@ class ConciliadorAPI {
   async createTicket(ticketData) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify(ticketData)
     });
 
@@ -156,9 +187,8 @@ class ConciliadorAPI {
   async addComment(ticketId, content) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/comments`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/comments`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({ content })
     });
 
@@ -174,9 +204,8 @@ class ConciliadorAPI {
   async updateTicket(ticketId, payload) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
       method: 'PATCH',
-      headers: this.getHeaders(),
       body: JSON.stringify(payload)
     });
 
@@ -195,9 +224,8 @@ class ConciliadorAPI {
     const body = { status };
     if (reason) body.reason = reason;
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -213,9 +241,8 @@ class ConciliadorAPI {
   async linkTicketLayout(ticketId, layoutId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/link-layout`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/link-layout`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify({ layoutId })
     });
 
@@ -236,9 +263,8 @@ class ConciliadorAPI {
       reason: reason || 'Atribuição de responsável'
     };
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/assignee`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/assignee`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -256,9 +282,8 @@ class ConciliadorAPI {
 
     // 1. Tentar endpoint dedicado de reviewer: PUT /support/tickets/:id/reviewer
     try {
-      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
         method: 'PUT',
-        headers: this.getHeaders(),
         body: JSON.stringify({ reviewerId: reviewerId || null, reason })
       });
       if (response.ok) {
@@ -268,9 +293,8 @@ class ConciliadorAPI {
 
     // 2. Tentar PATCH /support/tickets/:id com reviewerId
     try {
-      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
         method: 'PATCH',
-        headers: this.getHeaders(),
         body: JSON.stringify({ reviewerId: reviewerId || null })
       });
       if (response.ok) {
@@ -280,9 +304,8 @@ class ConciliadorAPI {
 
     // 3. Tentar PUT /support/tickets/:id/review
     try {
-      const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/review`, {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/review`, {
         method: 'PUT',
-        headers: this.getHeaders(),
         body: JSON.stringify({ reviewerId: reviewerId || null, reason })
       });
       if (response.ok) {
@@ -302,9 +325,8 @@ class ConciliadorAPI {
       reason: reason || 'Atualização de prazos'
     };
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/dates`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/dates`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -320,9 +342,8 @@ class ConciliadorAPI {
   async archiveTicket(ticketId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/archive`, {
-      method: 'POST',
-      headers: this.getHeaders()
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/archive`, {
+      method: 'POST'
     });
 
     if (!response.ok) {
@@ -342,11 +363,11 @@ class ConciliadorAPI {
       formData.append('files', file);
     }
 
-    const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/attachments`, {
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/attachments`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.token}`,
         'Accept': 'application/json'
+        // Deixar Content-Type ser gerado automaticamente com boundary
       },
       body: formData
     });
@@ -363,11 +384,8 @@ class ConciliadorAPI {
   async fetchAttachmentBlob(ticketId, attachmentId) {
     if (!this.token) throw new Error('Não autenticado');
     const url = `${API_BASE_URL}/support/tickets/${ticketId}/attachments/${attachmentId}/download`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(url, {
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -379,4 +397,3 @@ class ConciliadorAPI {
 }
 
 window.conciliadorAPI = new ConciliadorAPI();
-

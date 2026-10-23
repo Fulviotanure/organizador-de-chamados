@@ -36,6 +36,7 @@ class AppStore {
     this.favorites = {};
     this.localTags = {};
     this.ignoredTickets = {};
+    this.ignoredTicketsCache = {};
 
     // Auto-refresh interval (in minutes, 0 = disabled)
     this.autoRefreshMinutes = 3;
@@ -57,9 +58,20 @@ class AppStore {
         const storedFavorites = await window.electronAPI.loadStorage('favorites', {});
         const storedTags = await window.electronAPI.loadStorage('localTags', {});
         const storedIgnored = await window.electronAPI.loadStorage('ignoredTickets', {});
+        const storedIgnoredCache = await window.electronAPI.loadStorage('ignoredTicketsCache', {});
         const storedDemands = await window.electronAPI.loadStorage('cachedDemands', []);
         const storedLastSync = await window.electronAPI.loadStorage('lastSync', null);
         const storedAutoRefresh = await window.electronAPI.loadStorage('autoRefreshMinutes', 3);
+
+        // Fallback redundante com localStorage para máxima resiliência entre reinicializações
+        let localIgnored = {};
+        let localIgnoredCache = {};
+        try {
+          const rawIgnored = localStorage.getItem('cc_ignoredTickets');
+          if (rawIgnored) localIgnored = JSON.parse(rawIgnored);
+          const rawCache = localStorage.getItem('cc_ignoredTicketsCache');
+          if (rawCache) localIgnoredCache = JSON.parse(rawCache);
+        } catch (e) {}
 
         this.token = storedToken;
         this.currentUser = storedUser;
@@ -67,8 +79,21 @@ class AppStore {
         this.localNotes = storedNotes || {};
         this.favorites = storedFavorites || {};
         this.localTags = storedTags || {};
-        this.ignoredTickets = storedIgnored || {};
+        this.ignoredTickets = { ...(localIgnored || {}), ...(storedIgnored || {}) };
+        this.ignoredTicketsCache = { ...(localIgnoredCache || {}), ...(storedIgnoredCache || {}) };
         this.demands = storedDemands || [];
+
+        // Re-injetar qualquer chamado ignorado salvo no cache que não esteja em this.demands
+        if (this.ignoredTicketsCache && typeof this.ignoredTicketsCache === 'object') {
+          const demandIds = new Set(this.demands.map(d => d.id));
+          Object.keys(this.ignoredTicketsCache).forEach(ticketId => {
+            if (this.ignoredTickets[ticketId] && !demandIds.has(ticketId)) {
+              this.demands.push(this.ignoredTicketsCache[ticketId]);
+              demandIds.add(ticketId);
+            }
+          });
+        }
+
         this.lastSync = storedLastSync;
         this.autoRefreshMinutes = storedAutoRefresh ?? 3;
 
@@ -164,6 +189,18 @@ class AppStore {
           await this.saveFixedFilters();
         }
 
+        // Garantir que o filtro Chamados Ignorados sempre exista em fixedFilters
+        if (!this.fixedFilters.some(f => f.id === 'ignored')) {
+          this.fixedFilters.push({
+            id: 'ignored',
+            name: 'Chamados Ignorados',
+            icon: '🚫',
+            color: '#64748b',
+            isSystem: true,
+            criteria: { ignoredOnly: true }
+          });
+          await this.saveFixedFilters();
+        }
 
         if (this.token) {
           window.conciliadorAPI.setToken(this.token);
@@ -378,31 +415,83 @@ class AppStore {
     return !!this.favorites[ticketId];
   }
 
-  // Ignored Tickets
+  // Ignored Tickets (com persistência do objeto completo)
   async toggleIgnore(ticketId) {
     this.ignoredTickets[ticketId] = !this.ignoredTickets[ticketId];
     if (!this.ignoredTickets[ticketId]) {
       delete this.ignoredTickets[ticketId];
+      if (this.ignoredTicketsCache) {
+        delete this.ignoredTicketsCache[ticketId];
+      }
+    } else {
+      const ticket = (this.demands || []).find(d => d.id === ticketId);
+      if (ticket) {
+        if (!this.ignoredTicketsCache) this.ignoredTicketsCache = {};
+        this.ignoredTicketsCache[ticketId] = { ...ticket };
+      }
     }
+
     if (window.electronAPI) {
       await window.electronAPI.saveStorage('ignoredTickets', this.ignoredTickets);
+      await window.electronAPI.saveStorage('ignoredTicketsCache', this.ignoredTicketsCache || {});
     }
+    try {
+      localStorage.setItem('cc_ignoredTickets', JSON.stringify(this.ignoredTickets));
+      if (this.ignoredTicketsCache) {
+        localStorage.setItem('cc_ignoredTicketsCache', JSON.stringify(this.ignoredTicketsCache));
+      }
+    } catch (e) {}
+
     return !!this.ignoredTickets[ticketId];
   }
 
   isIgnored(ticketId) {
-    return !!this.ignoredTickets[ticketId];
+    return !!(this.ignoredTickets && this.ignoredTickets[ticketId]);
   }
 
+  hasLocalNote(ticketId) {
+    return !!(this.localNotes && this.localNotes[ticketId] && String(this.localNotes[ticketId]).trim().length > 0);
+  }
 
-  // Cache Demands
+  // Cache Demands (Mantém preservados chamados ignorados, favoritos ou com notas locais)
   async setDemands(demandsList) {
-    this.demands = demandsList;
+    const incomingMap = new Map((demandsList || []).map(d => [d.id, d]));
+
+    // Se uma demanda da API já estiver em ignorados, sincronizar os dados mais recentes no cache
+    (demandsList || []).forEach(d => {
+      if (this.isIgnored(d.id)) {
+        if (!this.ignoredTicketsCache) this.ignoredTicketsCache = {};
+        this.ignoredTicketsCache[d.id] = { ...(this.ignoredTicketsCache[d.id] || {}), ...d };
+      }
+    });
+
+    // Preservar demandas locais existentes que estão ignoradas, favoritadas ou com notas
+    // para que NUNCA sejam apagadas caso saiam da lista/limite retornado pela API
+    const preserved = (this.demands || []).filter(d => 
+      !incomingMap.has(d.id) && (this.isIgnored(d.id) || this.isFavorite(d.id) || this.hasLocalNote(d.id))
+    );
+
+    // Também garantir a injeção a partir de ignoredTicketsCache caso algum chamado ignorado tenha sido salvo
+    if (this.ignoredTicketsCache) {
+      Object.keys(this.ignoredTicketsCache).forEach(id => {
+        if (this.ignoredTickets[id] && !incomingMap.has(id) && !preserved.some(p => p.id === id)) {
+          preserved.push(this.ignoredTicketsCache[id]);
+        }
+      });
+    }
+
+    this.demands = [...(demandsList || []), ...preserved];
     this.lastSync = new Date().toISOString();
     if (window.electronAPI) {
-      await window.electronAPI.saveStorage('cachedDemands', demandsList);
+      await window.electronAPI.saveStorage('cachedDemands', this.demands);
       await window.electronAPI.saveStorage('lastSync', this.lastSync);
+      await window.electronAPI.saveStorage('ignoredTicketsCache', this.ignoredTicketsCache || {});
     }
+    try {
+      if (this.ignoredTicketsCache) {
+        localStorage.setItem('cc_ignoredTicketsCache', JSON.stringify(this.ignoredTicketsCache));
+      }
+    } catch (e) {}
   }
 
   async upsertDemand(demand) {
@@ -611,11 +700,15 @@ class AppStore {
   // Credentials & Session
   async saveAuth(token, user, credentials = null) {
     this.token = token;
-    this.currentUser = user;
+    if (user) this.currentUser = user;
     if (credentials) this.savedCredentials = credentials;
+    if (window.conciliadorAPI) {
+      window.conciliadorAPI.setToken(token);
+      if (user) window.conciliadorAPI.setUser(user);
+    }
     if (window.electronAPI) {
       await window.electronAPI.saveStorage('token', token);
-      await window.electronAPI.saveStorage('currentUser', user);
+      if (user) await window.electronAPI.saveStorage('currentUser', user);
       if (credentials) {
         await window.electronAPI.saveStorage('savedCredentials', credentials);
       }
