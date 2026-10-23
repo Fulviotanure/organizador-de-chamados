@@ -198,12 +198,12 @@ function showAppConfirm(message, title = 'Confirmação', options = {}) {
 
     const isDanger = !!options.isDanger;
     if (card) {
-      card.className = `app-dialog-card type-${isDanger ? 'error' : 'warning'}`;
+      card.className = `app-dialog-card type-${isDanger ? 'error' : (options.type || 'warning')}`;
     }
 
     if (titleEl) titleEl.textContent = title;
-    if (subtitleEl) subtitleEl.textContent = 'Confirme para prosseguir';
-    if (iconEl) iconEl.textContent = isDanger ? '🗑️' : '❓';
+    if (subtitleEl) subtitleEl.textContent = options.subtitle || 'Confirme para prosseguir';
+    if (iconEl) iconEl.textContent = options.icon || (isDanger ? '🗑️' : '❓');
     if (msgEl) msgEl.textContent = message;
     if (techBox) techBox.style.display = 'none';
 
@@ -215,7 +215,7 @@ function showAppConfirm(message, title = 'Confirmação', options = {}) {
     if (btnConfirm) {
       btnConfirm.style.display = 'inline-flex';
       btnConfirm.textContent = options.confirmText || 'Confirmar';
-      btnConfirm.className = isDanger ? 'btn-danger' : 'btn-primary';
+      btnConfirm.className = options.confirmClass || (isDanger ? 'btn-danger' : 'btn-primary');
     }
 
     modal.style.display = 'flex';
@@ -3221,33 +3221,25 @@ function promptJustification({
   });
 }
 
-// Ação de Fluxo: Finalizar Chamado (Status: closed)
+// Ação de Fluxo: Finalizar Chamado (Status: closed - Sem exigir justificativa)
 async function handleFinalizeTicket(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
   if (!ticket) return;
 
-  const result = await promptJustification({
-    icon: '✅',
-    title: 'Finalizar Chamado',
-    subtitle: `Demanda #${ticket.number || ticket.movideskTicketId || ticket.id.slice(0, 8)} - ${ticket.title}`,
-    bannerText: 'Você está concluindo esta demanda. O status será alterado para "Concluído".',
-    suggestions: [
-      'Homologado e validado em produção com sucesso',
-      'Demanda aprovada sem pendências',
-      'Ajustes validados e conferidos com o cliente',
-      'Finalizado conforme especificação técnica',
-      'Concluído após testes integrados'
-    ],
-    placeholder: 'Ex: Homologado com sucesso na base de testes e liberado para produção...',
-    confirmText: 'Finalizar Chamado',
-    confirmClass: 'btn-confirm-finalize',
-    defaultComment: true,
-    requireReason: true
-  });
+  const ok = await showAppConfirm(
+    `Deseja realmente finalizar e concluir a demanda #${ticket.number || ticket.movideskTicketId || ticket.id.slice(0, 8)}? O status passará para "Concluído".`,
+    'Finalizar Chamado',
+    {
+      confirmText: 'Finalizar Chamado',
+      confirmClass: 'btn-confirm-finalize',
+      icon: '✅',
+      type: 'success',
+      subtitle: 'Conclusão da Demanda'
+    }
+  );
 
-  if (!result.confirmed) return;
+  if (!ok) return;
 
-  const reason = result.reason;
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
@@ -3255,20 +3247,10 @@ async function handleFinalizeTicket(targetTicket = null) {
   }
 
   try {
-    // 1. Alterar status na API
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'closed', reason);
+    // 1. Alterar status na API para 'closed' diretamente sem exigir justificativa
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'closed');
 
-    // 2. Adicionar comentário na linha do tempo se marcado
-    if (result.addComment) {
-      try {
-        const commentText = `✅ **[CHAMADO FINALIZADO]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
-      } catch (cErr) {
-        console.warn('Erro ao postar comentário de finalização:', cErr);
-      }
-    }
-
-    // 3. Atualizar localmente
+    // 2. Atualizar localmente
     ticket.status = 'closed';
     const statusSelect = document.getElementById('drawerEditStatus');
     if (statusSelect && ticket === selectedTicket) statusSelect.value = 'closed';
@@ -3284,7 +3266,9 @@ async function handleFinalizeTicket(targetTicket = null) {
     if (ticket === selectedTicket) {
       const badgesBox = document.getElementById('drawerBadges');
       if (badgesBox) {
-        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)}`;
+        const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
+        const ignoredBadge = isDrawerIgnored ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>' : '';
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
       }
       renderDrawerWorkflowButtons(ticket);
       renderSameLayoutTickets(ticket);
