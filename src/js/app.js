@@ -1196,17 +1196,12 @@ function populateDeveloperSelects() {
 
   if (modalRevSelect) {
     const currentVal = modalRevSelect.value;
+    const currentUser = window.appStore?.currentUser;
     modalRevSelect.innerHTML = `
       <option value="">Qualquer Validador</option>
-      <option value="CURRENT_USER">👤 Eu mesmo (Usuário Conectado)</option>
-      <option value="__NONE__">👤 Sem validador (Não definido)</option>
+      <option value="__NONE__">👤 Sem validador (Em branco)</option>
+      ${currentUser && currentUser.name ? `<option value="${escapeHtml(currentUser.name)}">⭐ ${escapeHtml(currentUser.name)} (Você - Usuário Conectado)</option>` : ''}
     `;
-    sortedDevs.forEach(dev => {
-      const opt = document.createElement('option');
-      opt.value = dev;
-      opt.textContent = dev;
-      modalRevSelect.appendChild(opt);
-    });
     modalRevSelect.value = currentVal || '';
   }
 
@@ -2505,21 +2500,20 @@ async function openDemandDrawer(ticket) {
 
   const reviewerSelect = document.getElementById('drawerEditReviewer');
   if (reviewerSelect) {
-    const knownReviewers = window.appStore.getKnownDevelopers();
     const currentRevId = ticket.reviewer?.id || ticket.reviewerId || '';
     const currentRevName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-    
-    // Garantir que o validador atual do chamado esteja presente na lista se tiver ID
-    if (currentRevId && !knownReviewers.some(k => k.id === currentRevId)) {
-      knownReviewers.push({ id: currentRevId, name: currentRevName || 'Validador Atual' });
+    const currentUser = window.appStore?.currentUser;
+
+    let optionsHtml = '<option value="">Sem validador (Em branco)</option>';
+    if (currentUser && currentUser.id) {
+      optionsHtml += `<option value="${currentUser.id}">👤 ${escapeHtml(currentUser.name || 'Meu Usuário')} (Você)</option>`;
     }
-    // Garantir que o usuário conectado esteja presente na lista
-    if (window.appStore.currentUser && !knownReviewers.some(k => k.id === window.appStore.currentUser.id)) {
-      knownReviewers.push({ id: window.appStore.currentUser.id, name: window.appStore.currentUser.name || 'Meu Usuário' });
+    // Se o chamado já possuir outro validador que não seja o usuário logado, mantém para não quebrar a visualização
+    if (currentRevId && (!currentUser || currentRevId !== currentUser.id)) {
+      optionsHtml += `<option value="${currentRevId}">⚖️ ${escapeHtml(currentRevName || 'Validador Atual')}</option>`;
     }
 
-    reviewerSelect.innerHTML = '<option value="">Sem validador (Em branco)</option>' +
-      knownReviewers.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+    reviewerSelect.innerHTML = optionsHtml;
     reviewerSelect.value = currentRevId;
   }
 
@@ -6511,25 +6505,16 @@ const filterConfigs = {
     pluralText: 'selecionados',
     getOptions: () => {
       const list = [
-        { value: '__NONE__', label: 'Sem validador', icon: '👤', isSpecial: true }
+        { value: '__NONE__', label: 'Sem validador (Em branco)', icon: '👤', isSpecial: true }
       ];
-      const reviewers = new Set();
-      if (window.appStore) {
-        window.appStore.getKnownDevelopers().forEach(d => {
-          if (d && d.name && d.name !== 'Não atribuído' && d.name !== '-') reviewers.add(d.name);
+      const currentUser = window.appStore?.currentUser;
+      if (currentUser && currentUser.name) {
+        list.push({
+          value: currentUser.name,
+          label: `${currentUser.name} (Você)`,
+          icon: '⭐'
         });
-        if (Array.isArray(window.appStore.demands)) {
-          window.appStore.demands.forEach(t => {
-            const revName = t.reviewer?.name || t.reviewerName || (typeof t.reviewer === 'string' ? t.reviewer : '');
-            if (revName && revName !== '-' && revName !== 'Não atribuído') {
-              reviewers.add(revName);
-            }
-          });
-        }
       }
-      Array.from(reviewers).sort((a, b) => a.localeCompare(b)).forEach(name => {
-        list.push({ value: name, label: name, icon: '👤' });
-      });
       return list;
     }
   },

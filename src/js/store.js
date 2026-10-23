@@ -1002,6 +1002,10 @@ class AppStore {
           if (rev === '__NONE__' || rev === 'none' || rev === 'unassigned') {
             return hasNoRev;
           }
+          if (this.currentUser && (rev === '__ME__' || rev === 'CURRENT_USER' || (this.currentUser.name && rev.toLowerCase() === this.currentUser.name.toLowerCase()))) {
+            return (this.currentUser.id && (ticket.reviewerId === this.currentUser.id || ticket.reviewer?.id === this.currentUser.id)) ||
+                   (this.currentUser.name && revName.toLowerCase() === this.currentUser.name.toLowerCase());
+          }
           if (hasNoRev) return false;
           return revName.toLowerCase() === rev.toLowerCase();
         });
