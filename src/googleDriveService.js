@@ -292,7 +292,7 @@ class GoogleDriveService {
     return text.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
   }
 
-  buildStandardizedNames(numeroLayout, nomeDocumento, entidade, imageExt = '.png', mappingCount = 1) {
+  buildStandardizedNames(numeroLayout, nomeDocumento, entidade, imageExt = '.png', mappingCount = 1, pdfCount = 1) {
     const num = this.sanitizeText(numeroLayout);
     const doc = this.sanitizeText(nomeDocumento);
     const ent = this.sanitizeText(entidade);
@@ -320,10 +320,21 @@ class GoogleDriveService {
       }
     }
 
+    const pCount = Math.max(1, parseInt(pdfCount, 10) || 1);
+    const pdfFilenames = [];
+    if (pCount === 1) {
+      pdfFilenames.push(`${layoutBase}.PDF`);
+    } else {
+      for (let i = 0; i < pCount; i++) {
+        pdfFilenames.push(`${layoutBase} - MANUAL ${i + 1}.PDF`);
+      }
+    }
+
     return {
       folderEntityName: ent,
       folderLayoutName: layoutBase,
-      pdfFilename: `${layoutBase}.PDF`,
+      pdfFilename: pdfFilenames[0],
+      pdfFilenames,
       imageFilename: imageFilenames[0],
       imageFilenames
     };
@@ -467,7 +478,9 @@ class GoogleDriveService {
       nome_documento,
       categoria = 'BANCOS',
       imageName = 'mapeamento.png',
-      mappingImages = []
+      mappingImages = [],
+      pdfFiles = [],
+      pdfName
     } = data;
 
     const accessToken = await this.getAccessToken();
@@ -485,7 +498,10 @@ class GoogleDriveService {
       : 1;
     const firstImgName = (mappingImages && mappingImages[0]?.name) || imageName || 'mapeamento.png';
     const imageExt = firstImgName ? path.extname(firstImgName) : '.PNG';
-    const stdNames = this.buildStandardizedNames(numero_layout, nome_documento, entidade, imageExt, mappingCount);
+    const pdfCount = (Array.isArray(pdfFiles) && pdfFiles.length > 0)
+      ? pdfFiles.length
+      : (pdfName ? 1 : 0);
+    const stdNames = this.buildStandardizedNames(numero_layout, nome_documento, entidade, imageExt, mappingCount, pdfCount);
 
     const candidateCatIds = [catData.drive_id, ...(catData.alternate_ids || [])].filter(Boolean);
     let parentForLayout = catData.drive_id;
@@ -521,7 +537,8 @@ class GoogleDriveService {
 
         // List files inside existing layout folder
         existingFiles = await this.listFolderFiles(accessToken, layoutFolderId);
-        pdfConflict = existingFiles.some(f => f.name && f.name.toUpperCase() === stdNames.pdfFilename.toUpperCase());
+        const allTargetPdfs = (stdNames.pdfFilenames || [stdNames.pdfFilename]).map(fn => fn.toUpperCase());
+        pdfConflict = existingFiles.some(f => f.name && (allTargetPdfs.includes(f.name.toUpperCase()) || f.name.toUpperCase() === `${stdNames.folderLayoutName}.PDF`));
         const allTargetImgs = (stdNames.imageFilenames || [stdNames.imageFilename]).map(fn => fn.toUpperCase());
         imageConflict = existingFiles.some(f => f.name && allTargetImgs.includes(f.name.toUpperCase()));
       }
@@ -571,7 +588,7 @@ class GoogleDriveService {
     };
   }
 
-  saveLocalMirror({ categoriaFolderName, folderEntityName, folderLayoutName, pdfBuffer, pdfFilename, imageBuffer, imageFilename, images = [], customMirrorDir, senha }) {
+  saveLocalMirror({ categoriaFolderName, folderEntityName, folderLayoutName, pdfBuffer, pdfFilename, pdfs = [], imageBuffer, imageFilename, images = [], customMirrorDir, senha }) {
     try {
       const baseDir = customMirrorDir || this.customMirrorDir || this.getDefaultMirrorPath();
       let targetDir = path.join(baseDir, categoriaFolderName);
@@ -588,12 +605,22 @@ class GoogleDriveService {
       }
 
       let pdfSavedPath = null;
+      const pdfSavedPaths = [];
       const imgSavedPaths = [];
 
-      if (pdfBuffer && pdfFilename) {
-        pdfSavedPath = path.join(targetDir, pdfFilename);
-        fs.writeFileSync(pdfSavedPath, Buffer.from(pdfBuffer));
+      const allPdfs = [...pdfs];
+      if (pdfBuffer && pdfFilename && !allPdfs.some(p => p.filename === pdfFilename)) {
+        allPdfs.unshift({ buffer: pdfBuffer, filename: pdfFilename });
       }
+
+      for (const p of allPdfs) {
+        if (p && p.buffer && p.filename) {
+          const filePath = path.join(targetDir, p.filename);
+          fs.writeFileSync(filePath, Buffer.from(p.buffer));
+          pdfSavedPaths.push(filePath);
+        }
+      }
+      pdfSavedPath = pdfSavedPaths[0] || null;
 
       const allImages = [...images];
       if (imageBuffer && imageFilename && !allImages.some(img => img.filename === imageFilename)) {
@@ -612,6 +639,7 @@ class GoogleDriveService {
         success: true,
         targetDir,
         pdfSavedPath,
+        pdfSavedPaths,
         imgSavedPath: imgSavedPaths[0] || null,
         imgSavedPaths
       };
@@ -629,6 +657,7 @@ class GoogleDriveService {
       categoria = 'BANCOS',
       pdfBuffer,
       pdfName,
+      pdfFiles = [],
       imageBuffer,
       imageName,
       mappingImages = [],
@@ -645,6 +674,24 @@ class GoogleDriveService {
 
     if (!catFolderId) {
       throw new Error(`ID da categoria '${catData.folder_name}' não configurado no Drive.`);
+    }
+
+    // Assemble list of PDFs to upload
+    const pdfsToUpload = [];
+    if (Array.isArray(pdfFiles) && pdfFiles.length > 0) {
+      pdfFiles.forEach((pdf, i) => {
+        if (pdf && pdf.buffer) {
+          pdfsToUpload.push({
+            buffer: Buffer.from(pdf.buffer),
+            originalName: pdf.name || `manual_${i + 1}.pdf`
+          });
+        }
+      });
+    } else if (pdfBuffer) {
+      pdfsToUpload.push({
+        buffer: Buffer.from(pdfBuffer),
+        originalName: pdfName || 'manual.pdf'
+      });
     }
 
     // Assemble list of images to upload as mapping
@@ -674,8 +721,18 @@ class GoogleDriveService {
       nome_documento,
       entidade,
       firstImageExt,
-      imagesToUpload.length
+      imagesToUpload.length,
+      pdfsToUpload.length
     );
+
+    // Assign final target filenames to each PDF
+    pdfsToUpload.forEach((pdf, i) => {
+      if (pdfsToUpload.length <= 1) {
+        pdf.targetFilename = stdNames.pdfFilename;
+      } else {
+        pdf.targetFilename = stdNames.pdfFilenames[i] || `${stdNames.folderLayoutName} - MANUAL ${i + 1}.PDF`;
+      }
+    });
 
     // Assign final target filenames to each image
     imagesToUpload.forEach((img, i) => {
@@ -722,18 +779,26 @@ class GoogleDriveService {
       layoutLink = createdLayout.webViewLink;
     }
 
-    let uploadedPdf = null;
-    if (pdfBuffer) {
-      onProgress({ step: 'upload_pdf', message: `Enviando manual PDF '${stdNames.pdfFilename}'...` });
-      uploadedPdf = await this.uploadFile(
+    // Upload PDFs
+    const uploadedPdfs = [];
+    for (let i = 0; i < pdfsToUpload.length; i++) {
+      const pdf = pdfsToUpload[i];
+      const counterText = pdfsToUpload.length > 1 ? ` (${i + 1}/${pdfsToUpload.length})` : '';
+      onProgress({ step: 'upload_pdf', message: `Enviando manual PDF${counterText}: '${pdf.targetFilename}'...` });
+      const uploaded = await this.uploadFile(
         accessToken,
-        pdfBuffer,
-        stdNames.pdfFilename,
+        pdf.buffer,
+        pdf.targetFilename,
         layoutFolderId,
         'application/pdf'
       );
+      uploadedPdfs.push({
+        filename: pdf.targetFilename,
+        ...uploaded
+      });
     }
 
+    // Upload Images
     const uploadedImages = [];
     for (let i = 0; i < imagesToUpload.length; i++) {
       const img = imagesToUpload[i];
@@ -759,8 +824,9 @@ class GoogleDriveService {
       categoriaFolderName: catData.folder_name,
       folderEntityName: catData.has_entity_subfolder ? stdNames.folderEntityName : null,
       folderLayoutName: stdNames.folderLayoutName,
-      pdfBuffer,
-      pdfFilename: stdNames.pdfFilename,
+      pdfBuffer: pdfsToUpload[0]?.buffer || pdfBuffer,
+      pdfFilename: pdfsToUpload[0]?.targetFilename || stdNames.pdfFilename,
+      pdfs: pdfsToUpload.map(p => ({ buffer: p.buffer, filename: p.targetFilename })),
       images: imagesToUpload.map(img => ({ buffer: img.buffer, filename: img.targetFilename })),
       customMirrorDir,
       senha
@@ -772,7 +838,8 @@ class GoogleDriveService {
       success: true,
       layoutFolderId,
       layoutLink: layoutLink || `https://drive.google.com/drive/folders/${layoutFolderId}`,
-      pdfLink: uploadedPdf?.webViewLink || null,
+      pdfLink: uploadedPdfs[0]?.webViewLink || null,
+      uploadedPdfs,
       imageLink: uploadedImages[0]?.webViewLink || null,
       uploadedImages,
       stdNames,

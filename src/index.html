@@ -112,7 +112,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.26</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.27</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -1358,14 +1358,14 @@
               <span id="autoDrivePdfStatusBadge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">Nenhum</span>
             </div>
             <div>
-              <input type="file" id="inputAddAutoDrivePdf" accept=".pdf" style="display: none;">
-              <button type="button" class="btn-secondary" id="btnAddAutoDrivePdfFile" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;">
-                <span>➕</span> <span>Adicionar / Substituir PDF</span>
+              <input type="file" id="inputAddAutoDrivePdf" accept=".pdf,application/pdf" multiple style="display: none;">
+              <button type="button" class="btn-secondary" id="btnAddAutoDrivePdfFile" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;" title="Adicionar um ou mais manuais PDF">
+                <span>➕</span> <span>Adicionar PDF(s)</span>
               </button>
             </div>
           </div>
 
-          <div id="autoDrivePdfCardContainer">
+          <div id="autoDrivePdfCardContainer" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
             <div style="color: var(--text-muted); font-size: 11px;">Carregando anexo PDF...</div>
           </div>
         </div>

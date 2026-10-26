@@ -7598,12 +7598,12 @@ function setupEventListeners() {
 
   document.getElementById('inputAddAutoDrivePdf')?.addEventListener('change', (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleAddAutoDrivePdfFile(e.target.files[0]);
+      handleAddAutoDrivePdfFiles(Array.from(e.target.files));
       e.target.value = '';
     }
   });
 
-  // Drag and drop for images in modal
+  // Drag and drop for images and PDFs in modal
   const dropzone = document.getElementById('autoDriveImageDropzone');
   if (dropzone) {
     dropzone.addEventListener('dragover', (e) => {
@@ -7617,7 +7617,11 @@ function setupEventListeners() {
       e.preventDefault();
       dropzone.classList.remove('dragover');
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        handleAddAutoDriveImageFiles(e.dataTransfer.files);
+        const files = Array.from(e.dataTransfer.files);
+        const pdfFiles = files.filter(f => (f.name || '').toLowerCase().endsWith('.pdf') || f.type === 'application/pdf');
+        const imgFiles = files.filter(f => !pdfFiles.includes(f));
+        if (imgFiles.length > 0) handleAddAutoDriveImageFiles(imgFiles);
+        if (pdfFiles.length > 0) handleAddAutoDrivePdfFiles(pdfFiles);
       }
     });
     dropzone.addEventListener('click', () => {
@@ -7717,7 +7721,7 @@ function setupAutoRefresh() {
 // ------------------- AutoDrive Integration Module -------------------
 let currentAutoDriveTicket = null;
 let stagedAutoDriveImages = [];
-let stagedAutoDrivePdf = null;
+let stagedAutoDrivePdfs = [];
 let autoDriveLastResult = null;
 let isGoogleDriveChecking = false;
 
@@ -7955,7 +7959,7 @@ async function openAutoDriveModal(ticket) {
   if (!ticket) return;
   currentAutoDriveTicket = ticket;
   stagedAutoDriveImages = [];
-  stagedAutoDrivePdf = null;
+  stagedAutoDrivePdfs = [];
   autoDriveLastResult = null;
 
   const modal = document.getElementById('modalAutoDrive');
@@ -8026,7 +8030,7 @@ async function openAutoDriveModal(ticket) {
   }
   const pdfContainer = document.getElementById('autoDrivePdfCardContainer');
   if (pdfContainer) {
-    pdfContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 8px 0;">Carregando manual PDF...</div>';
+    pdfContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 8px 0;">Carregando manuais PDF...</div>';
   }
 
   modal.style.display = 'flex';
@@ -8052,18 +8056,18 @@ async function openAutoDriveModal(ticket) {
     const fName = att.fileName || att.filename || att.originalName || att.name || 'arquivo';
     const ext = (fName.split('.').pop() || '').toLowerCase();
 
-    if (ext === 'pdf' && !stagedAutoDrivePdf) {
+    if (ext === 'pdf') {
       try {
         const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticket.id, att.id);
         const buffer = await blob.arrayBuffer();
-        stagedAutoDrivePdf = {
-          id: att.id,
+        stagedAutoDrivePdfs.push({
+          id: String(att.id || Math.random().toString(36).substring(2)),
           name: fName,
           size: blob.size,
           blob,
           buffer
-        };
-        renderAutoDrivePdfCard();
+        });
+        renderAutoDrivePdfCards();
       } catch (err) {
         console.warn('Erro ao carregar PDF:', err);
       }
@@ -8100,7 +8104,7 @@ async function openAutoDriveModal(ticket) {
   }
 
   renderAutoDriveImagesGrid();
-  renderAutoDrivePdfCard();
+  renderAutoDrivePdfCards();
 }
 
 function renderAutoDriveImagesGrid() {
@@ -8261,30 +8265,53 @@ async function handleAddAutoDriveImageFiles(files) {
   renderAutoDriveImagesGrid();
 }
 
-async function handleAddAutoDrivePdfFile(file) {
-  if (!file) return;
-  try {
-    const buffer = await file.arrayBuffer();
-    stagedAutoDrivePdf = {
-      id: 'pdf_local_' + Date.now(),
-      name: file.name || 'manual.pdf',
-      size: file.size,
-      blob: file,
-      buffer
-    };
-    renderAutoDrivePdfCard();
-    showToast('Manual PDF adicionado');
-  } catch (err) {
-    showAppError('Erro ao carregar arquivo PDF', err);
+async function handleAddAutoDrivePdfFiles(files) {
+  if (!files || files.length === 0) return;
+  const fileList = Array.from(files);
+  let addedCount = 0;
+  for (const file of fileList) {
+    const ext = (file.name || '').split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && file.type !== 'application/pdf') continue;
+    try {
+      const buffer = await file.arrayBuffer();
+      stagedAutoDrivePdfs.push({
+        id: 'pdf_local_' + Date.now() + '_' + Math.random().toString(36).substring(2),
+        name: file.name || 'manual.pdf',
+        size: file.size,
+        blob: file,
+        buffer
+      });
+      addedCount++;
+    } catch (err) {
+      console.warn('Erro ao carregar arquivo PDF:', err);
+    }
+  }
+  if (addedCount > 0) {
+    renderAutoDrivePdfCards();
+    showToast(`${addedCount} manual(is) PDF adicionado(s)`);
+    const approvalBox = document.getElementById('autoDriveApprovalBox');
+    if (approvalBox) approvalBox.style.display = 'none';
   }
 }
 
-function renderAutoDrivePdfCard() {
+function handleDeleteAutoDrivePdf(pdfId) {
+  const idx = stagedAutoDrivePdfs.findIndex(p => String(p.id) === String(pdfId));
+  if (idx !== -1) {
+    stagedAutoDrivePdfs.splice(idx, 1);
+    renderAutoDrivePdfCards();
+    showToast('Manual PDF removido');
+    const approvalBox = document.getElementById('autoDriveApprovalBox');
+    if (approvalBox) approvalBox.style.display = 'none';
+  }
+}
+
+function renderAutoDrivePdfCards() {
   const container = document.getElementById('autoDrivePdfCardContainer');
   const badge = document.getElementById('autoDrivePdfStatusBadge');
   if (!container) return;
 
-  if (!stagedAutoDrivePdf) {
+  const count = stagedAutoDrivePdfs.length;
+  if (count === 0) {
     if (badge) {
       badge.textContent = 'Nenhum';
       badge.style.background = 'rgba(239, 68, 68, 0.2)';
@@ -8292,53 +8319,67 @@ function renderAutoDrivePdfCard() {
     }
     container.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #0d1117; border: 1px dashed var(--border-color); border-radius: 6px;">
-        <span style="font-size: 11px; color: var(--text-muted);">Nenhum manual PDF anexado. Caso a demanda possua manual de layout, clique em "Adicionar / Substituir PDF".</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Nenhum manual PDF anexado. Caso a demanda possua manuais de layout, clique em "Adicionar PDF(s)".</span>
       </div>
     `;
     return;
   }
 
   if (badge) {
-    badge.textContent = '1 arquivo';
+    badge.textContent = `${count} arquivo${count === 1 ? '' : 's'}`;
     badge.style.background = 'rgba(16, 185, 129, 0.2)';
     badge.style.color = '#34d399';
   }
 
-  container.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px;">
-      <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-        <span style="font-size: 18px;">📕</span>
-        <div style="overflow: hidden;">
-          <div style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #f0f6fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(stagedAutoDrivePdf.name)}">
-            ${escapeHtml(stagedAutoDrivePdf.name)}
-          </div>
-          <div style="font-size: 10px; color: var(--text-muted); margin-top: 1px;">
-            ${formatBytes(stagedAutoDrivePdf.size)}
+  container.innerHTML = stagedAutoDrivePdfs.map((pdf, idx) => {
+    return `
+      <div class="autodrive-pdf-card" data-id="${escapeHtml(pdf.id)}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; flex: 1;">
+          <span style="font-size: 18px; flex-shrink: 0;">📕</span>
+          <div style="overflow: hidden; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+              ${count > 1 ? `<span style="font-size: 10px; font-weight: 700; color: #58a6ff; background: rgba(56, 139, 253, 0.15); border-radius: 4px; padding: 0 4px; flex-shrink: 0;">#${idx + 1}</span>` : ''}
+              <div style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #f0f6fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(pdf.name)}">
+                ${escapeHtml(pdf.name)}
+              </div>
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 1px;">
+              ${formatBytes(pdf.size)}
+            </div>
           </div>
         </div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+          <button type="button" class="btn-secondary btn-preview-autodrive-pdf" data-id="${escapeHtml(pdf.id)}" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;" title="Visualizar arquivo PDF">
+            <span>👁️</span> <span>Visualizar</span>
+          </button>
+          <button type="button" class="autodrive-delete-btn btn-delete-autodrive-pdf" data-id="${escapeHtml(pdf.id)}" title="Remover este PDF da lista">
+            <span>🗑️</span> <span>Remover</span>
+          </button>
+        </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <button type="button" class="btn-secondary" id="btnPreviewAutoDrivePdf" style="height: 26px; font-size: 11px; padding: 0 10px; gap: 4px;">
-          <span>👁️</span> <span>Visualizar</span>
-        </button>
-        <button type="button" class="autodrive-delete-btn" id="btnDeleteAutoDrivePdf" title="Remover PDF">
-          <span>🗑️</span> <span>Remover</span>
-        </button>
-      </div>
-    </div>
-  `;
+    `;
+  }).join('');
 
-  document.getElementById('btnPreviewAutoDrivePdf')?.addEventListener('click', async () => {
-    if (stagedAutoDrivePdf && window.electronAPI && window.electronAPI.openBufferTemp) {
-      const buf = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
-      window.electronAPI.openBufferTemp(stagedAutoDrivePdf.name, buf);
-    }
+  // Wire preview buttons
+  container.querySelectorAll('.btn-preview-autodrive-pdf').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const targetPdf = stagedAutoDrivePdfs.find(p => String(p.id) === String(id));
+      if (targetPdf && window.electronAPI && window.electronAPI.openBufferTemp) {
+        const buf = targetPdf.buffer || (await targetPdf.blob.arrayBuffer());
+        window.electronAPI.openBufferTemp(targetPdf.name, buf);
+      }
+    });
   });
 
-  document.getElementById('btnDeleteAutoDrivePdf')?.addEventListener('click', () => {
-    stagedAutoDrivePdf = null;
-    renderAutoDrivePdfCard();
-    showToast('Manual PDF removido');
+  // Wire delete buttons
+  container.querySelectorAll('.btn-delete-autodrive-pdf').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      handleDeleteAutoDrivePdf(id);
+    });
   });
 }
 
@@ -8362,7 +8403,7 @@ function closeAutoDriveModal() {
     }
   });
   stagedAutoDriveImages = [];
-  stagedAutoDrivePdf = null;
+  stagedAutoDrivePdfs = [];
   currentAutoDriveTicket = null;
 }
 
@@ -8444,7 +8485,8 @@ async function handlePreFlightCheck() {
       nome_documento: doc,
       senha,
       customMirrorDir: savedMirrorDir,
-      pdfFiles: stagedAutoDrivePdf ? [{ name: stagedAutoDrivePdf.name, size: stagedAutoDrivePdf.size }] : [],
+      pdfFiles: stagedAutoDrivePdfs.map(p => ({ name: p.name, size: p.size })),
+      pdfName: stagedAutoDrivePdfs[0]?.name || null,
       mappingImages: effectiveMappings.map(img => ({ name: img.name, size: img.size })),
       extraImages: stagedAutoDriveImages.filter(img => !effectiveMappings.includes(img)).map(img => ({ name: img.name, size: img.size }))
     };
@@ -8549,9 +8591,24 @@ async function handlePreFlightCheck() {
         `;
       }
 
-      const pdfPlanned = res.stdNames?.pdfFilename;
+      const plannedPdfs = res.stdNames?.pdfFilenames || (res.stdNames?.pdfFilename ? [res.stdNames.pdfFilename] : []);
       const plannedMappings = res.stdNames?.imageFilenames || (res.stdNames?.imageFilename ? [res.stdNames.imageFilename] : []);
-      const pdfConflict = !!(res.fileConflicts?.pdfExists || conflicts.some(c => c.name.toLowerCase() === (pdfPlanned || '').toLowerCase()));
+
+      const pdfItemsHtml = plannedPdfs.map((pdfName, idx) => {
+        const hasConflict = existingFiles.some(f => f.name && f.name.toUpperCase() === pdfName.toUpperCase());
+        const label = plannedPdfs.length > 1 ? `Manual PDF ${idx + 1}:` : 'Manual PDF:';
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📕</span> <strong>${label}</strong> <code style="color: #79c0ff;">${escapeHtml(pdfName)}</code>
+            </span>
+            ${hasConflict
+              ? '<span style="color: #f87171; font-weight: 700;">⚠️ Já existe (será atualizado)</span>'
+              : '<span style="color: #3fb950; font-weight: 600;">✓ Novo envio</span>'
+            }
+          </div>
+        `;
+      }).join('');
 
       const mappingItemsHtml = plannedMappings.map((imgName, idx) => {
         const hasConflict = existingFiles.some(f => f.name && f.name.toUpperCase() === imgName.toUpperCase());
@@ -8572,15 +8629,14 @@ async function handlePreFlightCheck() {
       const filesHtml = `
         <div style="display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: rgba(22, 27, 34, 0.8); border: 1px solid var(--border-color); border-radius: 6px;">
           <div style="font-weight: 700; color: #c9d1d9; font-size: 11px; text-transform: uppercase;">Arquivos preparados para envio:</div>
-          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
-            <span style="display: flex; align-items: center; gap: 6px;">
-              <span>📕</span> <strong>Manual PDF:</strong> <code style="color: #79c0ff;">${escapeHtml(pdfPlanned || 'Nenhum anexado')}</code>
-            </span>
-            ${pdfConflict
-              ? '<span style="color: #f87171; font-weight: 700;">⚠️ Já existe (será atualizado)</span>'
-              : (pdfPlanned ? '<span style="color: #3fb950; font-weight: 600;">✓ Novo envio</span>' : '<span style="color: #8b949e;">-</span>')
-            }
-          </div>
+          ${pdfItemsHtml || `
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <span>📕</span> <strong>Manual PDF:</strong> <span style="color: #8b949e;">Nenhum anexado</span>
+              </span>
+              <span style="color: #8b949e;">-</span>
+            </div>
+          `}
           ${mappingItemsHtml || '<div style="font-size: 11px; color: #8b949e;">Nenhuma imagem de mapeamento selecionada</div>'}
           ${senha ? `
             <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px; margin-top: 2px;">
@@ -8687,7 +8743,7 @@ async function executeAutoDriveLaunch() {
     effectiveMappings = [stagedAutoDriveImages[0]];
   }
 
-  if (effectiveMappings.length === 0 && !stagedAutoDrivePdf) {
+  if (effectiveMappings.length === 0 && stagedAutoDrivePdfs.length === 0) {
     const confirmNoMedia = await showAppConfirm(
       'Nenhuma imagem de mapeamento nem manual PDF foi selecionado. Deseja criar apenas as pastas organizadas no Google Drive?',
       'Criar Pastas no Google Drive',
@@ -8707,11 +8763,16 @@ async function executeAutoDriveLaunch() {
   if (successBox) successBox.style.display = 'none';
 
   try {
-    let pdfBuffer = null;
-    let pdfName = null;
-    if (stagedAutoDrivePdf) {
-      pdfName = stagedAutoDrivePdf.name || 'manual.pdf';
-      pdfBuffer = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
+    const preparedPdfs = [];
+    for (let i = 0; i < stagedAutoDrivePdfs.length; i++) {
+      const p = stagedAutoDrivePdfs[i];
+      const buf = p.buffer || (await p.blob.arrayBuffer());
+      preparedPdfs.push({
+        id: p.id,
+        name: p.name,
+        buffer: buf,
+        size: p.size
+      });
     }
 
     const preparedMappingImages = [];
@@ -8733,8 +8794,9 @@ async function executeAutoDriveLaunch() {
       nome_documento: doc,
       categoria: cat,
       senha,
-      pdfBuffer,
-      pdfName,
+      pdfBuffer: preparedPdfs[0]?.buffer || null,
+      pdfName: preparedPdfs[0]?.name || null,
+      pdfFiles: preparedPdfs,
       imageBuffer: preparedMappingImages[0]?.buffer || null,
       imageName: preparedMappingImages[0]?.name || null,
       mappingImages: preparedMappingImages,
@@ -8772,10 +8834,14 @@ async function executeAutoDriveLaunch() {
             ? res.uploadedImages.map((upImg, idx) => `<div>🖼️ <strong>Mapeamento ${res.uploadedImages.length > 1 ? (idx + 1) + ': ' : ''}</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(upImg.filename || res.stdNames.imageFilename)}</span></div>`).join('')
             : (res.stdNames?.imageFilename ? `<div>🖼️ <strong>Mapeamento:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.stdNames.imageFilename)}</span></div>` : '');
 
+          const pdfsListHtml = (res.uploadedPdfs && res.uploadedPdfs.length > 0)
+            ? res.uploadedPdfs.map((upPdf, idx) => `<div>📕 <strong>Manual PDF ${res.uploadedPdfs.length > 1 ? (idx + 1) + ': ' : ''}</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(upPdf.filename || res.stdNames.pdfFilename)}</span></div>`).join('')
+            : (res.stdNames?.pdfFilename ? `<div>📕 <strong>Manual PDF:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.stdNames.pdfFilename)}</span></div>` : '');
+
           sumEl.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
               <div>📁 <strong>Pasta no Drive:</strong> <span style="font-family: Consolas, monospace; color: #58a6ff; font-weight: 700;">${escapeHtml(res.stdNames.folderLayoutName)}</span></div>
-              <div>📕 <strong>Manual PDF:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.stdNames.pdfFilename || 'Nenhum')}</span></div>
+              ${pdfsListHtml}
               ${mappedListHtml}
               ${senha ? `<div>🔑 <strong>Senha do Arquivo / PDF:</strong> <span style="font-family: Consolas, monospace; color: #38bdf8;">${escapeHtml(senha)}</span></div>` : ''}
               ${res.mirror?.targetDir ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">💾 <strong>Espelho Local:</strong> <span style="font-family: Consolas, monospace;">${escapeHtml(res.mirror.targetDir)}</span></div>` : ''}
@@ -8830,11 +8896,16 @@ async function executeExternalPythonLaunch() {
     const cat = document.getElementById('autoDriveCategoria')?.value || 'BANCOS';
 
     const mappingImg = stagedAutoDriveImages.find(img => img.isMapping) || stagedAutoDriveImages[0];
-    let pdfBuffer = null;
-    let pdfName = null;
-    if (stagedAutoDrivePdf) {
-      pdfName = stagedAutoDrivePdf.name || 'manual.pdf';
-      pdfBuffer = stagedAutoDrivePdf.buffer || (await stagedAutoDrivePdf.blob.arrayBuffer());
+    const preparedPdfs = [];
+    for (let i = 0; i < stagedAutoDrivePdfs.length; i++) {
+      const p = stagedAutoDrivePdfs[i];
+      const buf = p.buffer || (await p.blob.arrayBuffer());
+      preparedPdfs.push({
+        id: p.id,
+        name: p.name,
+        buffer: buf,
+        size: p.size
+      });
     }
 
     let imageBuffer = null;
@@ -8851,8 +8922,9 @@ async function executeExternalPythonLaunch() {
       nome_documento: doc,
       categoria: cat,
       senha,
-      pdfBuffer,
-      pdfName,
+      pdfBuffer: preparedPdfs[0]?.buffer || null,
+      pdfName: preparedPdfs[0]?.name || null,
+      pdfFiles: preparedPdfs,
       imageBuffer,
       imageName
     };

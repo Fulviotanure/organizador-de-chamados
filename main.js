@@ -553,11 +553,23 @@ ipcMain.handle('launch-autodrive', async (event, data) => {
     const tempDir = app.getPath('temp');
     let pdfFilePath = null;
     let imgFilePath = null;
+    const pdfFilePaths = [];
 
-    if (data?.pdfBuffer && data?.pdfName) {
+    if (Array.isArray(data?.pdfFiles) && data.pdfFiles.length > 0) {
+      data.pdfFiles.forEach((p, idx) => {
+        if (p && p.buffer) {
+          const safePdfName = (p.name || `manual_${idx + 1}.pdf`).replace(/[/\\?%*:|"<>]/g, '_');
+          const pPath = path.join(tempDir, safePdfName);
+          fs.writeFileSync(pPath, Buffer.from(p.buffer));
+          pdfFilePaths.push(pPath);
+        }
+      });
+      pdfFilePath = pdfFilePaths[0] || null;
+    } else if (data?.pdfBuffer && data?.pdfName) {
       const safePdfName = (data.pdfName || 'manual.pdf').replace(/[/\\?%*:|"<>]/g, '_');
       pdfFilePath = path.join(tempDir, safePdfName);
       fs.writeFileSync(pdfFilePath, Buffer.from(data.pdfBuffer));
+      pdfFilePaths.push(pdfFilePath);
     }
 
     if (data?.imageBuffer && data?.imageName) {
@@ -574,6 +586,7 @@ ipcMain.handle('launch-autodrive', async (event, data) => {
       categoria: data?.categoria || '',
       senha: data?.senha || '',
       pdf: pdfFilePath,
+      pdfs: pdfFilePaths,
       image: imgFilePath
     };
 
