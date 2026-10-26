@@ -283,6 +283,38 @@ window.showAppConfirm = showAppConfirm;
 window.showAppError = showAppError;
 window.translateErrorMessage = translateErrorMessage;
 
+// Global toast notification
+function showToast(message, type = 'info', duration = 3000) {
+  let toastContainer = document.getElementById('appGlobalToastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'appGlobalToastContainer';
+    toastContainer.style.cssText = 'position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
+    document.body.appendChild(toastContainer);
+  }
+
+  const toast = document.createElement('div');
+  const bg = type === 'error' ? 'rgba(239, 68, 68, 0.95)' : (type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(24, 26, 30, 0.95)');
+  const border = type === 'error' ? '#ef4444' : (type === 'success' ? '#10b981' : 'rgba(16, 185, 129, 0.5)');
+  const icon = type === 'error' ? '❌' : (type === 'success' ? '✅' : 'ℹ️');
+
+  toast.style.cssText = `background: ${bg}; color: #ffffff; border: 1px solid ${border}; border-radius: 6px; padding: 10px 16px; font-size: 13px; font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(8px); display: flex; align-items: center; gap: 8px; pointer-events: auto; opacity: 0; transform: translateY(10px); transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);`;
+  toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(String(message))}</span>`;
+  toastContainer.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => toast.remove(), 250);
+  }, duration);
+}
+window.showToast = showToast;
+
 // Auto-updater UI integration (GitHub Releases)
 let isUpdateReadyToInstall = false;
 
@@ -1374,7 +1406,9 @@ function renderTableView(demands) {
     const isIgnored = window.appStore.isIgnored(t.id);
     const typeBadge = getTypeBadgeHtml(t.ticketType?.name);
     const statusBadge = getStatusBadgeHtml(t.status);
-    const layoutCode = t.layout?.code || (typeof t.layout === 'number' || typeof t.layout === 'string' ? t.layout : null);
+    const layoutInfo = getTicketLayoutInfo(t);
+    const layoutCode = layoutInfo.code;
+    const layoutId = resolveLayoutId(layoutInfo.id, layoutCode);
     const dateBadge = renderDateBadge(t.deliveryDueDate || t.clientDueDate);
 
     return `
@@ -1383,8 +1417,12 @@ function renderTableView(demands) {
           <span class="favorite-star ${isFav ? 'active' : ''}" data-fav-id="${t.id}">${isFav ? '★' : '☆'}</span>
         </td>
         <td style="font-weight: 700; color: var(--accent-primary);">#${t.number || '-'}</td>
-        <td style="color: #c084fc; font-weight: 600; font-size: 13px;">
-          ${layoutCode ? `<span title="Layout ${layoutCode}">${layoutCode}</span>` : '<span style="color: var(--text-muted);">-</span>'}
+        <td style="font-weight: 600; font-size: 13px;">
+          ${layoutCode ? `
+            <a href="#" class="btn-open-layout table-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
+              <span>📐</span> <span>${layoutCode}</span> <span class="layout-link-icon" style="font-size: 10px; opacity: 0.85;">↗</span>
+            </a>
+          ` : '<span style="color: var(--text-muted);">-</span>'}
         </td>
         <td>
           <div class="table-cell-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>
@@ -1433,8 +1471,8 @@ function renderTableView(demands) {
   // Attach row click events
   tbody.querySelectorAll('tr').forEach(row => {
     row.addEventListener('click', (e) => {
-      // Don't open if clicked favorite star, ignore button, autodrive button or movidesk link directly
-      if (e.target.closest('.favorite-star') || e.target.closest('.btn-open-movi') || e.target.closest('.btn-toggle-ignore') || e.target.closest('.btn-quick-autodrive')) return;
+      // Don't open if clicked favorite star, ignore button, autodrive button, movidesk link or layout link directly
+      if (e.target.closest('.favorite-star') || e.target.closest('.btn-open-movi') || e.target.closest('.btn-open-layout') || e.target.closest('.btn-toggle-ignore') || e.target.closest('.btn-quick-autodrive')) return;
       const ticketId = row.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
       if (ticket) openDemandDrawer(ticket);
@@ -1485,6 +1523,17 @@ function renderTableView(demands) {
       }
     });
   });
+
+  // Attach layout link click (opens importer in external browser)
+  tbody.querySelectorAll('.btn-open-layout').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = link.dataset.layoutId;
+      const code = link.dataset.layoutCode;
+      openLayoutInImporter(id, code);
+    });
+  });
 }
 
 
@@ -1512,7 +1561,9 @@ function renderKanbanView(demands) {
       const typeBadge = getTypeBadgeHtml(t.ticketType?.name);
       const isFav = window.appStore.isFavorite(t.id);
       const isIgnored = window.appStore.isIgnored(t.id);
-      const layoutCode = t.layout?.code || (typeof t.layout === 'number' || typeof t.layout === 'string' ? t.layout : null);
+      const layoutInfo = getTicketLayoutInfo(t);
+      const layoutCode = layoutInfo.code;
+      const layoutId = resolveLayoutId(layoutInfo.id, layoutCode);
       const dateBadge = renderDateBadge(t.deliveryDueDate || t.clientDueDate);
       const initials = t.assignedTo?.name ? t.assignedTo.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?';
 
@@ -1552,7 +1603,11 @@ function renderKanbanView(demands) {
           <div class="kanban-card-header">
             <span class="kanban-card-number">#${t.number}</span>
             <div style="display: flex; align-items: center; gap: 6px;">
-              ${layoutCode ? `<span style="font-size: 11px; color: #c084fc; font-weight: 600;">${layoutCode}</span>` : ''}
+              ${layoutCode ? `
+                <a href="#" class="btn-open-layout kanban-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
+                  <span>📐</span> <span>${layoutCode}</span> <span style="font-size: 10px; opacity: 0.85;">↗</span>
+                </a>
+              ` : ''}
               ${typeBadge}
               ${isFav ? '<span style="color: #fbbf24; font-size: 11px;">★</span>' : ''}
             </div>
@@ -1607,7 +1662,7 @@ function renderKanbanView(demands) {
   // Click card to open drawer
   container.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive') || e.target.closest('.btn-kanban-action')) return;
+      if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive') || e.target.closest('.btn-kanban-action') || e.target.closest('.btn-open-layout')) return;
       const ticketId = card.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
       if (ticket) openDemandDrawer(ticket);
@@ -1651,6 +1706,17 @@ function renderKanbanView(demands) {
       await window.appStore.toggleIgnore(id);
       renderFixedFiltersList();
       renderDemands();
+    });
+  });
+
+  // Kanban open layout link
+  container.querySelectorAll('.btn-open-layout').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = link.dataset.layoutId;
+      const code = link.dataset.layoutCode;
+      openLayoutInImporter(id, code);
     });
   });
 }
@@ -2456,9 +2522,38 @@ async function openDemandDrawer(ticket) {
   const overlay = document.getElementById('drawerOverlay');
   const drawer = document.getElementById('demandDrawer');
 
-  const layoutCode = ticket.layout?.code || (typeof ticket.layout === 'number' || typeof ticket.layout === 'string' ? ticket.layout : null);
-  const layoutName = ticket.layout?.name ? ` - ${ticket.layout.name}` : '';
-  document.getElementById('drawerDemandNumber').textContent = `#${ticket.number} • ${layoutCode ? 'Layout ' + layoutCode + layoutName : 'Sem Layout'}`;
+  const layoutInfo = getTicketLayoutInfo(ticket);
+  const layoutCode = layoutInfo.code;
+  const layoutName = layoutInfo.name ? ` - ${layoutInfo.name}` : '';
+  const currentLayoutId = resolveLayoutId(layoutInfo.id, layoutCode);
+
+  const numEl = document.getElementById('drawerDemandNumber');
+  if (numEl) {
+    if (layoutCode) {
+      numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${currentLayoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName)}</span> <span style="font-size: 11px;">↗</span></a>`;
+      numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openLayoutInImporter(currentLayoutId, layoutCode);
+      });
+    } else {
+      numEl.textContent = `#${ticket.number} • Sem Layout`;
+    }
+  }
+
+  // Top action bar button for Layout
+  const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
+  const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
+  if (btnDrawerLayout) {
+    if (layoutCode) {
+      btnDrawerLayout.style.display = 'inline-flex';
+      if (btnDrawerLayoutText) {
+        btnDrawerLayoutText.textContent = `Abrir Layout (${layoutCode}) ↗`;
+      }
+    } else {
+      btnDrawerLayout.style.display = 'none';
+    }
+  }
   document.getElementById('drawerDemandTitle').textContent = ticket.title || '';
 
   // Badges
@@ -2554,25 +2649,32 @@ async function openDemandDrawer(ticket) {
   const hiddenLayoutId = document.getElementById('drawerEditLayoutId');
   const layoutSearchInput = document.getElementById('drawerEditLayoutSearch');
   const layoutTagBox = document.getElementById('drawerSelectedLayoutTag');
-  const currentLayoutId = ticket.layoutId || ticket.layout?.id || '';
-  if (hiddenLayoutId) hiddenLayoutId.value = currentLayoutId;
+  if (hiddenLayoutId) hiddenLayoutId.value = currentLayoutId || '';
   if (layoutSearchInput) {
     layoutSearchInput.value = layoutCode ? `${layoutCode}${layoutName}` : '';
   }
   if (layoutTagBox) {
     if (layoutCode) {
       layoutTagBox.innerHTML = `
-        <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); font-size: 11px; padding: 4px 8px; display: inline-flex; align-items: center; gap: 6px;">
+        <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
           <span>📐 Layout ${layoutCode}${layoutName ? ': ' + escapeHtml(layoutName.replace(/^ - /, '')) : ''}</span>
-          <button type="button" id="btnClearDrawerLayout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0;">✕</button>
+          <button type="button" class="btn-open-layout-from-tag" title="Abrir Layout no Importer Ultra" style="background: none; border: none; color: #6ee7b7; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: underline; padding: 0;">Abrir no Importer ↗</button>
+          <button type="button" id="btnClearDrawerLayout" title="Remover Layout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0; opacity: 0.7;">✕</button>
         </span>
       `;
       layoutTagBox.style.display = 'block';
+      layoutTagBox.querySelector('.btn-open-layout-from-tag')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const hid = document.getElementById('drawerEditLayoutId')?.value;
+        openLayoutInImporter(hid || currentLayoutId, layoutCode);
+      });
       document.getElementById('btnClearDrawerLayout')?.addEventListener('click', () => {
         if (hiddenLayoutId) hiddenLayoutId.value = '';
         if (layoutSearchInput) layoutSearchInput.value = '';
         layoutTagBox.innerHTML = '';
         layoutTagBox.style.display = 'none';
+        if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
       });
     } else {
       layoutTagBox.innerHTML = '';
@@ -2644,10 +2746,39 @@ async function openDemandDrawer(ticket) {
     renderDrawerWorkflowButtons(selectedTicket);
     renderSameLayoutTickets(selectedTicket);
 
-    // Update layout title if full details have layout name
-    const finalLayoutCode = details.layout?.code || layoutCode;
-    const finalLayoutName = details.layout?.name ? ` - ${details.layout.name}` : layoutName;
-    document.getElementById('drawerDemandNumber').textContent = `#${ticket.number} • ${finalLayoutCode ? 'Layout ' + finalLayoutCode + finalLayoutName : 'Sem Layout'}`;
+    // Update layout title and button if full details have layout name
+    const freshLayoutInfo = getTicketLayoutInfo(details);
+    const finalLayoutCode = freshLayoutInfo.code || layoutCode;
+    const finalLayoutName = freshLayoutInfo.name ? ` - ${freshLayoutInfo.name}` : layoutName;
+    const finalLayoutId = resolveLayoutId(freshLayoutInfo.id, finalLayoutCode) || currentLayoutId;
+
+    if (finalLayoutId && finalLayoutCode) {
+      registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name });
+    }
+
+    if (numEl) {
+      if (finalLayoutCode) {
+        numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${finalLayoutId || ''}" data-layout-code="${finalLayoutCode}" title="Abrir Layout ${finalLayoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${finalLayoutCode}${escapeHtml(finalLayoutName)}</span> <span style="font-size: 11px;">↗</span></a>`;
+        numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openLayoutInImporter(finalLayoutId, finalLayoutCode);
+        });
+      } else {
+        numEl.textContent = `#${ticket.number} • Sem Layout`;
+      }
+    }
+
+    if (btnDrawerLayout) {
+      if (finalLayoutCode) {
+        btnDrawerLayout.style.display = 'inline-flex';
+        if (btnDrawerLayoutText) {
+          btnDrawerLayoutText.textContent = `Abrir Layout (${finalLayoutCode}) ↗`;
+        }
+      } else {
+        btnDrawerLayout.style.display = 'none';
+      }
+    }
 
     if (details.reviewer && reviewerEl) reviewerEl.textContent = details.reviewer.name || '-';
     if (details.clientDatabase && dbInput) dbInput.value = details.clientDatabase;
@@ -3956,6 +4087,18 @@ function renderDrawerWorkflowButtons(ticket) {
   });
 }
 
+// Cache em memória de mapeamento código de layout -> { id, name }
+const layoutCodeToIdCache = new Map();
+
+function registerLayoutInCache(layout) {
+  if (!layout) return;
+  const id = layout.id || layout.layoutId;
+  const code = layout.code != null ? layout.code : (typeof layout === 'number' || typeof layout === 'string' ? layout : null);
+  if (id && code) {
+    layoutCodeToIdCache.set(String(code).trim(), { id: String(id), name: layout.name || '' });
+  }
+}
+
 // Helper: Extrair código e ID de layout de um chamado
 function getTicketLayoutInfo(ticket) {
   if (!ticket) return { code: null, name: null, id: null };
@@ -3970,8 +4113,74 @@ function getTicketLayoutInfo(ticket) {
       code = parseInt(match[1], 10);
     }
   }
+
+  if (id && code) {
+    registerLayoutInCache({ id, code, name });
+  }
+
   return { code, name, id };
 }
+
+function resolveLayoutId(layoutId, layoutCode) {
+  if (layoutId) {
+    if (layoutCode) {
+      registerLayoutInCache({ id: layoutId, code: layoutCode });
+    }
+    return String(layoutId);
+  }
+  if (!layoutCode) return null;
+  const codeStr = String(layoutCode).trim();
+  
+  if (layoutCodeToIdCache.has(codeStr)) {
+    return layoutCodeToIdCache.get(codeStr).id;
+  }
+  
+  const allDemands = window.appStore?.demands || [];
+  for (const d of allDemands) {
+    const info = getTicketLayoutInfo(d);
+    if (info.id && info.code && String(info.code).trim() === codeStr) {
+      registerLayoutInCache({ id: info.id, code: info.code, name: info.name });
+      return String(info.id);
+    }
+  }
+  return null;
+}
+
+// Abre a página do Layout no Importer Ultra (https://importer.conciliadorcontabil.com.br/support/layouts/:id)
+async function openLayoutInImporter(layoutId, layoutCode) {
+  let targetId = resolveLayoutId(layoutId, layoutCode);
+
+  // Se não temos o ID e temos o código numérico/alfanumérico, buscar via API de suporte
+  if (!targetId && layoutCode && window.conciliadorAPI?.searchLayouts) {
+    try {
+      if (typeof showToast === 'function') {
+        showToast(`Localizando link do Layout ${layoutCode}...`, 'info');
+      }
+      const res = await window.conciliadorAPI.searchLayouts(String(layoutCode), 15);
+      const items = res?.data || [];
+      const codeStr = String(layoutCode).trim();
+      const exact = items.find(l => String(l.code != null ? l.code : '').trim() === codeStr) || items[0];
+      if (exact && exact.id) {
+        targetId = String(exact.id);
+        registerLayoutInCache(exact);
+      }
+    } catch (e) {
+      console.warn('Erro ao buscar ID do layout via API:', e);
+    }
+  }
+
+  if (targetId) {
+    const url = `https://importer.conciliadorcontabil.com.br/support/layouts/${targetId}`;
+    if (window.electronAPI && window.electronAPI.openExternal) {
+      window.electronAPI.openExternal(url);
+    } else {
+      window.open(url, '_blank');
+    }
+  } else {
+    showAppAlert(`Não foi possível localizar o link do Layout ${layoutCode ? '#' + layoutCode : ''} no Importer Ultra. Verifique se o layout está cadastrado no sistema.`, 'Layout no Importer', 'warning');
+  }
+}
+window.openLayoutInImporter = openLayoutInImporter;
 
 // Helper: Buscar chamados abertos que compartilham o mesmo layout
 function getOpenTicketsWithSameLayout(targetLayoutCode, targetLayoutId, excludeTicketId = null) {
@@ -4009,7 +4218,20 @@ function renderSameLayoutTickets(ticket) {
   card.style.display = 'block';
 
   if (titleEl) {
-    titleEl.textContent = `📐 Chamados Abertos com o Layout ${layoutInfo.code || ''} ${layoutInfo.name ? '(' + layoutInfo.name + ')' : ''}`;
+    const lId = resolveLayoutId(layoutInfo.id, layoutInfo.code);
+    titleEl.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; width: 100%;">
+        <span>📐 Chamados Abertos com o Layout ${layoutInfo.code || ''} ${layoutInfo.name ? '(' + escapeHtml(layoutInfo.name) + ')' : ''}</span>
+        <a href="#" class="btn-open-layout btn-same-layout-open" data-layout-id="${lId || ''}" data-layout-code="${layoutInfo.code || ''}" title="Abrir Layout ${layoutInfo.code || ''} no Importer Ultra" style="color: #34d399; font-size: 11px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); cursor: pointer;">
+          <span>Abrir Layout no Importer</span> ↗
+        </a>
+      </div>
+    `;
+    titleEl.querySelector('.btn-same-layout-open')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openLayoutInImporter(lId, layoutInfo.code);
+    });
   }
 
   if (openTickets.length === 0) {
@@ -5014,19 +5236,37 @@ function setupDrawerLayoutAutocomplete() {
             input.value = `${code} - ${name}`;
             dropdown.style.display = 'none';
 
+            registerLayoutInCache({ id, code, name });
+
+            const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
+            const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
+            if (btnDrawerLayout) {
+              btnDrawerLayout.style.display = 'inline-flex';
+              if (btnDrawerLayoutText) {
+                btnDrawerLayoutText.textContent = `Abrir Layout (${code}) ↗`;
+              }
+            }
+
             if (tagBox) {
               tagBox.innerHTML = `
-                <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); font-size: 11px; padding: 4px 8px; display: inline-flex; align-items: center; gap: 6px;">
+                <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
                   <span>📐 Layout ${code}: ${name}</span>
-                  <button type="button" id="btnClearDrawerLayout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0;">✕</button>
+                  <button type="button" class="btn-open-layout-from-tag" title="Abrir Layout no Importer Ultra" style="background: none; border: none; color: #6ee7b7; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: underline; padding: 0;">Abrir no Importer ↗</button>
+                  <button type="button" id="btnClearDrawerLayout" title="Remover Layout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0; opacity: 0.7;">✕</button>
                 </span>
               `;
               tagBox.style.display = 'block';
+              tagBox.querySelector('.btn-open-layout-from-tag')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openLayoutInImporter(id, code);
+              });
               document.getElementById('btnClearDrawerLayout')?.addEventListener('click', () => {
                 if (hiddenId) hiddenId.value = '';
                 input.value = '';
                 tagBox.innerHTML = '';
                 tagBox.style.display = 'none';
+                if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
               });
             }
           });
@@ -7035,6 +7275,12 @@ function setupEventListeners() {
 
   document.getElementById('btnOpenWeb')?.addEventListener('click', openTicketInImporter);
   document.getElementById('btnDrawerOpenConciliador')?.addEventListener('click', openTicketInImporter);
+  document.getElementById('btnDrawerOpenLayout')?.addEventListener('click', () => {
+    if (!selectedTicket) return;
+    const info = getTicketLayoutInfo(selectedTicket);
+    const hiddenId = document.getElementById('drawerEditLayoutId')?.value;
+    openLayoutInImporter(hiddenId || info.id, info.code);
+  });
   document.getElementById('btnOpenMovidesk')?.addEventListener('click', openTicketInMovidesk);
   document.getElementById('btnDrawerOpenMovidesk')?.addEventListener('click', openTicketInMovidesk);
 

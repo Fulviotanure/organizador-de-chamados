@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Organizador de Chamados - Conciliador Contábil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -294,7 +297,7 @@
           </div>
 
           <!-- Sorting Dropdown -->
-          <select class="quick-select" id="quickSelectSort" title="Ordenar lista de demandas" style="font-weight: 600; color: #a5b4fc;">
+          <select class="quick-select" id="quickSelectSort" title="Ordenar lista de demandas" style="font-weight: 600; color: #34d399;">
             <option value="deliveryDueDate_asc">⏰ Prazos mais próximos / Atrasados</option>
             <option value="deliveryDueDate_desc">📅 Prazos mais distantes</option>
             <option value="createdAt_desc">🕒 Criação: Mais recentes primeiro</option>
@@ -392,6 +395,9 @@
           </button>
           <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra">
             <span>🌐</span> <span>Abrir no Importer</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
+            <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
           </button>
           <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
             <span>🚀</span> <span>Google Drive / AutoDrive</span>
@@ -498,10 +504,10 @@
 
         <!-- 4. OUTROS CAMPOS ABAIXO (Propriedades Técnicas e Vínculos) -->
         <div class="drawer-properties-cards" style="margin-top: 14px;">
-          <!-- Card 1: Situação & Atribuição -->
+          <!-- Card 1: Situação, Atribuição & Prazos -->
           <div class="drawer-prop-card">
             <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">📌 Situação & Atribuição</span>
+              <span class="drawer-prop-card-title">📌 Situação, Atribuição & Prazos</span>
               <div class="drawer-prop-card-quick-actions" id="drawerQuickWorkflowActionsContainer">
                 <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
               </div>
@@ -550,13 +556,8 @@
                 <!-- Dynamically populated -->
               </select>
             </div>
-          </div>
 
-          <!-- Card 2: Prazos com Calendários Integrados -->
-          <div class="drawer-prop-card">
-            <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">📅 Prazos de Entrega</span>
-            </div>
+            <!-- Prazo de Entrega com Calendário de Disponibilidade -->
             <div class="drawer-field-row" style="position: relative;" id="drawerDeliveryDateGroup">
               <label class="drawer-field-label">
                 <span>Prazo de Entrega</span>
@@ -580,14 +581,15 @@
               </div>
             </div>
 
+            <!-- Prazo do Cliente com Calendário Comum -->
             <div class="drawer-field-row" style="position: relative;" id="drawerClientDateGroup">
               <label class="drawer-field-label">
                 <span>Prazo do Cliente</span>
-                <span style="font-size: 10px; color: #a5b4fc; font-weight: 600;">Calendário comum</span>
+                <span style="font-size: 10px; color: #34d399; font-weight: 600;">Calendário comum</span>
               </label>
               <div class="date-input-wrapper">
                 <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
-                <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #a5b4fc;">📅</button>
+                <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #34d399;">📅</button>
               </div>
               <!-- Common Calendar Popover Client -->
               <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none;">
@@ -604,28 +606,10 @@
             </div>
           </div>
 
-          <!-- Card 3: Vínculos & Clientes -->
+          <!-- Card 2: Layout, Produto, Banco & Movidesk -->
           <div class="drawer-prop-card">
             <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">🔗 Banco & Movidesk</span>
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Banco de Dados do Cliente</label>
-              <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Nº Ticket Movidesk</label>
-              <div style="display: flex; gap: 6px;">
-                <input type="text" class="form-input" id="drawerEditMovidesk" placeholder="Ex: 12345" maxlength="40">
-                <button type="button" class="btn-secondary" id="btnDrawerOpenMovideskAction" title="Abrir chamado no Movidesk" style="padding: 0 10px; height: 36px;">🎫</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4: Classificação & Layout -->
-          <div class="drawer-prop-card">
-            <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">📐 Layout & Produto</span>
+              <span class="drawer-prop-card-title">📐 Layout, Banco & Movidesk</span>
             </div>
             <div class="drawer-field-row" style="position: relative;">
               <label class="drawer-field-label">Layout Associado</label>
@@ -645,6 +629,17 @@
               <select class="form-select" id="drawerEditProduct">
                 <!-- Dynamically populated -->
               </select>
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Banco de Dados do Cliente</label>
+              <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
+            </div>
+            <div class="drawer-field-row">
+              <label class="drawer-field-label">Nº Ticket Movidesk</label>
+              <div style="display: flex; gap: 6px;">
+                <input type="text" class="form-input" id="drawerEditMovidesk" placeholder="Ex: 12345" maxlength="40">
+                <button type="button" class="btn-secondary" id="btnDrawerOpenMovideskAction" title="Abrir chamado no Movidesk" style="padding: 0 10px; height: 36px;">🎫</button>
+              </div>
             </div>
           </div>
 
@@ -833,7 +828,7 @@
             <div class="form-group">
               <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
                 <span>Responsável <span style="color: #ef4444;">*</span></span>
-                <span id="newTicketDevFilteredHint" style="font-size: 10px; color: #a5b4fc; font-weight: 500;"></span>
+                <span id="newTicketDevFilteredHint" style="font-size: 10px; color: #34d399; font-weight: 500;"></span>
               </label>
               <select class="form-select" id="newTicketAssignedTo">
                 <!-- Dynamically populated and filtered by selected type! -->
@@ -901,11 +896,11 @@
             <div class="form-group" style="position: relative;" id="clientDateGroup">
               <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
                 <span>Prazo do Cliente</span>
-                <span id="clientDueHintText" style="font-size: 10px; color: #a5b4fc; font-weight: 600;"></span>
+                <span id="clientDueHintText" style="font-size: 10px; color: #34d399; font-weight: 600;"></span>
               </label>
               <div class="date-input-wrapper">
                 <input type="text" class="form-input" id="newTicketClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; padding-right: 32px; cursor: pointer;" title="Clique para abrir o calendário comum">
-                <button type="button" class="btn-input-calendar" id="btnToggleClientCalendar" title="Abrir calendário comum" style="color: #a5b4fc;">📅</button>
+                <button type="button" class="btn-input-calendar" id="btnToggleClientCalendar" title="Abrir calendário comum" style="color: #34d399;">📅</button>
               </div>
 
               <!-- CALENDÁRIO COMUM INTEGRADO (Common Calendar Popover) -->
@@ -1032,7 +1027,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">Cor de Destaque</label>
-            <input type="color" class="form-input" id="modalFilterColor" value="#6366f1" style="padding: 2px; height: 38px;">
+            <input type="color" class="form-input" id="modalFilterColor" value="#10b981" style="padding: 2px; height: 38px;">
           </div>
         </div>
 
