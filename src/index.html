@@ -102,15 +102,17 @@
         <div class="sidebar-stats-row">
           <span>Auto-atualização:</span>
           <select class="quick-select" id="selectAutoRefresh" style="height: 24px; font-size: 11px;">
-            <option value="0">Desativada</option>
+            <option value="0.25">⚡ Tempo Real (15s)</option>
+            <option value="0.5">⚡ Tempo Real (30s)</option>
             <option value="1">A cada 1 min</option>
             <option value="3" selected>A cada 3 min</option>
             <option value="5">A cada 5 min</option>
             <option value="10">A cada 10 min</option>
+            <option value="0">Desativada</option>
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.24</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.25</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -1583,7 +1585,9 @@
             <div style="font-size: 12px; color: var(--text-secondary);">
               Intervalo para sincronizar demandas no Importer Ultra:
             </div>
-            <select class="form-select" id="settingsAutoRefreshSelect" style="width: 170px; font-size: 12px;">
+            <select class="form-select" id="settingsAutoRefreshSelect" style="width: 175px; font-size: 12px;">
+              <option value="0.25">⚡ Tempo Real (15s)</option>
+              <option value="0.5">⚡ Tempo Real (30s)</option>
               <option value="1">A cada 1 minuto</option>
               <option value="3" selected>A cada 3 minutos</option>
               <option value="5">A cada 5 minutos</option>

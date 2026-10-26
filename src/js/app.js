@@ -1123,11 +1123,13 @@ function setupUserSettingsHandlers() {
 
   // Intervalo de auto-refresh
   document.getElementById('settingsAutoRefreshSelect')?.addEventListener('change', async (e) => {
-    const minutes = parseInt(e.target.value, 10);
+    const minutes = parseFloat(e.target.value);
     window.appStore.autoRefreshMinutes = isNaN(minutes) ? 3 : minutes;
     if (window.electronAPI) {
       await window.electronAPI.saveStorage('autoRefreshMinutes', window.appStore.autoRefreshMinutes);
     }
+    const sidebarSelect = document.getElementById('selectAutoRefresh');
+    if (sidebarSelect) sidebarSelect.value = String(window.appStore.autoRefreshMinutes);
     setupAutoRefresh();
   });
 }
@@ -7365,14 +7367,26 @@ function setupEventListeners() {
     }
   });
 
-  // Auto-refresh interval change
+  // Auto-refresh interval change (suporta tempo real 15s e 30s)
   document.getElementById('selectAutoRefresh')?.addEventListener('change', async (e) => {
-    const mins = parseInt(e.target.value, 10);
-    window.appStore.autoRefreshMinutes = mins;
+    const mins = parseFloat(e.target.value);
+    window.appStore.autoRefreshMinutes = isNaN(mins) ? 3 : mins;
     if (window.electronAPI) {
-      await window.electronAPI.saveStorage('autoRefreshMinutes', mins);
+      await window.electronAPI.saveStorage('autoRefreshMinutes', window.appStore.autoRefreshMinutes);
     }
+    const settingsSelect = document.getElementById('settingsAutoRefreshSelect');
+    if (settingsSelect) settingsSelect.value = String(window.appStore.autoRefreshMinutes);
     setupAutoRefresh();
+  });
+
+  // Sincronização inteligente em tempo real ao focar na janela
+  let lastFocusSyncTime = Date.now();
+  window.addEventListener('focus', () => {
+    const now = Date.now();
+    if (now - lastFocusSyncTime > 10000 && window.appStore.token) {
+      lastFocusSyncTime = now;
+      syncDemands();
+    }
   });
 
   // Logout
@@ -7701,13 +7715,19 @@ function setupEventListeners() {
 function setupAutoRefresh() {
   if (autoSyncTimerId) clearInterval(autoSyncTimerId);
 
-  const mins = window.appStore.autoRefreshMinutes;
-  if (mins && mins > 0) {
+  const mins = parseFloat(window.appStore.autoRefreshMinutes);
+  const sidebarSelect = document.getElementById('selectAutoRefresh');
+  if (sidebarSelect) sidebarSelect.value = String(window.appStore.autoRefreshMinutes ?? 3);
+  const settingsSelect = document.getElementById('settingsAutoRefreshSelect');
+  if (settingsSelect) settingsSelect.value = String(window.appStore.autoRefreshMinutes ?? 3);
+
+  if (!isNaN(mins) && mins > 0) {
+    const ms = Math.round(mins * 60 * 1000);
     autoSyncTimerId = setInterval(() => {
       if (window.appStore.token) {
         syncDemands();
       }
-    }, mins * 60 * 1000);
+    }, ms);
   }
 }
 
