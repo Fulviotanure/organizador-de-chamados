@@ -4423,7 +4423,7 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
   `;
 }
 
-// Ação de Fluxo: Alterar Validador (inclusive deixar em branco)
+// Ação de Fluxo: Alterar Validador (inclusive deixar em branco) - Direto sem modal e sem mensagem no chat
 async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
   if (!selectedTicket) return;
 
@@ -4436,44 +4436,7 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
   const isLeavingBlank = !targetReviewerId;
   const newName = isLeavingBlank ? 'Sem Validador (Em branco)' : (targetReviewerName || 'Novo Validador');
 
-  const result = await promptJustification({
-    icon: isLeavingBlank ? '👤' : '⚖️',
-    title: isLeavingBlank ? 'Remover Validador (Deixar em Branco)' : 'Alterar Validador do Chamado',
-    subtitle: `De: ${currentReviewerName} ➔ Para: ${newName}`,
-    bannerText: isLeavingBlank 
-      ? 'O validador será removido deste chamado, retornando-o para a fila sem validador atribuído.'
-      : `O chamado será atribuído para o validador "${newName}".`,
-    suggestions: isLeavingBlank ? [
-      'Devolvendo chamado para a fila geral sem validador',
-      'Não poderei prosseguir com a validação no momento',
-      'Validação cancelada / reaberta para outro membro da equipe',
-      'Retirando atribuição de validador para redistribuição'
-    ] : [
-      'Assumindo validação do chamado',
-      'Reatribuição de validação conforme escala de equipe',
-      'Encaminhado para validação técnica especializada',
-      'Redirecionado para novo validador'
-    ],
-    placeholder: isLeavingBlank 
-      ? 'Ex: Removendo validação para que outro membro possa validar...'
-      : 'Ex: Assumindo este chamado para homologação dos testes...',
-    confirmText: isLeavingBlank ? 'Deixar em Branco' : 'Salvar Validador',
-    confirmClass: isLeavingBlank ? 'btn-confirm-neutral' : 'btn-confirm-validator',
-    defaultComment: true,
-    requireReason: false
-  });
-
   const reviewerSelect = document.getElementById('drawerEditReviewer');
-
-  if (!result.confirmed) {
-    // Reverter o select para o valor anterior
-    if (reviewerSelect) {
-      reviewerSelect.value = currentReviewerId;
-    }
-    return;
-  }
-
-  const reason = result.reason || (isLeavingBlank ? 'Validador removido (deixado em branco)' : `Validador alterado para ${newName}`);
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText) {
     statusText.style.color = 'var(--accent-primary)';
@@ -4481,22 +4444,10 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
   }
 
   try {
-    // 1. Chamar assignReviewer na API
-    await window.conciliadorAPI.assignReviewer(selectedTicket.id, targetReviewerId || null, reason);
+    // 1. Chamar assignReviewer na API diretamente (sem modal e sem postar mensagem de chat)
+    await window.conciliadorAPI.assignReviewer(selectedTicket.id, targetReviewerId || null);
 
-    // 2. Adicionar comentário na linha do tempo se marcado
-    if (result.addComment) {
-      try {
-        const commentText = isLeavingBlank
-          ? `👤 **[VALIDADOR REMOVIDO]**\nO validador foi removido deste chamado (deixado em branco).\n*Justificativa:* ${reason}`
-          : `⚖️ **[VALIDADOR ATRIBUÍDO]**\nValidador definido: **${newName}**\n*Justificativa:* ${reason}`;
-        await window.conciliadorAPI.addComment(selectedTicket.id, commentText);
-      } catch (cErr) {
-        console.warn('Erro ao postar comentário de validador:', cErr);
-      }
-    }
-
-    // 3. Atualizar estado local
+    // 2. Atualizar estado local
     if (isLeavingBlank) {
       selectedTicket.reviewer = null;
       selectedTicket.reviewerId = null;
@@ -4523,17 +4474,12 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
 
     if (statusText) {
       statusText.style.color = '#10b981';
-      statusText.textContent = isLeavingBlank ? '👤 Validador removido (em branco)!' : `⚖️ Validador definido: ${newName}`;
-      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
+      statusText.textContent = isLeavingBlank ? '👤 Validador removido!' : `⚖️ Validador definido: ${newName}`;
+      setTimeout(() => { if (statusText) statusText.textContent = ''; }, 3000);
     }
 
     renderDemands();
     await refreshDrawerActivity(selectedTicket.id);
-    showAppAlert(
-      isLeavingBlank ? 'Validador removido (deixado em branco)!' : `Validador alterado para "${newName}"!`,
-      'Validador Atualizado',
-      'success'
-    );
   } catch (err) {
     if (statusText) statusText.textContent = '';
     if (reviewerSelect) reviewerSelect.value = currentReviewerId;
