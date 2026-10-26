@@ -339,13 +339,24 @@ function setupAutoUpdaterRenderer() {
   }
 
   function handleTriggerRestart() {
-    if (window.electronAPI.restartAndInstallUpdate) {
+    if (window.electronAPI && window.electronAPI.restartAndInstallUpdate) {
       window.electronAPI.restartAndInstallUpdate();
     }
   }
 
-  btnRestart?.addEventListener('click', handleTriggerRestart);
-  btnDiscordToastRestart?.addEventListener('click', handleTriggerRestart);
+  btnRestart?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleTriggerRestart();
+  });
+  banner?.addEventListener('click', (e) => {
+    if (isUpdateReadyToInstall) {
+      handleTriggerRestart();
+    }
+  });
+  btnDiscordToastRestart?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleTriggerRestart();
+  });
   btnDiscordToastLater?.addEventListener('click', () => {
     if (discordToast) discordToast.style.display = 'none';
   });
@@ -392,12 +403,15 @@ function setupAutoUpdaterRenderer() {
           banner.style.display = 'inline-flex';
           banner.style.background = 'rgba(34, 197, 94, 0.2)';
           banner.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+          banner.style.cursor = 'pointer';
+          banner.title = 'Clique para reiniciar e aplicar a nova versão';
           text.style.color = '#4ade80';
           text.textContent = `✨ ${verStr} pronta!`;
         }
         if (btnRestart) {
           btnRestart.style.display = 'inline-flex';
           btnRestart.className = 'btn-discord-restart';
+          btnRestart.style.cursor = 'pointer';
           btnRestart.innerHTML = '<span>🔄</span> Reiniciar para Atualizar';
         }
 

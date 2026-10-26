@@ -731,7 +731,14 @@ ipcMain.handle('updater-check', async () => {
 
 ipcMain.handle('updater-restart-install', () => {
   if (autoUpdater) {
-    autoUpdater.quitAndInstall(true, true);
+    try {
+      setImmediate(() => {
+        autoUpdater.quitAndInstall(false, true);
+      });
+    } catch (err) {
+      console.error('Error in updater-restart-install:', err);
+      app.quit();
+    }
   }
 });
 
