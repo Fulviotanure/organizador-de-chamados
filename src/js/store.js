@@ -182,10 +182,53 @@ class AppStore {
             await window.electronAPI.saveStorage('fixedFiltersMigrationV3', true);
             await this.saveFixedFilters();
           }
+
+          // Check if migration V4 was already processed; if not, add completed_today
+          const migrationDoneV4 = await window.electronAPI.loadStorage('fixedFiltersMigrationV4', false);
+          if (!migrationDoneV4) {
+            if (!this.fixedFilters.some(f => f.id === 'completed_today')) {
+              const completedIdx = this.fixedFilters.findIndex(f => f.id === 'completed');
+              const completedTodayFilter = {
+                id: 'completed_today',
+                name: 'Concluídos Hoje',
+                icon: '🏁',
+                color: '#34d399',
+                isSystem: true,
+                criteria: { closedToday: true }
+              };
+              if (completedIdx !== -1) {
+                this.fixedFilters.splice(completedIdx + 1, 0, completedTodayFilter);
+              } else {
+                this.fixedFilters.push(completedTodayFilter);
+              }
+            }
+            await window.electronAPI.saveStorage('fixedFiltersMigrationV4', true);
+            await this.saveFixedFilters();
+          }
         } else {
           this.fixedFilters = this.getDefaultFixedFilters();
           await window.electronAPI.saveStorage('fixedFiltersMigrationV2', true);
           await window.electronAPI.saveStorage('fixedFiltersMigrationV3', true);
+          await window.electronAPI.saveStorage('fixedFiltersMigrationV4', true);
+          await this.saveFixedFilters();
+        }
+
+        // Garantir que o filtro Concluídos Hoje sempre exista em fixedFilters
+        if (!this.fixedFilters.some(f => f.id === 'completed_today')) {
+          const completedIdx = this.fixedFilters.findIndex(f => f.id === 'completed');
+          const completedTodayFilter = {
+            id: 'completed_today',
+            name: 'Concluídos Hoje',
+            icon: '🏁',
+            color: '#34d399',
+            isSystem: true,
+            criteria: { closedToday: true }
+          };
+          if (completedIdx !== -1) {
+            this.fixedFilters.splice(completedIdx + 1, 0, completedTodayFilter);
+          } else {
+            this.fixedFilters.push(completedTodayFilter);
+          }
           await this.saveFixedFilters();
         }
 
@@ -283,6 +326,16 @@ class AppStore {
         isSystem: true,
         criteria: {
           status: ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado']
+        }
+      },
+      {
+        id: 'completed_today',
+        name: 'Concluídos Hoje',
+        icon: '🏁',
+        color: '#34d399',
+        isSystem: true,
+        criteria: {
+          closedToday: true
         }
       },
       {
@@ -695,7 +748,27 @@ class AppStore {
     });
   }
 
+  isTicketClosedToday(ticket) {
+    if (!ticket) return false;
+    const status = (ticket.status || '').toLowerCase();
+    const isDone = ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'].includes(status);
+    if (!isDone) return false;
 
+    const closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt || ticket.updatedAt;
+    if (!closeDateStr) return false;
+
+    const d = new Date(closeDateStr);
+    if (isNaN(d.getTime())) return false;
+
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() &&
+           d.getMonth() === now.getMonth() &&
+           d.getDate() === now.getDate();
+  }
+
+  getClosedTodayCount() {
+    return this.demands.filter(ticket => !this.isIgnored(ticket.id) && this.isTicketClosedToday(ticket)).length;
+  }
 
   // Credentials & Session
   async saveAuth(token, user, credentials = null) {
@@ -797,6 +870,11 @@ class AppStore {
 
       // 2. Fixed Filter: Favorites only
       if (criteria.favoritesOnly && !this.isFavorite(ticket.id)) {
+        return false;
+      }
+
+      // 2b. Fixed Filter: Closed Today only
+      if (criteria.closedToday && !this.isTicketClosedToday(ticket)) {
         return false;
       }
 
@@ -1100,6 +1178,8 @@ class AppStore {
       }
 
       if (criteria.favoritesOnly && !this.isFavorite(ticket.id)) return false;
+
+      if (criteria.closedToday && !this.isTicketClosedToday(ticket)) return false;
 
 
       if (criteria.isMyDemands && this.currentUser) {

@@ -1313,9 +1313,12 @@ function renderFixedFiltersList() {
   const filters = window.appStore.fixedFilters;
   const activeId = window.appStore.activeFilterId;
 
-  // Update total stat
+  // Update total stat and closed today stat
   const statTotal = document.getElementById('statTotalCount');
   if (statTotal) statTotal.textContent = window.appStore.demands.length;
+
+  const statDoneToday = document.getElementById('statDoneTodayCount');
+  if (statDoneToday) statDoneToday.textContent = window.appStore.getClosedTodayCount();
 
   // Show/hide restore default filters button if any default is missing
   const btnRestore = document.getElementById('btnRestoreDefaultFilters');
@@ -3764,12 +3767,14 @@ async function handleFinalizeTicket(targetTicket = null) {
 
     // 2. Atualizar localmente
     ticket.status = 'done';
+    ticket.closedAt = new Date().toISOString();
     const statusSelect = document.getElementById('drawerEditStatus');
     if (statusSelect && ticket === selectedTicket) statusSelect.value = 'done';
 
     const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
       window.appStore.demands[idx].status = 'done';
+      window.appStore.demands[idx].closedAt = ticket.closedAt;
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
@@ -4953,6 +4958,7 @@ async function saveDrawerTicketChanges() {
         ...updated,
         ...payload,
         status: newStatus || existing.status,
+        closedAt: (newStatus === 'done' || newStatus === 'closed') ? (existing.closedAt || new Date().toISOString()) : existing.closedAt,
         layoutId: newLayoutId || existing.layoutId,
         deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : existing.deliveryDueDate,
         clientDueDate: clientDueDate !== undefined ? clientDueDate : existing.clientDueDate
@@ -4987,6 +4993,7 @@ async function saveDrawerTicketChanges() {
       ...updated,
       ...payload,
       status: newStatus || selectedTicket.status,
+      closedAt: (newStatus === 'done' || newStatus === 'closed') ? (selectedTicket.closedAt || new Date().toISOString()) : selectedTicket.closedAt,
       layoutId: newLayoutId || selectedTicket.layoutId,
       deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : selectedTicket.deliveryDueDate,
       clientDueDate: clientDueDate !== undefined ? clientDueDate : selectedTicket.clientDueDate
