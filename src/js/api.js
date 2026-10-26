@@ -54,6 +54,10 @@ class ConciliadorAPI {
       ...this.getHeaders(),
       ...(options.headers || {})
     };
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+    }
     const reqOptions = {
       ...options,
       headers
@@ -184,12 +188,17 @@ class ConciliadorAPI {
     return await response.json();
   }
 
-  async addComment(ticketId, content) {
+  async addComment(ticketId, content, attachmentIds = []) {
     if (!this.token) throw new Error('Não autenticado');
+
+    const payload = { content };
+    if (Array.isArray(attachmentIds) && attachmentIds.length > 0) {
+      payload.attachmentIds = attachmentIds;
+    }
 
     const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ content })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {

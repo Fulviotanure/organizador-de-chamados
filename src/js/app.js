@@ -2990,6 +2990,35 @@ function renderDrawerActivityStream() {
         'src="https://api.importer.conciliadorcontabil.com.br/api/v1/'
       );
 
+      // Render attachments associated with this comment if any
+      const commentAttachments = c.attachments || [];
+      let attachmentsHtml = '';
+      if (commentAttachments.length > 0) {
+        attachmentsHtml = `
+          <div class="comment-attachments-container">
+            ${commentAttachments.map(att => {
+              const fileName = att.fileName || att.filename || att.name || 'anexo';
+              const ext = (fileName.split('.').pop() || '').toLowerCase();
+              const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext);
+              if (isImage) {
+                return `
+                  <div class="comment-img-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para ampliar imagem">
+                    <img id="comment_thumb_${att.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='90'><rect width='120' height='90' fill='%231e293b'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='15'>🖼️ Carregando...</text></svg>" alt="${escapeHtml(fileName)}">
+                    <div class="comment-img-footer"><span>🖼️</span> <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fileName)}</span></div>
+                  </div>
+                `;
+              } else {
+                return `
+                  <div class="comment-file-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para abrir ou baixar">
+                    <span>📎</span> <span>${escapeHtml(fileName)}</span>
+                  </div>
+                `;
+              }
+            }).join('')}
+          </div>
+        `;
+      }
+
       return `
         <div class="comment-bubble ${isDev ? 'is-developer' : (isSupport ? 'is-support' : '')}">
           <div class="comment-header">
@@ -3001,6 +3030,7 @@ function renderDrawerActivityStream() {
             <span class="comment-date">${dateFormatted}</span>
           </div>
           <div class="comment-content">${contentHtml}</div>
+          ${attachmentsHtml}
         </div>
       `;
     } else {
@@ -3026,6 +3056,49 @@ function renderDrawerActivityStream() {
       `;
     }
   }).join('');
+
+  // Load blob thumbnails for comment images and attach event listeners
+  const ticketId = selectedTicket?.id;
+  if (ticketId) {
+    filtered.forEach(it => {
+      if (it.itemType === 'comment' && Array.isArray(it.raw.attachments)) {
+        it.raw.attachments.forEach(att => {
+          const fileName = att.fileName || att.filename || att.name || '';
+          const ext = (fileName.split('.').pop() || '').toLowerCase();
+          const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext);
+          if (isImage) {
+            getOrFetchAttachmentBlobUrl(ticketId, att.id).then(blobUrl => {
+              if (blobUrl) {
+                const imgEl = document.getElementById(`comment_thumb_${att.id}`);
+                if (imgEl) imgEl.src = blobUrl;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    container.querySelectorAll('.comment-img-attachment-card').forEach(card => {
+      card.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const attId = card.dataset.attId;
+        const fileName = card.dataset.filename || 'imagem';
+        const blobUrl = await getOrFetchAttachmentBlobUrl(ticketId, attId);
+        if (blobUrl) {
+          openImageLightbox(blobUrl, fileName, ticketId, attId);
+        }
+      });
+    });
+
+    container.querySelectorAll('.comment-file-attachment-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const attId = card.dataset.attId;
+        const fileName = card.dataset.filename || 'anexo';
+        openAttachmentFile(ticketId, attId, fileName);
+      });
+    });
+  }
 
   // Scroll to newest activity at bottom
   container.scrollTop = container.scrollHeight;
@@ -3221,26 +3294,135 @@ function renderDrawerAttachments(attachments) {
   });
 }
 
+let timelinePendingAttachments = [];
+
+function renderTimelinePendingAttachments() {
+  const container = document.getElementById('drawerCommentPendingAttachments');
+  if (!container) return;
+
+  if (timelinePendingAttachments.length === 0) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'flex';
+  container.innerHTML = timelinePendingAttachments.map((file, idx) => {
+    const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+    const thumbUrl = isImage ? URL.createObjectURL(file) : '';
+    const sizeStr = formatFileSize(file.size);
+    const fileName = file.name || `print_${idx + 1}.png`;
+
+    return `
+      <div class="comment-pending-chip" data-idx="${idx}">
+        ${isImage ? `<img src="${thumbUrl}" class="comment-pending-thumb" alt="Preview">` : `<span style="font-size: 18px;">📎</span>`}
+        <div class="comment-pending-info">
+          <span class="comment-pending-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
+          <span class="comment-pending-size">${sizeStr} • Pronto para enviar</span>
+        </div>
+        <button type="button" class="comment-pending-remove" data-idx="${idx}" title="Remover este anexo">✕</button>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.comment-pending-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx, 10);
+      if (!isNaN(idx) && idx >= 0 && idx < timelinePendingAttachments.length) {
+        timelinePendingAttachments.splice(idx, 1);
+        renderTimelinePendingAttachments();
+      }
+    });
+  });
+}
+
+function handleCommentPaste(e) {
+  if (!selectedTicket) return;
+  const clipboardData = e.clipboardData;
+  if (!clipboardData) return;
+
+  const items = Array.from(clipboardData.items || []);
+  const filesToAdd = [];
+
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile();
+      if (file) {
+        let fileName = file.name || 'print.png';
+        if (fileName === 'image.png' || !fileName) {
+          const now = new Date();
+          const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+          fileName = `print_${timeStr}.png`;
+        }
+        const namedFile = new File([file], fileName, { type: file.type || 'image/png' });
+        filesToAdd.push(namedFile);
+      }
+    }
+  }
+
+  if (filesToAdd.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+    for (const f of Array.from(clipboardData.files)) {
+      filesToAdd.push(f);
+    }
+  }
+
+  if (filesToAdd.length > 0) {
+    e.preventDefault();
+    filesToAdd.forEach(f => timelinePendingAttachments.push(f));
+    renderTimelinePendingAttachments();
+    showToast(`📸 ${filesToAdd.length} print/imagem colado! Clique em 'Salvar Interação' para publicar.`);
+  }
+}
+
 async function submitComment() {
   if (!selectedTicket) return;
   const textarea = document.getElementById('drawerNewCommentText');
   const statusEl = document.getElementById('commentSendStatus');
   const btn = document.getElementById('btnSubmitComment');
 
-  const content = textarea?.value?.trim();
-  if (!content) {
-    showAppAlert('Por favor, digite uma mensagem para enviar.', 'Mensagem Vazia', 'warning');
+  let content = textarea?.value?.trim() || '';
+  const hasPendingFiles = timelinePendingAttachments.length > 0;
+
+  if (!content && !hasPendingFiles) {
+    showAppAlert('Por favor, digite uma mensagem ou cole uma imagem para enviar.', 'Mensagem Vazia', 'warning');
     textarea?.focus();
     return;
   }
 
+  if (!content && hasPendingFiles) {
+    content = timelinePendingAttachments.length === 1
+      ? `📸 Print anexado: ${timelinePendingAttachments[0].name}`
+      : `📸 ${timelinePendingAttachments.length} prints anexados`;
+  }
+
   if (btn) btn.disabled = true;
-  if (statusEl) statusEl.textContent = 'Enviando resposta...';
+  if (statusEl) {
+    statusEl.style.display = 'inline';
+    statusEl.style.color = '#38bdf8';
+    statusEl.textContent = hasPendingFiles ? 'Enviando anexo(s)...' : 'Enviando resposta...';
+  }
 
   try {
-    await window.conciliadorAPI.addComment(selectedTicket.id, content);
+    let uploadedAttachmentIds = [];
+    if (hasPendingFiles) {
+      const filesToUpload = [...timelinePendingAttachments];
+      const uploadedAttachments = await window.conciliadorAPI.uploadTicketAttachments(selectedTicket.id, filesToUpload);
+      if (Array.isArray(uploadedAttachments)) {
+        uploadedAttachmentIds = uploadedAttachments.map(a => a.id).filter(Boolean);
+      }
+      timelinePendingAttachments = [];
+      renderTimelinePendingAttachments();
+    }
+
+    if (statusEl) statusEl.textContent = 'Publicando na linha do tempo...';
+    await window.conciliadorAPI.addComment(selectedTicket.id, content, uploadedAttachmentIds);
+
     if (textarea) textarea.value = '';
-    if (statusEl) statusEl.textContent = 'Enviado!';
+    if (statusEl) {
+      statusEl.style.color = '#10b981';
+      statusEl.textContent = '✅ Enviado!';
+    }
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
 
     // Refresh ticket details
@@ -3249,9 +3431,13 @@ async function submitComment() {
     drawerCurrentComments = details.comments || [];
     drawerCurrentEvents = (details.events || []).filter(e => e.kind !== 'comment');
     renderDrawerActivityStream();
+    renderDrawerAttachments(details.attachments || []);
   } catch (err) {
-    console.error('Failed to post comment:', err);
-    if (statusEl) statusEl.textContent = 'Erro: ' + err.message;
+    console.error('Failed to post comment / attachments:', err);
+    if (statusEl) {
+      statusEl.style.color = '#ef4444';
+      statusEl.textContent = '❌ Erro: ' + err.message;
+    }
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4833,6 +5019,8 @@ function closeDemandDrawer() {
   drawer?.classList.remove('open');
   document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
   document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
+  timelinePendingAttachments = [];
+  renderTimelinePendingAttachments();
   selectedTicket = null;
 }
 
@@ -5362,6 +5550,42 @@ function setupDrawerDropzone() {
       }
     }
   }
+
+  // Permite colar imagens/prints diretamente com Ctrl+V na aba Anexos
+  window.addEventListener('paste', async (e) => {
+    const drawer = document.getElementById('demandDrawer');
+    if (!drawer || !drawer.classList.contains('open') || !selectedTicket) return;
+    if (drawerActiveTab !== 'attachments') return;
+
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    const files = [];
+    const items = Array.from(clipboardData.items || []);
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          let fileName = file.name || 'print.png';
+          if (fileName === 'image.png' || !fileName) {
+            const now = new Date();
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+            fileName = `print_${timeStr}.png`;
+          }
+          files.push(new File([file], fileName, { type: file.type || 'image/png' }));
+        }
+      }
+    }
+
+    if (files.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+      for (const f of Array.from(clipboardData.files)) files.push(f);
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      await uploadDrawerFiles(files);
+    }
+  });
 }
 
 // Modal: Create New Ticket & Developer Calendar
@@ -7230,6 +7454,60 @@ function setupEventListeners() {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       submitComment();
+    }
+  });
+
+  // Paste image directly on comment textarea
+  commentTextarea?.addEventListener('paste', handleCommentPaste);
+
+  // Button to attach image/print to comment
+  document.getElementById('btnCommentAttachImage')?.addEventListener('click', () => {
+    document.getElementById('inputCommentAttachFile')?.click();
+  });
+
+  // Hidden file input for comment attachments
+  document.getElementById('inputCommentAttachFile')?.addEventListener('change', (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      Array.from(files).forEach(f => timelinePendingAttachments.push(f));
+      renderTimelinePendingAttachments();
+      e.target.value = '';
+    }
+  });
+
+  // Drag and drop images on comment input box
+  const commentInputBox = document.getElementById('drawerCommentInputBox');
+  if (commentInputBox) {
+    commentInputBox.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      commentInputBox.style.borderColor = 'var(--accent-primary)';
+    });
+    commentInputBox.addEventListener('dragleave', () => {
+      commentInputBox.style.borderColor = '';
+    });
+    commentInputBox.addEventListener('drop', (e) => {
+      e.preventDefault();
+      commentInputBox.style.borderColor = '';
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        Array.from(e.dataTransfer.files).forEach(f => timelinePendingAttachments.push(f));
+        renderTimelinePendingAttachments();
+      }
+    });
+  }
+
+  // Global paste handler when comment tab is open
+  window.addEventListener('paste', (e) => {
+    const drawer = document.getElementById('demandDrawer');
+    if (!drawer || !drawer.classList.contains('open') || !selectedTicket) return;
+    if (drawerActiveTab !== 'comments') return;
+
+    // Check if an image or file is in clipboard
+    const items = Array.from(e.clipboardData?.items || []);
+    const hasImage = items.some(it => it.kind === 'file' && it.type.startsWith('image/'));
+    const hasFiles = e.clipboardData?.files && e.clipboardData.files.length > 0;
+
+    if (hasImage || hasFiles) {
+      handleCommentPaste(e);
     }
   });
 

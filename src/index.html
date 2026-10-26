@@ -112,7 +112,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.29</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.30</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -727,14 +727,24 @@
         </div>
 
         <!-- Quick Reply Box (Interações e Diálogo) -->
-        <div class="comment-input-box">
+        <div class="comment-input-box" id="drawerCommentInputBox">
           <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
             <span>Responder ou adicionar interação</span>
-            <span style="font-size: 11px; color: var(--text-muted);">Pressione Ctrl+Enter para enviar</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Cole print com Ctrl+V ou Pressione Ctrl+Enter para enviar</span>
           </label>
-          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, esclarecimento, parecer ou observação para a equipe..."></textarea>
+          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V..."></textarea>
+          
+          <!-- Imagens/prints colados ou selecionados para a mensagem -->
+          <div id="drawerCommentPendingAttachments" class="comment-pending-attachments" style="display: none;"></div>
+
           <div class="comment-input-actions-bar">
-            <span id="commentSendStatus" class="comment-send-status"></span>
+            <div class="comment-input-actions-left" style="display: inline-flex; align-items: center; gap: 8px;">
+              <button type="button" class="btn-secondary" id="btnCommentAttachImage" title="Anexar imagem ou print nesta mensagem (ou cole com Ctrl+V)" style="padding: 4px 10px; font-size: 11px; gap: 5px; height: 28px;">
+                <span>📷</span> Colar / Anexar Print
+              </button>
+              <input type="file" id="inputCommentAttachFile" multiple accept="image/*" style="display: none;">
+              <span id="commentSendStatus" class="comment-send-status"></span>
+            </div>
             <div class="comment-input-actions-right">
               <div class="drawer-comment-workflow-actions" id="drawerCommentWorkflowActionsContainer">
                 <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, etc. -->
