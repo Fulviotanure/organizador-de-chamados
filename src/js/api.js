@@ -171,6 +171,59 @@ class ConciliadorAPI {
     return await response.json();
   }
 
+  async fetchRecentLayouts(limit = 300) {
+    if (!this.token) return [];
+    try {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts?limit=${limit}`, {
+        method: 'GET'
+      });
+      if (!response.ok) return [];
+      const json = await response.json();
+      return json.data || [];
+    } catch (e) {
+      console.warn('Erro ao buscar layouts recentes:', e);
+      return [];
+    }
+  }
+
+  async fetchLayoutDetails(layoutId) {
+    if (!this.token) throw new Error('Não autenticado');
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}`, {
+      method: 'GET'
+    });
+    if (!response.ok) {
+      throw new Error(`Erro ao buscar layout: HTTP ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  async approveLayout(layoutId) {
+    if (!this.token) throw new Error('Não autenticado');
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}/approve`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao aprovar layout' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+    return await response.json();
+  }
+
+  async rejectLayout(layoutId, reason = '') {
+    if (!this.token) throw new Error('Não autenticado');
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {})
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao rejeitar layout' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+    return await response.json();
+  }
+
   async createTicket(ticketData) {
     if (!this.token) throw new Error('Não autenticado');
 

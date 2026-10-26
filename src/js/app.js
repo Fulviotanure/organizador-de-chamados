@@ -1181,6 +1181,9 @@ async function syncDemands() {
       // Non-fatal, store default products remain active
     }
 
+    // Carregar cache de status dos layouts recentes em segundo plano
+    loadActiveLayoutsCache().catch(e => console.warn('Falha ao pré-carregar cache de layouts:', e));
+
     // Notify if new demands found
     if (previousCount > 0 && res.demands.length > previousCount && window.electronAPI) {
       const diff = res.demands.length - previousCount;
@@ -1446,9 +1449,16 @@ function renderTableView(demands) {
         <td style="font-weight: 700; color: var(--accent-primary);">#${t.number || '-'}</td>
         <td style="font-weight: 600; font-size: 13px;">
           ${layoutCode ? `
-            <a href="#" class="btn-open-layout table-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
-              <span>📐</span> <span>${layoutCode}</span> <span class="layout-link-icon" style="font-size: 10px; opacity: 0.85;">↗</span>
-            </a>
+            <div style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+              <a href="#" class="btn-open-layout table-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
+                <span>📐</span> <span>${layoutCode}</span> <span class="layout-link-icon" style="font-size: 10px; opacity: 0.85;">↗</span>
+              </a>
+              ${(() => {
+                const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
+                const sBadge = formatLayoutStatusBadge(lStatus);
+                return sBadge ? `<span class="badge-layout-status ${sBadge.className}" style="font-size: 9.5px; padding: 1px 5px;" title="Status do Layout no Importer Ultra: ${sBadge.label}">${sBadge.icon} ${sBadge.label}</span>` : '';
+              })()}
+            </div>
           ` : '<span style="color: var(--text-muted);">-</span>'}
         </td>
         <td>
@@ -1631,9 +1641,16 @@ function renderKanbanView(demands) {
             <span class="kanban-card-number">#${t.number}</span>
             <div style="display: flex; align-items: center; gap: 6px;">
               ${layoutCode ? `
-                <a href="#" class="btn-open-layout kanban-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
-                  <span>📐</span> <span>${layoutCode}</span> <span style="font-size: 10px; opacity: 0.85;">↗</span>
-                </a>
+                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                  <a href="#" class="btn-open-layout kanban-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
+                    <span>📐</span> <span>${layoutCode}</span> <span style="font-size: 10px; opacity: 0.85;">↗</span>
+                  </a>
+                  ${(() => {
+                    const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
+                    const sBadge = formatLayoutStatusBadge(lStatus);
+                    return sBadge ? `<span class="badge-layout-status ${sBadge.className}" style="font-size: 8.5px; padding: 1px 4px;" title="Status do Layout no Importer Ultra: ${sBadge.label}">${sBadge.icon} ${sBadge.label}</span>` : '';
+                  })()}
+                </div>
               ` : ''}
               ${typeBadge}
               ${isFav ? '<span style="color: #fbbf24; font-size: 11px;">★</span>' : ''}
@@ -2544,13 +2561,178 @@ function renderDrawerLabelsPicker() {
   });
 }
 
-// Renderiza o campo de Layout Selecionado (DENTRO do próprio campo, sempre apenas 1 único layout)
-function renderDrawerLayoutField(layoutId, layoutCode, layoutName) {
+// Formata o badge de status do layout (Em Revisão, Publicado, Aprovado, Rascunho, Rejeitado, etc.)
+function formatLayoutStatusBadge(status) {
+  if (!status) return null;
+  const s = String(status).toLowerCase().trim();
+  switch (s) {
+    case 'in_review':
+    case 'review':
+    case 'em_revisao':
+    case 'em revisão':
+      return {
+        label: 'Em Revisão',
+        icon: '🟠',
+        className: 'layout-badge-in-review',
+        isReview: true
+      };
+    case 'published':
+    case 'publicado':
+      return {
+        label: 'Publicado',
+        icon: '🟢',
+        className: 'layout-badge-published',
+        isReview: false
+      };
+    case 'approved':
+    case 'aprovado':
+      return {
+        label: 'Aprovado',
+        icon: '✅',
+        className: 'layout-badge-approved',
+        isReview: false
+      };
+    case 'draft':
+    case 'rascunho':
+      return {
+        label: 'Rascunho',
+        icon: '📝',
+        className: 'layout-badge-draft',
+        isReview: false
+      };
+    case 'rejected':
+    case 'rejeitado':
+      return {
+        label: 'Rejeitado',
+        icon: '❌',
+        className: 'layout-badge-rejected',
+        isReview: false
+      };
+    case 'skeleton_only':
+      return {
+        label: 'Estrutura Inicial',
+        icon: '🦴',
+        className: 'layout-badge-skeleton',
+        isReview: false
+      };
+    default:
+      return {
+        label: s.replace(/_/g, ' '),
+        icon: '📐',
+        className: 'layout-badge-default',
+        isReview: false
+      };
+  }
+}
+
+// Ação de Aprovar Layout diretamente no Importer Ultra
+async function handleApproveLayout(layoutId, layoutCode, layoutName) {
+  let targetId = resolveLayoutId(layoutId, layoutCode);
+
+  if (!targetId && layoutCode && window.conciliadorAPI?.searchLayouts) {
+    try {
+      showToast(`Localizando ID do Layout ${layoutCode}...`, 'info');
+      const res = await window.conciliadorAPI.searchLayouts(String(layoutCode), 10);
+      const items = res?.data || [];
+      const exact = items.find(l => String(l.code != null ? l.code : '').trim() === String(layoutCode).trim()) || items[0];
+      if (exact && exact.id) {
+        targetId = String(exact.id);
+        registerLayoutInCache(exact);
+      }
+    } catch (e) {
+      console.warn('Erro ao resolver ID do layout para aprovação:', e);
+    }
+  }
+
+  if (!targetId) {
+    showAppAlert(`Não foi possível localizar o identificador do Layout ${layoutCode ? '#' + layoutCode : ''} no Importer Ultra.`, 'Erro ao Aprovar', 'error');
+    return;
+  }
+
+  const ok = await showAppConfirm(
+    `Deseja realmente aprovar o Layout ${layoutCode ? `#${layoutCode}` : ''} ${layoutName ? `(${layoutName}) ` : ''}diretamente no Importer Ultra? O status passará para "Publicado / Aprovado".`,
+    'Aprovar Layout',
+    {
+      confirmText: 'Aprovar Layout',
+      confirmClass: 'btn-confirm-approve',
+      icon: '✅',
+      type: 'success',
+      subtitle: 'Aprovação Direta de Layout no Importer'
+    }
+  );
+
+  if (!ok) return;
+
+  const btnApprove = document.getElementById('btnDrawerApproveLayout');
+  const btnTopApprove = document.getElementById('btnDrawerTopApproveLayout');
+
+  if (btnApprove) {
+    btnApprove.disabled = true;
+    btnApprove.innerHTML = '<span>⏳</span> Aprovando...';
+  }
+  if (btnTopApprove) {
+    btnTopApprove.disabled = true;
+    btnTopApprove.innerHTML = '<span>⏳</span> <span>Aprovando...</span>';
+  }
+
+  try {
+    await window.conciliadorAPI.approveLayout(targetId);
+
+    showAppAlert(`Layout ${layoutCode ? `#${layoutCode}` : ''} aprovado com sucesso no Importer Ultra!`, 'Layout Aprovado', 'success');
+
+    // Atualizar no cache de layout
+    registerLayoutInCache({ id: targetId, code: layoutCode, name: layoutName, status: 'published' });
+
+    // Atualizar no selectedTicket
+    if (selectedTicket) {
+      if (selectedTicket.layout) selectedTicket.layout.status = 'published';
+      selectedTicket.layoutStatus = 'published';
+    }
+
+    // Atualizar interface do drawer
+    renderDrawerLayoutField(targetId, layoutCode, layoutName, 'published');
+
+    // Atualizar cabeçalho do drawer
+    const numEl = document.getElementById('drawerDemandNumber');
+    if (numEl && selectedTicket) {
+      const statusBadge = formatLayoutStatusBadge('published');
+      const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="margin-left: 6px;">${statusBadge.icon} ${statusBadge.label}</span>` : '';
+      numEl.innerHTML = `<span>#${selectedTicket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${targetId}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName ? ' - ' + layoutName : '')}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
+      numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openLayoutInImporter(targetId, layoutCode);
+      });
+    }
+
+    // Re-renderizar lista de demandas
+    renderDemands();
+  } catch (err) {
+    console.error('Erro ao aprovar layout:', err);
+    showAppAlert('Falha ao aprovar layout no Importer Ultra: ' + translateErrorMessage(err), 'Erro', 'error');
+  } finally {
+    if (btnApprove) {
+      btnApprove.disabled = false;
+      btnApprove.innerHTML = '<span>✅</span> Aprovar Layout';
+    }
+    if (btnTopApprove) {
+      btnTopApprove.disabled = false;
+      btnTopApprove.innerHTML = '<span>✅</span> <span>Aprovar Layout</span>';
+    }
+  }
+}
+window.handleApproveLayout = handleApproveLayout;
+
+// Renderiza o campo de Layout Selecionado (DENTRO do próprio campo, com status e botão de aprovação direta)
+function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus = null) {
   const hiddenId = document.getElementById('drawerEditLayoutId');
   const selectedBox = document.getElementById('drawerSelectedLayoutBox');
   const searchBox = document.getElementById('drawerLayoutSearchBox');
   const labelEl = document.getElementById('drawerSelectedLayoutLabel');
   const subEl = document.getElementById('drawerSelectedLayoutSub');
+  const statusEl = document.getElementById('drawerSelectedLayoutStatus');
+  const btnApprove = document.getElementById('btnDrawerApproveLayout');
+  const btnTopApprove = document.getElementById('btnDrawerTopApproveLayout');
   const btnOpen = document.getElementById('btnDrawerOpenLayoutFromField');
   const searchInput = document.getElementById('drawerEditLayoutSearch');
   const dropdown = document.getElementById('drawerLayoutSearchResults');
@@ -2565,6 +2747,49 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName) {
       subEl.textContent = cleanName ? `• ${cleanName}` : '';
       subEl.title = cleanName ? `Layout ${layoutCode} • ${cleanName}` : `Layout ${layoutCode}`;
     }
+
+    // Se layoutStatus não foi passado explicitamente, consultar cache
+    let currentStatus = layoutStatus;
+    if (!currentStatus && layoutCode) {
+      const cached = layoutCodeToIdCache.get(String(layoutCode).trim());
+      if (cached && cached.status) currentStatus = cached.status;
+    }
+
+    // Status do Layout
+    const statusInfo = formatLayoutStatusBadge(currentStatus);
+    if (statusEl) {
+      if (statusInfo) {
+        statusEl.className = `badge-layout-status ${statusInfo.className}`;
+        statusEl.innerHTML = `<span>${statusInfo.icon}</span> <span>${statusInfo.label}</span>`;
+        statusEl.style.display = 'inline-flex';
+      } else {
+        statusEl.style.display = 'none';
+      }
+    }
+
+    // Botão de Aprovação de Layout (ativo apenas quando em revisão)
+    const isReview = statusInfo && statusInfo.isReview;
+    if (btnApprove) {
+      btnApprove.style.display = isReview ? 'inline-flex' : 'none';
+      if (isReview) {
+        btnApprove.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          await handleApproveLayout(layoutId, layoutCode, cleanName);
+        };
+      }
+    }
+    if (btnTopApprove) {
+      btnTopApprove.style.display = isReview ? 'inline-flex' : 'none';
+      if (isReview) {
+        btnTopApprove.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          await handleApproveLayout(layoutId, layoutCode, cleanName);
+        };
+      }
+    }
+
     if (selectedBox) selectedBox.style.display = 'flex';
     if (searchBox) searchBox.style.display = 'none';
     if (dropdown) dropdown.style.display = 'none';
@@ -2582,6 +2807,9 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName) {
     if (searchBox) searchBox.style.display = 'block';
     if (searchInput) searchInput.value = '';
     if (dropdown) dropdown.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+    if (btnApprove) btnApprove.style.display = 'none';
+    if (btnTopApprove) btnTopApprove.style.display = 'none';
   }
 }
 
@@ -2625,11 +2853,14 @@ async function openDemandDrawer(ticket) {
   const layoutCode = layoutInfo.code;
   const layoutName = layoutInfo.name ? ` - ${layoutInfo.name}` : '';
   const currentLayoutId = resolveLayoutId(layoutInfo.id, layoutCode);
+  const currentLayoutStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
 
   const numEl = document.getElementById('drawerDemandNumber');
   if (numEl) {
     if (layoutCode) {
-      numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${currentLayoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName)}</span> <span style="font-size: 11px;">↗</span></a>`;
+      const statusBadge = formatLayoutStatusBadge(currentLayoutStatus);
+      const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 10px; padding: 2px 7px; margin-left: 6px;" title="Status do Layout no Importer Ultra: ${statusBadge.label}">${statusBadge.icon} ${statusBadge.label}</span>` : '';
+      numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${currentLayoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName)}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
       numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2750,8 +2981,8 @@ async function openDemandDrawer(ticket) {
     populateAndSelectProduct(prodSelect, ticket);
   }
 
-  // Layout field (único, selecionado DENTRO do campo)
-  renderDrawerLayoutField(currentLayoutId, layoutCode, layoutName);
+  // Layout field (único, selecionado DENTRO do campo com status e botão de aprovação se estiver em revisão)
+  renderDrawerLayoutField(currentLayoutId, layoutCode, layoutName, currentLayoutStatus);
 
   // Labels picker
   selectedDrawerLabels = new Set((ticket.labels || []).map(l => (l.label ? l.label.id : l.id)).filter(Boolean));
@@ -2826,19 +3057,28 @@ async function openDemandDrawer(ticket) {
     renderDrawerWorkflowButtons(selectedTicket);
     renderSameLayoutTickets(selectedTicket);
 
-    // Update layout title and button if full details have layout name
+    // Update layout title, status and button if full details have layout info
     const freshLayoutInfo = getTicketLayoutInfo(details);
     const finalLayoutCode = freshLayoutInfo.code || layoutCode;
     const finalLayoutName = freshLayoutInfo.name ? ` - ${freshLayoutInfo.name}` : layoutName;
     const finalLayoutId = resolveLayoutId(freshLayoutInfo.id, finalLayoutCode) || currentLayoutId;
+    let finalLayoutStatus = freshLayoutInfo.status || details.layout?.status || currentLayoutStatus || null;
 
-    if (finalLayoutId && finalLayoutCode) {
-      registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name });
+    if (finalLayoutCode && !finalLayoutStatus) {
+      const cached = layoutCodeToIdCache.get(String(finalLayoutCode).trim());
+      if (cached && cached.status) finalLayoutStatus = cached.status;
     }
 
-    if (numEl) {
+    if (finalLayoutId && finalLayoutCode) {
+      registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name, status: finalLayoutStatus });
+    }
+
+    function updateDrawerHeaderWithLayout(statusToDisplay) {
+      if (!numEl) return;
       if (finalLayoutCode) {
-        numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${finalLayoutId || ''}" data-layout-code="${finalLayoutCode}" title="Abrir Layout ${finalLayoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${finalLayoutCode}${escapeHtml(finalLayoutName)}</span> <span style="font-size: 11px;">↗</span></a>`;
+        const statusBadge = formatLayoutStatusBadge(statusToDisplay);
+        const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 10px; padding: 2px 7px; margin-left: 6px;" title="Status do Layout no Importer Ultra: ${statusBadge.label}">${statusBadge.icon} ${statusBadge.label}</span>` : '';
+        numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${finalLayoutId || ''}" data-layout-code="${finalLayoutCode}" title="Abrir Layout ${finalLayoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${finalLayoutCode}${escapeHtml(finalLayoutName)}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
         numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -2848,6 +3088,8 @@ async function openDemandDrawer(ticket) {
         numEl.textContent = `#${ticket.number} • Sem Layout`;
       }
     }
+
+    updateDrawerHeaderWithLayout(finalLayoutStatus);
 
     if (btnDrawerLayout) {
       if (finalLayoutCode) {
@@ -2860,7 +3102,23 @@ async function openDemandDrawer(ticket) {
       }
     }
 
-    renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName);
+    renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName, finalLayoutStatus);
+
+    // Se temos o ID do layout mas o status ainda não foi identificado, buscar diretamente no Importer Ultra
+    if (finalLayoutId && !finalLayoutStatus && window.conciliadorAPI?.fetchLayoutDetails) {
+      window.conciliadorAPI.fetchLayoutDetails(finalLayoutId).then(layoutDetail => {
+        if (layoutDetail && layoutDetail.status) {
+          finalLayoutStatus = layoutDetail.status;
+          registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name, status: finalLayoutStatus });
+          if (selectedTicket) {
+            if (selectedTicket.layout) selectedTicket.layout.status = finalLayoutStatus;
+            selectedTicket.layoutStatus = finalLayoutStatus;
+          }
+          updateDrawerHeaderWithLayout(finalLayoutStatus);
+          renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName, finalLayoutStatus);
+        }
+      }).catch(e => console.warn('Erro ao carregar detalhes do layout do Importer:', e));
+    }
 
     if (details.reviewer && reviewerSelect) {
       const currentRevId = details.reviewer.id || details.reviewerId || '';
@@ -4450,24 +4708,31 @@ function renderDrawerWorkflowButtons(ticket) {
   });
 }
 
-// Cache em memória de mapeamento código de layout -> { id, name }
+// Cache em memória de mapeamento código de layout -> { id, name, status }
 const layoutCodeToIdCache = new Map();
 
 function registerLayoutInCache(layout) {
   if (!layout) return;
   const id = layout.id || layout.layoutId;
   const code = layout.code != null ? layout.code : (typeof layout === 'number' || typeof layout === 'string' ? layout : null);
-  if (id && code) {
-    layoutCodeToIdCache.set(String(code).trim(), { id: String(id), name: layout.name || '' });
+  if (code) {
+    const codeStr = String(code).trim();
+    const existing = layoutCodeToIdCache.get(codeStr) || {};
+    layoutCodeToIdCache.set(codeStr, {
+      id: id ? String(id) : (existing.id || null),
+      name: layout.name || existing.name || '',
+      status: layout.status || existing.status || null
+    });
   }
 }
 
-// Helper: Extrair código e ID de layout de um chamado
+// Helper: Extrair código, ID e status de layout de um chamado
 function getTicketLayoutInfo(ticket) {
-  if (!ticket) return { code: null, name: null, id: null };
-  const id = ticket.layoutId || ticket.layout?.id || null;
-  let code = ticket.layout?.code || (typeof ticket.layout === 'number' || typeof ticket.layout === 'string' ? ticket.layout : null);
+  if (!ticket) return { code: null, name: null, id: null, status: null };
+  let id = ticket.layoutId || ticket.layout?.id || null;
+  let code = ticket.layout?.code != null ? ticket.layout.code : (typeof ticket.layout === 'number' || typeof ticket.layout === 'string' ? ticket.layout : null);
   let name = ticket.layout?.name || '';
+  let status = ticket.layout?.status || ticket.layoutStatus || null;
   
   // Fallback: se não tiver no objeto, tentar extrair do título caso seja "14 - ERRO..." ou "3024 - NOVO LAYOUT..."
   if (!code && ticket.title) {
@@ -4477,12 +4742,47 @@ function getTicketLayoutInfo(ticket) {
     }
   }
 
-  if (id && code) {
-    registerLayoutInCache({ id, code, name });
+  if (code) {
+    const codeStr = String(code).trim();
+    const cached = layoutCodeToIdCache.get(codeStr);
+    if (cached) {
+      if (!id && cached.id) id = cached.id;
+      if (!name && cached.name) name = cached.name;
+      if (!status && cached.status) status = cached.status;
+    }
+    registerLayoutInCache({ id, code, name, status });
   }
 
-  return { code, name, id };
+  return { code, name, id, status };
 }
+
+// Pré-carrega layouts recentes do Importer Ultra para saber o status em tempo hábil
+async function loadActiveLayoutsCache() {
+  if (!window.conciliadorAPI?.fetchRecentLayouts) return;
+  try {
+    const layouts = await window.conciliadorAPI.fetchRecentLayouts(300);
+    if (Array.isArray(layouts) && layouts.length > 0) {
+      let hasChanges = false;
+      layouts.forEach(l => {
+        if (!l) return;
+        const code = l.code != null ? String(l.code).trim() : null;
+        if (code) {
+          const prev = layoutCodeToIdCache.get(code);
+          if (!prev || prev.status !== l.status || !prev.id) {
+            hasChanges = true;
+          }
+          registerLayoutInCache(l);
+        }
+      });
+      if (hasChanges && !selectedTicket) {
+        renderDemands();
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar cache de layouts recentes:', err);
+  }
+}
+window.loadActiveLayoutsCache = loadActiveLayoutsCache;
 
 function resolveLayoutId(layoutId, layoutCode) {
   if (layoutId) {
@@ -4502,7 +4802,7 @@ function resolveLayoutId(layoutId, layoutCode) {
   for (const d of allDemands) {
     const info = getTicketLayoutInfo(d);
     if (info.id && info.code && String(info.code).trim() === codeStr) {
-      registerLayoutInCache({ id: info.id, code: info.code, name: info.name });
+      registerLayoutInCache({ id: info.id, code: info.code, name: info.name, status: info.status });
       return String(info.id);
     }
   }
@@ -5549,10 +5849,15 @@ function setupDrawerLayoutAutocomplete() {
         dropdown.innerHTML = layouts.map(l => {
           const code = l.code || '-';
           const name = l.name || 'Sem nome';
+          const statusBadge = formatLayoutStatusBadge(l.status);
+          const badgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 9.5px; padding: 1px 5px; margin-left: auto;">${statusBadge.icon} ${statusBadge.label}</span>` : '';
           return `
-            <div class="layout-autocomplete-item" data-id="${l.id}" data-code="${code}" data-name="${escapeHtml(name)}">
-              <span class="layout-item-code">Layout ${code}</span>
-              <span class="layout-item-name">${escapeHtml(name)}</span>
+            <div class="layout-autocomplete-item" data-id="${l.id}" data-code="${code}" data-name="${escapeHtml(name)}" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden;">
+                <span class="layout-item-code">Layout ${code}</span>
+                <span class="layout-item-name">${escapeHtml(name)}</span>
+              </div>
+              ${badgeHtml}
             </div>
           `;
         }).join('');
@@ -5564,9 +5869,11 @@ function setupDrawerLayoutAutocomplete() {
             const id = item.dataset.id;
             const code = item.dataset.code;
             const name = item.dataset.name;
+            const matchedLayout = layouts.find(l => String(l.id) === String(id));
+            const status = matchedLayout?.status || null;
 
-            registerLayoutInCache({ id, code, name });
-            renderDrawerLayoutField(id, code, name);
+            registerLayoutInCache({ id, code, name, status });
+            renderDrawerLayoutField(id, code, name, status);
 
             const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
             const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
