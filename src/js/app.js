@@ -2785,6 +2785,15 @@ async function openDemandDrawer(ticket) {
   if (attachList) attachList.innerHTML = '';
   if (attachEmpty) attachEmpty.style.display = 'block';
 
+  const inlineList = document.getElementById('drawerInlineAttachmentsList');
+  const inlineEmpty = document.getElementById('drawerInlineAttachmentsEmpty');
+  const inlineBadge = document.getElementById('drawerInlineAttachmentsBadge');
+  const btnDownloadAll = document.getElementById('btnInlineDownloadAllAttachments');
+  if (inlineList) inlineList.innerHTML = '';
+  if (inlineEmpty) inlineEmpty.style.display = 'block';
+  if (inlineBadge) inlineBadge.textContent = '0';
+  if (btnDownloadAll) btnDownloadAll.style.display = 'none';
+
   document.getElementById('drawerStreamCountBadge').textContent = '0';
   document.getElementById('streamCountAll').textContent = '0';
   document.getElementById('streamCountComments').textContent = '0';
@@ -3160,146 +3169,241 @@ function renderDrawerAttachments(attachments) {
   const emptyBox = document.getElementById('drawerAttachmentsEmpty');
   const countBadge = document.getElementById('drawerAttachmentsCountBadge');
 
-  if (countBadge) countBadge.textContent = attachments.length;
-  if (!list) return;
+  const inlineList = document.getElementById('drawerInlineAttachmentsList');
+  const inlineEmpty = document.getElementById('drawerInlineAttachmentsEmpty');
+  const inlineBadge = document.getElementById('drawerInlineAttachmentsBadge');
+  const btnDownloadAll = document.getElementById('btnInlineDownloadAllAttachments');
 
-  if (attachments.length === 0) {
-    if (emptyBox) emptyBox.style.display = 'block';
-    list.innerHTML = '';
-    return;
-  }
-
-  if (emptyBox) emptyBox.style.display = 'none';
-
-  list.innerHTML = attachments.map(att => {
-    const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || 'Arquivo anexado';
-    const ext = (fileName.split('.').pop() || '').toLowerCase();
-    const rawSize = att.fileSize != null ? att.fileSize : (att.filesize != null ? att.filesize : (att.size != null ? att.size : att.bytes));
-    const fileSizeStr = rawSize ? formatFileSize(rawSize) : '';
-    const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || (att.mimetype && att.mimetype.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
-
-    let fileIcon = '📄';
-    if (['pdf'].includes(ext)) fileIcon = '📕';
-    else if (['xlsx', 'xls', 'csv'].includes(ext)) fileIcon = '📊';
-    else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) fileIcon = '🗜️';
-    else if (['txt', 'log', 'cnab', 'ret', 'rem'].includes(ext)) fileIcon = '📝';
-
-    if (isImage) {
-      return `
-        <div class="attachment-card" data-att-id="${att.id}">
-          <div class="attachment-thumb-wrapper" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para ampliar imagem">
-            <img class="attachment-thumb-img" id="thumb_${att.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%231e293b'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='22'>🖼️</text></svg>" alt="${escapeHtml(fileName)}">
-            <div class="thumb-zoom-overlay">🔍 Ampliar</div>
-          </div>
-          <div class="attachment-details">
-            <div class="attachment-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
-            <div class="attachment-meta">${fileSizeStr ? fileSizeStr + ' • Imagem' : 'Imagem'}</div>
-            <div class="attachment-actions">
-              <button type="button" class="quick-action-btn btn-view-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
-                👁️ Ver
-              </button>
-              <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
-                ⬇️ Baixar
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="attachment-card" data-att-id="${att.id}">
-          <div class="attachment-file-icon-box">
-            <span class="attachment-large-icon">${fileIcon}</span>
-            <span class="attachment-ext-tag">${escapeHtml(ext.toUpperCase() || 'FILE')}</span>
-          </div>
-          <div class="attachment-details">
-            <div class="attachment-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
-            <div class="attachment-meta">${fileSizeStr || 'Arquivo'}</div>
-            <div class="attachment-actions">
-              <button type="button" class="quick-action-btn btn-open-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
-                👁️ Abrir
-              </button>
-              <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
-                ⬇️ Baixar
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-  }).join('');
-
-  // Asynchronously load image thumbnails with authentication
   const ticketId = selectedTicket?.id;
-  if (ticketId) {
-    attachments.forEach(att => {
-      const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || '';
-      const ext = (fileName.split('.').pop() || '').toLowerCase();
-      const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || (att.mimetype && att.mimetype.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+  const count = (attachments || []).length;
 
-      if (isImage) {
-        getOrFetchAttachmentBlobUrl(ticketId, att.id).then(blobUrl => {
-          if (blobUrl) {
-            const imgEl = document.getElementById(`thumb_${att.id}`);
-            if (imgEl) imgEl.src = blobUrl;
+  if (countBadge) countBadge.textContent = count;
+  if (inlineBadge) inlineBadge.textContent = count;
+
+  // 1. Renderizar lista na aba "Anexos"
+  if (list) {
+    if (count === 0) {
+      if (emptyBox) emptyBox.style.display = 'block';
+      list.innerHTML = '';
+    } else {
+      if (emptyBox) emptyBox.style.display = 'none';
+
+      list.innerHTML = attachments.map(att => {
+        const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || 'Arquivo anexado';
+        const ext = (fileName.split('.').pop() || '').toLowerCase();
+        const rawSize = att.fileSize != null ? att.fileSize : (att.filesize != null ? att.filesize : (att.size != null ? att.size : att.bytes));
+        const fileSizeStr = rawSize ? formatFileSize(rawSize) : '';
+        const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || (att.mimetype && att.mimetype.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+
+        let fileIcon = '📄';
+        if (['pdf'].includes(ext)) fileIcon = '📕';
+        else if (['xlsx', 'xls', 'csv'].includes(ext)) fileIcon = '📊';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) fileIcon = '🗜️';
+        else if (['txt', 'log', 'cnab', 'ret', 'rem'].includes(ext)) fileIcon = '📝';
+
+        if (isImage) {
+          return `
+            <div class="attachment-card" data-att-id="${att.id}">
+              <div class="attachment-thumb-wrapper" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para ampliar imagem">
+                <img class="attachment-thumb-img" id="thumb_${att.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%231e293b'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='22'>🖼️</text></svg>" alt="${escapeHtml(fileName)}">
+                <div class="thumb-zoom-overlay">🔍 Ampliar</div>
+              </div>
+              <div class="attachment-details">
+                <div class="attachment-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
+                <div class="attachment-meta">${fileSizeStr ? fileSizeStr + ' • Imagem' : 'Imagem'}</div>
+                <div class="attachment-actions">
+                  <button type="button" class="quick-action-btn btn-view-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
+                    👁️ Ver
+                  </button>
+                  <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
+                    ⬇️ Baixar
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="attachment-card" data-att-id="${att.id}">
+              <div class="attachment-file-icon-box">
+                <span class="attachment-large-icon">${fileIcon}</span>
+                <span class="attachment-ext-tag">${escapeHtml(ext.toUpperCase() || 'FILE')}</span>
+              </div>
+              <div class="attachment-details">
+                <div class="attachment-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
+                <div class="attachment-meta">${fileSizeStr || 'Arquivo'}</div>
+                <div class="attachment-actions">
+                  <button type="button" class="quick-action-btn btn-open-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
+                    👁️ Abrir
+                  </button>
+                  <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
+                    ⬇️ Baixar
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+
+      // Wire thumbnails
+      if (ticketId) {
+        attachments.forEach(att => {
+          const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || '';
+          const ext = (fileName.split('.').pop() || '').toLowerCase();
+          const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || (att.mimetype && att.mimetype.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+
+          if (isImage) {
+            getOrFetchAttachmentBlobUrl(ticketId, att.id).then(blobUrl => {
+              if (blobUrl) {
+                const imgEl = document.getElementById(`thumb_${att.id}`);
+                if (imgEl) imgEl.src = blobUrl;
+              }
+            });
           }
         });
       }
-    });
+
+      // Wire click events tab
+      list.querySelectorAll('.attachment-thumb-wrapper, .btn-view-attachment').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const clickedAttId = el.dataset.attId || el.dataset.id;
+          const clickedFileName = el.dataset.filename || 'imagem.png';
+          if (ticketId && clickedAttId) {
+            const clickedBlobUrl = await getOrFetchAttachmentBlobUrl(ticketId, clickedAttId);
+            if (clickedBlobUrl) {
+              const imgExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'];
+              const imageAtts = (attachments || []).filter(a => {
+                const ext = ((a.fileName || a.filename || a.name || '').split('.').pop() || '').toLowerCase();
+                return imgExtensions.includes(ext);
+              });
+              const gallery = await Promise.all(imageAtts.map(async (a) => {
+                const bUrl = await getOrFetchAttachmentBlobUrl(ticketId, a.id);
+                return {
+                  blobUrl: bUrl || '',
+                  fileName: a.fileName || a.filename || a.name || 'imagem.png',
+                  ticketId,
+                  attId: a.id
+                };
+              }));
+              const filteredGallery = gallery.filter(g => !!g.blobUrl);
+              const initialIdx = filteredGallery.findIndex(g => String(g.attId) === String(clickedAttId));
+              openImageLightbox(clickedBlobUrl, clickedFileName, ticketId, clickedAttId, filteredGallery, initialIdx !== -1 ? initialIdx : 0);
+            }
+          }
+        });
+      });
+
+      list.querySelectorAll('.btn-open-attachment').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            openAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
+
+      list.querySelectorAll('.btn-download-attachment').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            downloadAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
+    }
   }
 
-  // Wire click events
-  list.querySelectorAll('.attachment-thumb-wrapper, .btn-view-attachment').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const clickedAttId = el.dataset.attId || el.dataset.id;
-      const clickedFileName = el.dataset.filename || 'imagem.png';
-      if (ticketId && clickedAttId) {
-        const clickedBlobUrl = await getOrFetchAttachmentBlobUrl(ticketId, clickedAttId);
-        if (clickedBlobUrl) {
-          const imgExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'];
-          const imageAtts = (attachments || []).filter(a => {
-            const ext = ((a.fileName || a.filename || a.name || '').split('.').pop() || '').toLowerCase();
-            return imgExtensions.includes(ext);
-          });
-          const gallery = await Promise.all(imageAtts.map(async (a) => {
-            const bUrl = await getOrFetchAttachmentBlobUrl(ticketId, a.id);
-            return {
-              blobUrl: bUrl || '',
-              fileName: a.fileName || a.filename || a.name || 'imagem.png',
-              ticketId,
-              attId: a.id
-            };
-          }));
-          const filteredGallery = gallery.filter(g => !!g.blobUrl);
-          const initialIdx = filteredGallery.findIndex(g => String(g.attId) === String(clickedAttId));
-          openImageLightbox(clickedBlobUrl, clickedFileName, ticketId, clickedAttId, filteredGallery, initialIdx !== -1 ? initialIdx : 0);
-        }
-      }
-    });
-  });
+  // 2. Renderizar lista compacta de anexos PEQUENOS embaixo da descrição
+  if (inlineList) {
+    if (count === 0) {
+      if (inlineEmpty) inlineEmpty.style.display = 'block';
+      inlineList.innerHTML = '';
+      if (btnDownloadAll) btnDownloadAll.style.display = 'none';
+    } else {
+      if (inlineEmpty) inlineEmpty.style.display = 'none';
+      if (btnDownloadAll) btnDownloadAll.style.display = count >= 2 ? 'inline-flex' : 'none';
 
-  list.querySelectorAll('.btn-open-attachment').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const attId = btn.dataset.id;
-      const fileName = btn.dataset.filename || 'anexo';
-      if (ticketId && attId) {
-        openAttachmentFile(ticketId, attId, fileName);
-      }
-    });
-  });
+      inlineList.innerHTML = attachments.map(att => {
+        const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || 'Arquivo anexado';
+        const ext = (fileName.split('.').pop() || '').toLowerCase();
+        const rawSize = att.fileSize != null ? att.fileSize : (att.filesize != null ? att.filesize : (att.size != null ? att.size : att.bytes));
+        const fileSizeStr = rawSize ? formatFileSize(rawSize) : '';
+        const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || (att.mimetype && att.mimetype.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
 
-  list.querySelectorAll('.btn-download-attachment').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const attId = btn.dataset.id;
-      const fileName = btn.dataset.filename || 'anexo';
-      if (ticketId && attId) {
-        downloadAttachmentFile(ticketId, attId, fileName);
+        let fileIcon = '📄';
+        if (['pdf'].includes(ext)) fileIcon = '📕';
+        else if (['xlsx', 'xls', 'csv'].includes(ext)) fileIcon = '📊';
+        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) fileIcon = '🗜️';
+        else if (['txt', 'log', 'cnab', 'ret', 'rem'].includes(ext)) fileIcon = '📝';
+        else if (isImage) fileIcon = '🖼️';
+
+        return `
+          <div class="inline-att-card" data-att-id="${att.id}">
+            <div class="inline-att-icon-box" title="${escapeHtml(ext.toUpperCase() || 'ARQUIVO')}">
+              <span>${fileIcon}</span>
+            </div>
+            <div class="inline-att-meta" title="${escapeHtml(fileName)} (${fileSizeStr || ext.toUpperCase()})">
+              <span class="inline-att-filename">${escapeHtml(fileName)}</span>
+              <span class="inline-att-sub">${fileSizeStr || ext.toUpperCase()}</span>
+            </div>
+            <div class="inline-att-actions">
+              <button type="button" class="inline-att-btn-download" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Baixar ${escapeHtml(fileName)}">
+                <span>⬇️</span> <span>Baixar</span>
+              </button>
+              <button type="button" class="inline-att-btn-view" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="${isImage ? 'Visualizar imagem' : 'Abrir arquivo'}">
+                <span>👁️</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      inlineList.querySelectorAll('.inline-att-btn-download').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            downloadAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
+
+      inlineList.querySelectorAll('.inline-att-btn-view').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            openAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
+
+      if (btnDownloadAll) {
+        btnDownloadAll.onclick = async (e) => {
+          e.stopPropagation();
+          if (!ticketId || attachments.length === 0) return;
+          btnDownloadAll.disabled = true;
+          const oldText = btnDownloadAll.innerHTML;
+          btnDownloadAll.innerHTML = '<span>⏳</span> <span>Baixando...</span>';
+          for (const att of attachments) {
+            const fName = att.fileName || att.filename || att.originalName || att.name || 'anexo';
+            await downloadAttachmentFile(ticketId, att.id, fName);
+            await new Promise(r => setTimeout(r, 400));
+          }
+          btnDownloadAll.disabled = false;
+          btnDownloadAll.innerHTML = oldText;
+        };
       }
-    });
-  });
+    }
+  }
 }
 
 let timelinePendingAttachments = [];

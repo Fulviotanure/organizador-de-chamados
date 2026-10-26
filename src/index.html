@@ -112,7 +112,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.33</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.34</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -451,13 +451,27 @@
       <!-- TAB 1: DETAILS & EDIT -->
       <div class="drawer-tab-pane active" id="drawerPaneDetails">
 
-        <!-- 1. TÍTULO DA DEMANDA -->
-        <div class="form-group" style="margin-top: 4px;">
-          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Título da Demanda</span>
-            <span style="font-size: 11px; color: var(--text-muted);">Editável</span>
-          </label>
-          <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14.5px; font-weight: 600;">
+        <!-- 1. LINHA SUPERIOR: METADE TÍTULO E METADE LISTA FLUTUANTE DE ETIQUETAS -->
+        <div class="drawer-title-labels-row">
+          <div class="drawer-col-title">
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span>Título da Demanda</span>
+              <span style="font-size: 11px; color: var(--text-muted);">Editável</span>
+            </label>
+            <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14px; font-weight: 600; height: 38px;">
+          </div>
+
+          <div class="drawer-col-labels">
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span>🏷️ Etiquetas da Demanda</span>
+              <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar</span>
+            </label>
+            <div class="drawer-floating-labels-box">
+              <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
+                <!-- Badges de etiquetas geradas dinamicamente -->
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 2. DESCRIÇÃO COMPLETA DO CHAMADO -->
@@ -495,14 +509,26 @@
           </div>
         </div>
 
-        <!-- 3. ETIQUETAS DA DEMANDA -->
-        <div class="drawer-prop-card" style="margin-top: 14px;">
-          <div class="drawer-prop-card-header">
-            <span class="drawer-prop-card-title">🏷️ Etiquetas da Demanda</span>
-            <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar / desmarcar</span>
+        <!-- 3. ANEXOS PEQUENOS COM BOTÃO DE BAIXAR DE FÁCIL ACESSO (Logo abaixo da Descrição) -->
+        <div class="drawer-inline-attachments-container" id="drawerInlineAttachmentsContainer">
+          <div class="drawer-inline-attachments-header">
+            <div class="inline-attachments-title">
+              <span>📎 Anexos da Demanda</span>
+              <span class="inline-attachments-counter" id="drawerInlineAttachmentsBadge">0</span>
+            </div>
+            <div class="inline-attachments-header-actions">
+              <button type="button" class="btn-inline-download-all" id="btnInlineDownloadAllAttachments" style="display: none;" title="Baixar todos os anexos desta demanda">
+                <span>⚡</span> <span>Baixar Todos</span>
+              </button>
+            </div>
           </div>
-          <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
-            <!-- Dynamically populated -->
+          
+          <div id="drawerInlineAttachmentsEmpty" class="drawer-inline-attachments-empty">
+            <span>Nenhum anexo nesta demanda.</span>
+          </div>
+
+          <div class="drawer-inline-attachments-grid" id="drawerInlineAttachmentsList">
+            <!-- Renderizado dinamicamente com botões de baixar de fácil acesso -->
           </div>
         </div>
 
