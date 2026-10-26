@@ -2780,7 +2780,23 @@ async function openDemandDrawer(ticket) {
       }
     }
 
-    if (details.reviewer && reviewerEl) reviewerEl.textContent = details.reviewer.name || '-';
+    if (details.reviewer && reviewerSelect) {
+      const currentRevId = details.reviewer.id || details.reviewerId || '';
+      const currentRevName = details.reviewer.name || details.reviewerName || '';
+      if (currentRevId && !Array.from(reviewerSelect.options).some(o => o.value === currentRevId)) {
+        const opt = document.createElement('option');
+        opt.value = currentRevId;
+        opt.textContent = `⚖️ ${currentRevName || 'Validador'}`;
+        reviewerSelect.appendChild(opt);
+      }
+      reviewerSelect.value = currentRevId;
+    }
+    if (details.deliveryDueDate && deliveryDateInput) {
+      deliveryDateInput.value = formatDateToBrInput(details.deliveryDueDate);
+    }
+    if (details.clientDueDate && clientDateInput) {
+      clientDateInput.value = formatDateToBrInput(details.clientDueDate);
+    }
     if (details.clientDatabase && dbInput) dbInput.value = details.clientDatabase;
     if (details.movideskTicketId && movideskInput) movideskInput.value = details.movideskTicketId;
 
@@ -2797,7 +2813,12 @@ async function openDemandDrawer(ticket) {
 
     // Refresh description with authenticated images
     if (details.description) {
-      renderAuthenticatedDescription(details.description, ticket.id, descBox);
+      try {
+        renderAuthenticatedDescription(details.description, ticket.id, descBox);
+      } catch (renderDescErr) {
+        console.warn('Erro ao renderizar descrição autenticada:', renderDescErr);
+        if (descBox) descBox.innerHTML = details.description;
+      }
       const editor = document.getElementById('drawerEditDescEditor');
       if (editor) editor.innerHTML = details.description;
     } else {
@@ -2820,7 +2841,9 @@ async function openDemandDrawer(ticket) {
 
   } catch (err) {
     console.warn('Failed to load full demand details:', err);
-    if (descBox) descBox.innerHTML = '<span style="color: var(--status-error);">Não foi possível carregar a descrição completa.</span>';
+    if (descBox && (!ticket.description || descBox.innerHTML.includes('Carregando'))) {
+      descBox.innerHTML = `<span style="color: var(--status-error);">Não foi possível carregar a descrição completa (${escapeHtml(err.message || 'Erro de comunicação')}).</span>`;
+    }
   }
 }
 

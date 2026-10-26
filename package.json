@@ -1,6 +1,6 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
   "main": "main.js",
   "scripts": {
