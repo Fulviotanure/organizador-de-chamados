@@ -7603,23 +7603,6 @@ function setupEventListeners() {
     }
   });
 
-  // Success screen actions
-  document.getElementById('btnOpenDriveFolderLink')?.addEventListener('click', () => {
-    if (autoDriveLastResult?.layoutLink && window.electronAPI && window.electronAPI.openExternal) {
-      window.electronAPI.openExternal(autoDriveLastResult.layoutLink);
-    }
-  });
-
-  document.getElementById('btnOpenLocalMirrorFolder')?.addEventListener('click', () => {
-    if (autoDriveLastResult?.mirror?.targetDir && window.electronAPI && window.electronAPI.openPath) {
-      window.electronAPI.openPath(autoDriveLastResult.mirror.targetDir);
-    }
-  });
-
-  document.getElementById('btnResetAutoDriveForm')?.addEventListener('click', () => {
-    closeAutoDriveModal();
-  });
-
   // Drag and drop for images in modal
   const dropzone = document.getElementById('autoDriveImageDropzone');
   if (dropzone) {
