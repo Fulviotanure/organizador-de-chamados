@@ -280,40 +280,22 @@ class ConciliadorAPI {
   async assignReviewer(ticketId, reviewerId, reason = 'Alteração de validador pelo Organizador de Chamados') {
     if (!this.token) throw new Error('Não autenticado');
 
-    // 1. Tentar endpoint dedicado de reviewer: PUT /support/tickets/:id/reviewer
-    try {
-      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
-        method: 'PUT',
-        body: JSON.stringify({ reviewerId: reviewerId || null, reason })
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (e) {}
+    if (!reviewerId) {
+      throw new Error('A API do Importer Ultra não permite deixar o chamado sem validador depois de já atribuído. Selecione outro membro da equipe para transferir a validação.');
+    }
 
-    // 2. Tentar PATCH /support/tickets/:id com reviewerId
-    try {
-      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ reviewerId: reviewerId || null })
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (e) {}
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
+      method: 'PUT',
+      body: JSON.stringify({ reviewerId, reason })
+    });
 
-    // 3. Tentar PUT /support/tickets/:id/review
-    try {
-      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/review`, {
-        method: 'PUT',
-        body: JSON.stringify({ reviewerId: reviewerId || null, reason })
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (e) {}
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao atribuir validador ao chamado' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
 
-    return { success: true };
+    return await response.json();
   }
 
   async setTicketDates(ticketId, deliveryDueDate, clientDueDate, reason = 'Atualização de prazos pelo Organizador de Chamados') {

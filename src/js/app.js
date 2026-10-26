@@ -2672,16 +2672,20 @@ async function openDemandDrawer(ticket) {
   const reviewerSelect = document.getElementById('drawerEditReviewer');
   if (reviewerSelect) {
     const currentRevId = ticket.reviewer?.id || ticket.reviewerId || '';
-    const currentRevName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
     const currentUser = window.appStore?.currentUser;
+    const allMembers = window.appStore.getKnownDevelopers();
 
-    let optionsHtml = '<option value="">Sem validador (Em branco)</option>';
-    if (currentUser && currentUser.id) {
-      optionsHtml += `<option value="${currentUser.id}">👤 ${escapeHtml(currentUser.name || 'Meu Usuário')} (Você)</option>`;
-    }
-    // Se o chamado já possuir outro validador que não seja o usuário logado, mantém para não quebrar a visualização
-    if (currentRevId && (!currentUser || currentRevId !== currentUser.id)) {
-      optionsHtml += `<option value="${currentRevId}">⚖️ ${escapeHtml(currentRevName || 'Validador Atual')}</option>`;
+    let optionsHtml = '<option value="">Sem validador (Não definido)</option>';
+    allMembers.forEach(m => {
+      const isMe = currentUser && m.id === currentUser.id;
+      const prefix = isMe ? '👤' : '⚖️';
+      const suffix = isMe ? ' (Você)' : '';
+      optionsHtml += `<option value="${m.id}">${prefix} ${escapeHtml(m.name)}${suffix}</option>`;
+    });
+
+    if (currentRevId && !allMembers.some(m => m.id === currentRevId)) {
+      const currentRevName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : 'Validador Atual');
+      optionsHtml += `<option value="${currentRevId}">⚖️ ${escapeHtml(currentRevName)}</option>`;
     }
 
     reviewerSelect.innerHTML = optionsHtml;
@@ -3520,11 +3524,10 @@ async function handleReturnTicketToDev(targetTicket = null) {
     // 1. Alterar status na API para in_progress
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
 
-    // 2. Adicionar comentário na linha do tempo se marcado
-    if (result.addComment) {
+    // 2. Adicionar comentário na linha do tempo se marcado (apenas a mensagem direta)
+    if (result.addComment && reason) {
       try {
-        const commentText = `↩️ **[DEVOLVIDO PARA O DESENVOLVEDOR]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de devolução:', cErr);
       }
@@ -3615,10 +3618,9 @@ async function handleStartTicket(targetTicket = null) {
 
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
 
-    if (result.addComment && result.reason) {
+    if (result.addComment && reason) {
       try {
-        const commentText = `🚀 **[DESENVOLVIMENTO INICIADO]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de início:', cErr);
       }
@@ -3696,10 +3698,9 @@ async function handlePauseTicket(targetTicket = null) {
   try {
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'paused', reason);
 
-    if (result.addComment) {
+    if (result.addComment && reason) {
       try {
-        const commentText = `⏸️ **[CHAMADO PAUSADO]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de pausa:', cErr);
       }
@@ -3777,10 +3778,9 @@ async function handleWaitRequesterTicket(targetTicket = null) {
   try {
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'waiting_requester', reason);
 
-    if (result.addComment) {
+    if (result.addComment && reason) {
       try {
-        const commentText = `⏳ **[AGUARDANDO QUEM ABRIU]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de aguardo:', cErr);
       }
@@ -3858,10 +3858,9 @@ async function handleSendToReviewTicket(targetTicket = null) {
   try {
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'review', reason);
 
-    if (result.addComment) {
+    if (result.addComment && reason) {
       try {
-        const commentText = `📤 **[ENVIADO PARA REVISÃO]**\n${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de envio para revisão:', cErr);
       }
@@ -3953,11 +3952,9 @@ async function handleResumeTicket(targetTicket = null) {
   try {
     await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
 
-    if (result.addComment && result.reason) {
+    if (result.addComment && reason) {
       try {
-        const commentPrefix = isClosed ? '🔄 **[CHAMADO REABERTO]**\n' : '▶️ **[DESENVOLVIMENTO RETOMADO]**\n';
-        const commentText = `${commentPrefix}${reason}`;
-        await window.conciliadorAPI.addComment(ticket.id, commentText);
+        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
       } catch (cErr) {
         console.warn('Erro ao postar comentário de retomada/reabertura:', cErr);
       }
@@ -4423,7 +4420,7 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
   `;
 }
 
-// Ação de Fluxo: Alterar Validador (inclusive deixar em branco) - Direto sem modal e sem mensagem no chat
+// Ação de Fluxo: Alterar Validador - Direto sem modal e sem mensagem no chat
 async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
   if (!selectedTicket) return;
 
@@ -4434,32 +4431,37 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
   if ((targetReviewerId || '') === (currentReviewerId || '')) return;
 
   const isLeavingBlank = !targetReviewerId;
-  const newName = isLeavingBlank ? 'Sem Validador (Em branco)' : (targetReviewerName || 'Novo Validador');
-
   const reviewerSelect = document.getElementById('drawerEditReviewer');
+
+  // A API do Importer Ultra exige um UUID e não aceita remover validador para em branco após ter sido atribuído
+  if (isLeavingBlank && currentReviewerId) {
+    if (reviewerSelect) reviewerSelect.value = currentReviewerId;
+    showAppAlert(
+      'A API do Importer Ultra não permite deixar o chamado sem validador após ele já ter sido atribuído.\n\nPara transferir a validação, selecione outro membro da equipe no campo Validador.',
+      'Validador Obrigatório na API',
+      'warning'
+    );
+    return;
+  }
+
+  const cleanName = (targetReviewerName || 'Novo Validador').replace(/^[👤⚖️]\s*/, '').replace(/\s*\(Você\)$/, '').trim();
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText) {
     statusText.style.color = 'var(--accent-primary)';
-    statusText.textContent = isLeavingBlank ? 'Removendo validador...' : 'Atribuindo validador...';
+    statusText.textContent = 'Atribuindo validador...';
   }
 
   try {
     // 1. Chamar assignReviewer na API diretamente (sem modal e sem postar mensagem de chat)
-    await window.conciliadorAPI.assignReviewer(selectedTicket.id, targetReviewerId || null);
+    await window.conciliadorAPI.assignReviewer(selectedTicket.id, targetReviewerId, 'Alteração de validador pelo Organizador de Chamados');
 
     // 2. Atualizar estado local
-    if (isLeavingBlank) {
-      selectedTicket.reviewer = null;
-      selectedTicket.reviewerId = null;
-      selectedTicket.reviewerName = null;
-    } else {
-      selectedTicket.reviewer = { id: targetReviewerId, name: newName };
-      selectedTicket.reviewerId = targetReviewerId;
-      selectedTicket.reviewerName = newName;
-    }
+    selectedTicket.reviewer = { id: targetReviewerId, name: cleanName };
+    selectedTicket.reviewerId = targetReviewerId;
+    selectedTicket.reviewerName = cleanName;
 
     if (reviewerSelect) {
-      reviewerSelect.value = targetReviewerId || '';
+      reviewerSelect.value = targetReviewerId;
     }
 
     const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
@@ -4474,7 +4476,7 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
 
     if (statusText) {
       statusText.style.color = '#10b981';
-      statusText.textContent = isLeavingBlank ? '👤 Validador removido!' : `⚖️ Validador definido: ${newName}`;
+      statusText.textContent = `⚖️ Validador definido: ${cleanName}`;
       setTimeout(() => { if (statusText) statusText.textContent = ''; }, 3000);
     }
 
@@ -4610,7 +4612,7 @@ async function saveDrawerTicketChanges() {
         await window.conciliadorAPI.changeTicketStatus(selectedTicket.id, newStatus, statusJustification);
         if (statusAddComment && statusJustification) {
           try {
-            await window.conciliadorAPI.addComment(selectedTicket.id, `🔄 **[ALTERAÇÃO DE SITUAÇÃO]**\nSituação: **${getStatusLabel(newStatus)}**\n*Justificativa:* ${statusJustification}`);
+            await window.conciliadorAPI.addComment(selectedTicket.id, statusJustification.trim());
           } catch (cErr) {}
         }
       } catch (statusErr) {
@@ -4663,19 +4665,18 @@ async function saveDrawerTicketChanges() {
     const currentReviewerId = selectedTicket.reviewer?.id || selectedTicket.reviewerId || null;
     let newReviewerObj = selectedTicket.reviewer || null;
 
-    if (newReviewerId !== currentReviewerId) {
+    if (newReviewerId && newReviewerId !== currentReviewerId) {
       try {
         await window.conciliadorAPI.assignReviewer(selectedTicket.id, newReviewerId, 'Alteração de validador pelo Organizador de Chamados');
-        if (newReviewerId) {
-          const opt = reviewerSelect ? reviewerSelect.selectedOptions[0] : null;
-          const revName = opt ? opt.text : 'Validador';
-          newReviewerObj = { id: newReviewerId, name: revName };
-        } else {
-          newReviewerObj = null;
-        }
+        const opt = reviewerSelect ? reviewerSelect.selectedOptions[0] : null;
+        const revName = opt ? opt.text.replace(/^[👤⚖️]\s*/, '').replace(/\s*\(Você\)$/, '').trim() : 'Validador';
+        newReviewerObj = { id: newReviewerId, name: revName };
       } catch (revErr) {
         console.warn('Erro ao atualizar validador:', revErr);
+        throw new Error('Falha ao atualizar validador: ' + revErr.message);
       }
+    } else if (!newReviewerId && currentReviewerId) {
+      if (reviewerSelect) reviewerSelect.value = currentReviewerId;
     }
 
     // 5. Atualizar dados gerais e descritivos no PATCH do ticket
