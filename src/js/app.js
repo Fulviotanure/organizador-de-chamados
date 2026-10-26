@@ -3011,7 +3011,21 @@ function renderDrawerActivityStream() {
       );
 
       // Render attachments associated with this comment if any
-      const commentAttachments = c.attachments || [];
+      const rawCommentAtts = c.attachments || [];
+      const commentTime = it.createdAt ? it.createdAt.getTime() : 0;
+      let commentAttachments = rawCommentAtts;
+      if (rawCommentAtts.length > 0 && commentTime > 0) {
+        const matchingAtts = rawCommentAtts.filter(att => {
+          if (!att.createdAt) return true;
+          const attTime = new Date(att.createdAt).getTime();
+          // Tolerância de até 5 minutos entre a criação do anexo e o envio do comentário
+          return Math.abs(commentTime - attTime) <= 5 * 60 * 1000;
+        });
+        if (matchingAtts.length > 0) {
+          commentAttachments = matchingAtts;
+        }
+      }
+
       let attachmentsHtml = '';
       if (commentAttachments.length > 0) {
         attachmentsHtml = `
@@ -3020,17 +3034,20 @@ function renderDrawerActivityStream() {
               const fileName = att.fileName || att.filename || att.name || 'anexo';
               const ext = (fileName.split('.').pop() || '').toLowerCase();
               const isImage = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext);
+              const rawSize = att.fileSize != null ? att.fileSize : (att.filesize != null ? att.filesize : (att.size != null ? att.size : att.bytes));
+              const fileSizeStr = rawSize ? ` (${formatFileSize(rawSize)})` : '';
+
               if (isImage) {
                 return `
-                  <div class="comment-img-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para ampliar imagem">
+                  <div class="comment-img-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para ampliar imagem: ${escapeHtml(fileName)}">
                     <img id="comment_thumb_${att.id}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='90'><rect width='120' height='90' fill='%231e293b'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='15'>🖼️ Carregando...</text></svg>" alt="${escapeHtml(fileName)}">
-                    <div class="comment-img-footer"><span>🖼️</span> <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fileName)}</span></div>
+                    <div class="comment-img-footer"><span>🖼️</span> <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fileName)}${fileSizeStr}</span></div>
                   </div>
                 `;
               } else {
                 return `
-                  <div class="comment-file-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para abrir ou baixar">
-                    <span>📎</span> <span>${escapeHtml(fileName)}</span>
+                  <div class="comment-file-attachment-card" data-att-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Clique para abrir ou baixar: ${escapeHtml(fileName)}">
+                    <span>📎</span> <span>${escapeHtml(fileName)}${fileSizeStr}</span>
                   </div>
                 `;
               }
@@ -3521,10 +3538,21 @@ async function submitComment() {
   try {
     let uploadedAttachmentIds = [];
     if (hasPendingFiles) {
+      // Registrar os IDs dos anexos já existentes no chamado ANTES do upload
+      const existingAttIds = new Set((selectedTicket.attachments || []).map(a => a.id));
+
       const filesToUpload = [...timelinePendingAttachments];
       const uploadedAttachments = await window.conciliadorAPI.uploadTicketAttachments(selectedTicket.id, filesToUpload);
       if (Array.isArray(uploadedAttachments)) {
-        uploadedAttachmentIds = uploadedAttachments.map(a => a.id).filter(Boolean);
+        // O endpoint de upload da API retorna TODOS os anexos do chamado.
+        // Devemos extrair APENAS os novos anexos deste envio específico:
+        const newAttachments = uploadedAttachments.filter(a => a && a.id && !existingAttIds.has(a.id));
+        if (newAttachments.length > 0) {
+          uploadedAttachmentIds = newAttachments.map(a => a.id);
+        } else {
+          // Fallback pelos últimos N correspondentes à quantidade de arquivos recém-enviados
+          uploadedAttachmentIds = uploadedAttachments.slice(-filesToUpload.length).map(a => a.id).filter(Boolean);
+        }
       }
       timelinePendingAttachments = [];
       renderTimelinePendingAttachments();
