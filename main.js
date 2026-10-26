@@ -46,7 +46,8 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     frame: false, // Custom sleek titlebar
-    backgroundColor: '#0d1117',
+    backgroundColor: '#0a0b0d',
+    icon: path.join(__dirname, 'src', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

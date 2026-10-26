@@ -1,6 +1,6 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
   "main": "main.js",
   "scripts": {
@@ -32,6 +32,7 @@
       "releaseType": "draft"
     },
     "win": {
+      "icon": "src/assets/icon.ico",
       "target": [
         "nsis"
       ]
