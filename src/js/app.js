@@ -3779,27 +3779,6 @@ async function handleStartTicket(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
   if (!ticket) return;
 
-  const result = await promptJustification({
-    icon: '🚀',
-    title: 'Iniciar Desenvolvimento',
-    subtitle: `Demanda #${ticket.number || ticket.id.slice(0, 8)} - ${ticket.title}`,
-    bannerText: 'O status do chamado passará para "Em Desenvolvimento" e a contagem de tempo de produção será ativada.',
-    suggestions: [
-      'Iniciando desenvolvimento e implementação',
-      'Assumindo demanda da fila para execução',
-      'Iniciando análise técnica e desenvolvimento de layout',
-      'Iniciando correções e testes na base'
-    ],
-    placeholder: 'Observações de início (opcional)...',
-    confirmText: 'Iniciar Demanda',
-    confirmClass: 'btn-confirm-start',
-    defaultComment: false,
-    requireReason: false
-  });
-
-  if (!result.confirmed) return;
-
-  const reason = result.reason || 'Desenvolvimento iniciado';
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
@@ -3810,7 +3789,7 @@ async function handleStartTicket(targetTicket = null) {
     // Se o chamado não tiver desenvolvedor atribuído e o usuário logado tiver ID, atribui automaticamente
     if (!ticket.assignedTo?.id && window.appStore.currentUser?.id) {
       try {
-        await window.conciliadorAPI.assignTicket(ticket.id, window.appStore.currentUser.id, 'Atribuído automaticamente ao iniciar');
+        await window.conciliadorAPI.assignTicket(ticket.id, window.appStore.currentUser.id);
         ticket.assignedTo = {
           id: window.appStore.currentUser.id,
           name: window.appStore.currentUser.name || window.appStore.currentUser.email
@@ -3820,15 +3799,7 @@ async function handleStartTicket(targetTicket = null) {
       }
     }
 
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
-
-    if (result.addComment && reason) {
-      try {
-        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
-      } catch (cErr) {
-        console.warn('Erro ao postar comentário de início:', cErr);
-      }
-    }
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress');
 
     ticket.status = 'in_progress';
     const statusSelect = document.getElementById('drawerEditStatus');
@@ -3860,7 +3831,7 @@ async function handleStartTicket(targetTicket = null) {
     }
 
     renderDemands();
-    showAppAlert('Demanda iniciada com sucesso!', 'Em Desenvolvimento', 'success');
+    showToast('🚀 Demanda iniciada com sucesso!');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao iniciar chamado: ' + err.message, 'Erro', 'error');
@@ -4031,28 +4002,6 @@ async function handleSendToReviewTicket(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
   if (!ticket) return;
 
-  const currentRevName = ticket.reviewer?.name || ticket.reviewerName || 'Nenhum definido';
-  const result = await promptJustification({
-    icon: '📤',
-    title: 'Enviar para Revisão',
-    subtitle: `Validador: ${currentRevName} | #${ticket.number || ticket.id.slice(0, 8)}`,
-    bannerText: 'O chamado será encaminhado para a etapa de "Em Revisão" para homologação.',
-    suggestions: [
-      'Desenvolvimento concluído e testado localmente. Pronto para homologação.',
-      'Layout criado conforme especificações técnicas. Aguardando validação.',
-      'Ajustes realizados e validados na base de teste. Liberado para revisão.',
-      'Correções concluídas. Aguardando teste final do validador.'
-    ],
-    placeholder: 'Descreva os testes realizados ou instruções para o validador...',
-    confirmText: 'Enviar para Revisão',
-    confirmClass: 'btn-confirm-review',
-    defaultComment: true,
-    requireReason: true
-  });
-
-  if (!result.confirmed) return;
-
-  const reason = result.reason;
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
@@ -4060,15 +4009,7 @@ async function handleSendToReviewTicket(targetTicket = null) {
   }
 
   try {
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'review', reason);
-
-    if (result.addComment && reason) {
-      try {
-        await window.conciliadorAPI.addComment(ticket.id, reason.trim());
-      } catch (cErr) {
-        console.warn('Erro ao postar comentário de envio para revisão:', cErr);
-      }
-    }
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'review');
 
     ticket.status = 'review';
     const statusSelect = document.getElementById('drawerEditStatus');
@@ -4099,7 +4040,7 @@ async function handleSendToReviewTicket(targetTicket = null) {
     }
 
     renderDemands();
-    showAppAlert('Demanda enviada para revisão com sucesso!', 'Em Revisão', 'success');
+    showToast('📤 Demanda enviada para revisão com sucesso!');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao enviar para revisão: ' + err.message, 'Erro', 'error');
@@ -4717,50 +4658,55 @@ async function saveDrawerTicketChanges() {
   const ticketTypeId = document.getElementById('drawerEditType')?.value || null;
   const productId = document.getElementById('drawerEditProduct')?.value || null;
 
-  // Se o status foi alterado manualmente pelo select, pedir justificativa
+  // Se o status foi alterado manualmente pelo select
   let statusJustification = 'Alteração de status pelo Organizador de Chamados';
-  let statusAddComment = true;
+  let statusAddComment = false;
   if (newStatus && newStatus !== selectedTicket.status) {
-    const fromLabel = getStatusLabel(selectedTicket.status);
-    const toLabel = getStatusLabel(newStatus);
-    const isClosing = newStatus === 'closed' || newStatus === 'done';
-    const isReturning = newStatus === 'in_progress';
+    if (newStatus === 'in_progress' || newStatus === 'review') {
+      statusJustification = newStatus === 'in_progress' ? 'Desenvolvimento iniciado' : 'Enviado para revisão';
+      statusAddComment = false;
+    } else {
+      const fromLabel = getStatusLabel(selectedTicket.status);
+      const toLabel = getStatusLabel(newStatus);
+      const isClosing = newStatus === 'closed' || newStatus === 'done';
+      const isReturning = newStatus === 'in_progress';
 
-    const justResult = await promptJustification({
-      icon: isClosing ? '✅' : (isReturning ? '↩️' : '🔄'),
-      title: isClosing ? 'Finalizar Demanda' : (isReturning ? 'Devolver / Em Progresso' : 'Alterar Situação do Chamado'),
-      subtitle: `De: ${fromLabel} ➔ Para: ${toLabel}`,
-      bannerText: `Você está alterando a situação desta demanda para "${toLabel}".`,
-      suggestions: isClosing ? [
-        'Homologado e validado em produção com sucesso',
-        'Demanda aprovada sem pendências',
-        'Ajustes validados e conferidos com o cliente',
-        'Finalizado conforme solicitado'
-      ] : (isReturning ? [
-        'Inconsistência encontrada durante testes de homologação',
-        'Necessário ajustar regras de layout e campos',
-        'Faltam arquivos de teste ou retorno do cliente',
-        'Ajustar mapeamento de colunas'
-      ] : [
-        `Situação alterada de ${fromLabel} para ${toLabel}`,
-        'Atualização de status do chamado',
-        'Ajuste de fila e situação'
-      ]),
-      placeholder: 'Descreva a justificativa desta alteração de situação...',
-      confirmText: 'Confirmar e Salvar',
-      confirmClass: isClosing ? 'btn-confirm-finalize' : (isReturning ? 'btn-confirm-return' : 'btn-primary'),
-      defaultComment: true,
-      requireReason: false
-    });
+      const justResult = await promptJustification({
+        icon: isClosing ? '✅' : (isReturning ? '↩️' : '🔄'),
+        title: isClosing ? 'Finalizar Demanda' : (isReturning ? 'Devolver / Em Progresso' : 'Alterar Situação do Chamado'),
+        subtitle: `De: ${fromLabel} ➔ Para: ${toLabel}`,
+        bannerText: `Você está alterando a situação desta demanda para "${toLabel}".`,
+        suggestions: isClosing ? [
+          'Homologado e validado em produção com sucesso',
+          'Demanda aprovada sem pendências',
+          'Ajustes validados e conferidos com o cliente',
+          'Finalizado conforme solicitado'
+        ] : (isReturning ? [
+          'Inconsistência encontrada durante testes de homologação',
+          'Necessário ajustar regras de layout e campos',
+          'Faltam arquivos de teste ou retorno do cliente',
+          'Ajustar mapeamento de colunas'
+        ] : [
+          `Situação alterada de ${fromLabel} para ${toLabel}`,
+          'Atualização de status do chamado',
+          'Ajuste de fila e situação'
+        ]),
+        placeholder: 'Descreva a justificativa desta alteração de situação...',
+        confirmText: 'Confirmar e Salvar',
+        confirmClass: isClosing ? 'btn-confirm-finalize' : (isReturning ? 'btn-confirm-return' : 'btn-primary'),
+        defaultComment: false,
+        requireReason: false
+      });
 
-    if (!justResult.confirmed) {
-      const stSelect = document.getElementById('drawerEditStatus');
-      if (stSelect) stSelect.value = selectedTicket.status;
-      return;
+      if (!justResult.confirmed) {
+        const stSelect = document.getElementById('drawerEditStatus');
+        if (stSelect) stSelect.value = selectedTicket.status;
+        return;
+      }
+
+      statusJustification = justResult.reason || `Situação alterada de ${fromLabel} para ${toLabel}`;
+      statusAddComment = justResult.addComment;
     }
-
-    statusJustification = justResult.reason || `Situação alterada de ${fromLabel} para ${toLabel}`;
-    statusAddComment = justResult.addComment;
   }
 
   const deliveryDueInput = document.getElementById('drawerEditDeliveryDueDate')?.value.trim();
