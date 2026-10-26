@@ -748,13 +748,41 @@ class AppStore {
     });
   }
 
+  isTicketForCurrentUser(ticket) {
+    if (!ticket) return false;
+    if (!this.currentUser) return true;
+    const userId = this.currentUser.id;
+    const userName = (this.currentUser.name || '').toLowerCase().trim();
+
+    // 1. Check assigned developer (assignedTo)
+    const asg = ticket.assignedTo;
+    const asgId = ticket.assignedToId || (asg && typeof asg === 'object' ? asg.id : null);
+    const asgName = String((asg && typeof asg === 'object' ? (asg.name || '') : (typeof asg === 'string' ? asg : '')) || '').toLowerCase().trim();
+    if (userId && asgId === userId) return true;
+    if (userName && asgName && (asgName.includes(userName) || userName.includes(asgName))) return true;
+
+    // 2. Check reviewer / validador
+    const rev = ticket.reviewer;
+    const revId = ticket.reviewerId || (rev && typeof rev === 'object' ? rev.id : null);
+    const revName = String((ticket.reviewerName || (rev && typeof rev === 'object' ? (rev.name || '') : (typeof rev === 'string' ? rev : ''))) || '').toLowerCase().trim();
+    if (userId && revId === userId) return true;
+    if (userName && revName && (revName.includes(userName) || userName.includes(revName))) return true;
+
+    return false;
+  }
+
   isTicketClosedToday(ticket) {
     if (!ticket) return false;
     const status = (ticket.status || '').toLowerCase();
     const isDone = ['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'].includes(status);
     if (!isDone) return false;
 
-    const closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt || ticket.updatedAt;
+    // Somente no nome do colaborador logado
+    if (!this.isTicketForCurrentUser(ticket)) return false;
+
+    // Usar a data em que foi alterado para concluído (Em Revisão para Concluído)
+    // NÃO usar fallback para updatedAt para evitar falsos positivos de chamados antigos sincronizados hoje
+    const closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt;
     if (!closeDateStr) return false;
 
     const d = new Date(closeDateStr);

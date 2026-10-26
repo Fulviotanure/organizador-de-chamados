@@ -3768,6 +3768,17 @@ async function handleFinalizeTicket(targetTicket = null) {
     // 2. Atualizar localmente
     ticket.status = 'done';
     ticket.closedAt = new Date().toISOString();
+    if (window.appStore?.currentUser) {
+      if (!ticket.reviewerId && !ticket.reviewer) {
+        ticket.reviewer = {
+          id: window.appStore.currentUser.id,
+          name: window.appStore.currentUser.name,
+          avatarUrl: window.appStore.currentUser.avatarUrl || null
+        };
+        ticket.reviewerId = window.appStore.currentUser.id;
+        ticket.reviewerName = window.appStore.currentUser.name;
+      }
+    }
     const statusSelect = document.getElementById('drawerEditStatus');
     if (statusSelect && ticket === selectedTicket) statusSelect.value = 'done';
 
@@ -3775,6 +3786,8 @@ async function handleFinalizeTicket(targetTicket = null) {
     if (idx !== -1) {
       window.appStore.demands[idx].status = 'done';
       window.appStore.demands[idx].closedAt = ticket.closedAt;
+      if (ticket.reviewer) window.appStore.demands[idx].reviewer = ticket.reviewer;
+      if (ticket.reviewerId) window.appStore.demands[idx].reviewerId = ticket.reviewerId;
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
