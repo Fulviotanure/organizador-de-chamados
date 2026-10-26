@@ -2651,7 +2651,9 @@ async function openDemandDrawer(ticket) {
 
   const statusSelect = document.getElementById('drawerEditStatus');
   if (statusSelect) {
-    let stVal = ticket.status || 'open';
+    let stVal = (ticket.status || 'queued').toLowerCase().trim();
+    if (stVal === 'open' || stVal === 'aberto' || stVal === 'fila') stVal = 'queued';
+    if (stVal === 'closed' || stVal === 'completed' || stVal === 'finished') stVal = 'done';
     if (stVal === 'waiting' || stVal === 'waiting_creator') stVal = 'waiting_requester';
     statusSelect.value = stVal;
   }
@@ -3445,17 +3447,17 @@ async function handleFinalizeTicket(targetTicket = null) {
   }
 
   try {
-    // 1. Alterar status na API para 'closed' diretamente sem exigir justificativa
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'closed');
+    // 1. Alterar status na API para 'done' diretamente sem exigir justificativa
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'done');
 
     // 2. Atualizar localmente
-    ticket.status = 'closed';
+    ticket.status = 'done';
     const statusSelect = document.getElementById('drawerEditStatus');
-    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'closed';
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'done';
 
     const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
-      window.appStore.demands[idx].status = 'closed';
+      window.appStore.demands[idx].status = 'done';
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
@@ -3466,7 +3468,7 @@ async function handleFinalizeTicket(targetTicket = null) {
       if (badgesBox) {
         const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
         const ignoredBadge = isDrawerIgnored ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>' : '';
-        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('closed')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
+        badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml('done')} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
       }
       renderDrawerWorkflowButtons(ticket);
       renderSameLayoutTickets(ticket);
@@ -4521,7 +4523,7 @@ async function saveDrawerTicketChanges() {
   if (newStatus && newStatus !== selectedTicket.status) {
     const fromLabel = getStatusLabel(selectedTicket.status);
     const toLabel = getStatusLabel(newStatus);
-    const isClosing = newStatus === 'closed';
+    const isClosing = newStatus === 'closed' || newStatus === 'done';
     const isReturning = newStatus === 'in_progress';
 
     const justResult = await promptJustification({

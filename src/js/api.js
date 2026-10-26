@@ -221,7 +221,19 @@ class ConciliadorAPI {
   async changeTicketStatus(ticketId, status, reason = undefined) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const body = { status };
+    // Ensure status matches backend enum: triage, queued, in_progress, paused, waiting_requester, review, done
+    let normalizedStatus = String(status || '').toLowerCase().trim();
+    if (normalizedStatus === 'closed' || normalizedStatus === 'completed' || normalizedStatus === 'finished' || normalizedStatus === 'concluido' || normalizedStatus === 'finalizado') {
+      normalizedStatus = 'done';
+    } else if (normalizedStatus === 'open' || normalizedStatus === 'aberto' || normalizedStatus === 'fila') {
+      normalizedStatus = 'queued';
+    } else if (normalizedStatus === 'waiting' || normalizedStatus === 'waiting_creator') {
+      normalizedStatus = 'waiting_requester';
+    } else if (normalizedStatus === 'progress') {
+      normalizedStatus = 'in_progress';
+    }
+
+    const body = { status: normalizedStatus };
     if (reason) body.reason = reason;
 
     const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
