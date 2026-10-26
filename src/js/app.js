@@ -2517,6 +2517,78 @@ function renderDrawerLabelsPicker() {
   });
 }
 
+// Renderiza o campo de Layout Selecionado (DENTRO do próprio campo, sempre apenas 1 único layout)
+function renderDrawerLayoutField(layoutId, layoutCode, layoutName) {
+  const hiddenId = document.getElementById('drawerEditLayoutId');
+  const selectedBox = document.getElementById('drawerSelectedLayoutBox');
+  const searchBox = document.getElementById('drawerLayoutSearchBox');
+  const labelEl = document.getElementById('drawerSelectedLayoutLabel');
+  const subEl = document.getElementById('drawerSelectedLayoutSub');
+  const btnOpen = document.getElementById('btnDrawerOpenLayoutFromField');
+  const searchInput = document.getElementById('drawerEditLayoutSearch');
+  const dropdown = document.getElementById('drawerLayoutSearchResults');
+
+  if (hiddenId) hiddenId.value = layoutId || '';
+
+  const cleanName = layoutName ? String(layoutName).replace(/^[\s\-_:]+/, '').trim() : '';
+
+  if (layoutCode) {
+    if (labelEl) labelEl.textContent = `Layout ${layoutCode}`;
+    if (subEl) {
+      subEl.textContent = cleanName ? `• ${cleanName}` : '';
+      subEl.title = cleanName ? `Layout ${layoutCode} • ${cleanName}` : `Layout ${layoutCode}`;
+    }
+    if (selectedBox) selectedBox.style.display = 'flex';
+    if (searchBox) searchBox.style.display = 'none';
+    if (dropdown) dropdown.style.display = 'none';
+    if (searchInput) searchInput.value = '';
+
+    if (btnOpen) {
+      btnOpen.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openLayoutInImporter(layoutId, layoutCode);
+      };
+    }
+  } else {
+    if (selectedBox) selectedBox.style.display = 'none';
+    if (searchBox) searchBox.style.display = 'block';
+    if (searchInput) searchInput.value = '';
+    if (dropdown) dropdown.style.display = 'none';
+  }
+}
+
+function renderNewTicketLayoutField(layoutId, layoutCode, layoutName) {
+  const hiddenId = document.getElementById('newTicketLayoutId');
+  const selectedBox = document.getElementById('newTicketSelectedLayoutBox');
+  const searchBox = document.getElementById('newTicketLayoutSearchBox');
+  const labelEl = document.getElementById('newTicketSelectedLayoutLabel');
+  const subEl = document.getElementById('newTicketSelectedLayoutSub');
+  const searchInput = document.getElementById('newTicketLayoutSearch');
+  const dropdown = document.getElementById('layoutSearchResults');
+
+  if (hiddenId) hiddenId.value = layoutId || '';
+
+  const cleanName = layoutName ? String(layoutName).replace(/^[\s\-_:]+/, '').trim() : '';
+
+  if (layoutCode) {
+    if (labelEl) labelEl.textContent = `Layout ${layoutCode}`;
+    if (subEl) {
+      subEl.textContent = cleanName ? `• ${cleanName}` : '';
+      subEl.title = cleanName ? `Layout ${layoutCode} • ${cleanName}` : `Layout ${layoutCode}`;
+    }
+    if (selectedBox) selectedBox.style.display = 'flex';
+    if (searchBox) searchBox.style.display = 'none';
+    if (dropdown) dropdown.style.display = 'none';
+    if (searchInput) searchInput.value = '';
+  } else {
+    if (selectedBox) selectedBox.style.display = 'none';
+    if (searchBox) searchBox.style.display = 'block';
+    if (searchInput) searchInput.value = '';
+    if (dropdown) dropdown.style.display = 'none';
+  }
+}
+
 async function openDemandDrawer(ticket) {
   selectedTicket = ticket;
   const overlay = document.getElementById('drawerOverlay');
@@ -2645,42 +2717,8 @@ async function openDemandDrawer(ticket) {
     populateAndSelectProduct(prodSelect, ticket);
   }
 
-  // Layout fields
-  const hiddenLayoutId = document.getElementById('drawerEditLayoutId');
-  const layoutSearchInput = document.getElementById('drawerEditLayoutSearch');
-  const layoutTagBox = document.getElementById('drawerSelectedLayoutTag');
-  if (hiddenLayoutId) hiddenLayoutId.value = currentLayoutId || '';
-  if (layoutSearchInput) {
-    layoutSearchInput.value = layoutCode ? `${layoutCode}${layoutName}` : '';
-  }
-  if (layoutTagBox) {
-    if (layoutCode) {
-      layoutTagBox.innerHTML = `
-        <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
-          <span>📐 Layout ${layoutCode}${layoutName ? ': ' + escapeHtml(layoutName.replace(/^ - /, '')) : ''}</span>
-          <button type="button" class="btn-open-layout-from-tag" title="Abrir Layout no Importer Ultra" style="background: none; border: none; color: #6ee7b7; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: underline; padding: 0;">Abrir no Importer ↗</button>
-          <button type="button" id="btnClearDrawerLayout" title="Remover Layout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0; opacity: 0.7;">✕</button>
-        </span>
-      `;
-      layoutTagBox.style.display = 'block';
-      layoutTagBox.querySelector('.btn-open-layout-from-tag')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const hid = document.getElementById('drawerEditLayoutId')?.value;
-        openLayoutInImporter(hid || currentLayoutId, layoutCode);
-      });
-      document.getElementById('btnClearDrawerLayout')?.addEventListener('click', () => {
-        if (hiddenLayoutId) hiddenLayoutId.value = '';
-        if (layoutSearchInput) layoutSearchInput.value = '';
-        layoutTagBox.innerHTML = '';
-        layoutTagBox.style.display = 'none';
-        if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
-      });
-    } else {
-      layoutTagBox.innerHTML = '';
-      layoutTagBox.style.display = 'none';
-    }
-  }
+  // Layout field (único, selecionado DENTRO do campo)
+  renderDrawerLayoutField(currentLayoutId, layoutCode, layoutName);
 
   // Labels picker
   selectedDrawerLabels = new Set((ticket.labels || []).map(l => (l.label ? l.label.id : l.id)).filter(Boolean));
@@ -2779,6 +2817,8 @@ async function openDemandDrawer(ticket) {
         btnDrawerLayout.style.display = 'none';
       }
     }
+
+    renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName);
 
     if (details.reviewer && reviewerSelect) {
       const currentRevId = details.reviewer.id || details.reviewerId || '';
@@ -5185,7 +5225,17 @@ function setupDrawerLayoutAutocomplete() {
   const input = document.getElementById('drawerEditLayoutSearch');
   const dropdown = document.getElementById('drawerLayoutSearchResults');
   const hiddenId = document.getElementById('drawerEditLayoutId');
-  const tagBox = document.getElementById('drawerSelectedLayoutTag');
+
+  // Botão Limpar / Trocar Layout dentro do campo
+  document.getElementById('btnDrawerClearLayoutField')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    renderDrawerLayoutField('', null, '');
+    const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
+    if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
+    const searchInput = document.getElementById('drawerEditLayoutSearch');
+    if (searchInput) searchInput.focus();
+  });
 
   if (!input || !dropdown) return;
 
@@ -5255,11 +5305,9 @@ function setupDrawerLayoutAutocomplete() {
             const id = item.dataset.id;
             const code = item.dataset.code;
             const name = item.dataset.name;
-            if (hiddenId) hiddenId.value = id;
-            input.value = `${code} - ${name}`;
-            dropdown.style.display = 'none';
 
             registerLayoutInCache({ id, code, name });
+            renderDrawerLayoutField(id, code, name);
 
             const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
             const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
@@ -5268,29 +5316,6 @@ function setupDrawerLayoutAutocomplete() {
               if (btnDrawerLayoutText) {
                 btnDrawerLayoutText.textContent = `Abrir Layout (${code}) ↗`;
               }
-            }
-
-            if (tagBox) {
-              tagBox.innerHTML = `
-                <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 8px;">
-                  <span>📐 Layout ${code}: ${name}</span>
-                  <button type="button" class="btn-open-layout-from-tag" title="Abrir Layout no Importer Ultra" style="background: none; border: none; color: #6ee7b7; cursor: pointer; font-size: 11px; font-weight: 600; text-decoration: underline; padding: 0;">Abrir no Importer ↗</button>
-                  <button type="button" id="btnClearDrawerLayout" title="Remover Layout" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; padding: 0; opacity: 0.7;">✕</button>
-                </span>
-              `;
-              tagBox.style.display = 'block';
-              tagBox.querySelector('.btn-open-layout-from-tag')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openLayoutInImporter(id, code);
-              });
-              document.getElementById('btnClearDrawerLayout')?.addEventListener('click', () => {
-                if (hiddenId) hiddenId.value = '';
-                input.value = '';
-                tagBox.innerHTML = '';
-                tagBox.style.display = 'none';
-                if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
-              });
             }
           });
         });
@@ -6169,22 +6194,7 @@ function openCreateTicketModal() {
   if (descEditor) descEditor.innerHTML = '';
   const popover = document.getElementById('calFloatingPopover');
   if (popover) popover.style.display = 'none';
-  document.getElementById('newTicketLayoutSearch').value = '';
-  document.getElementById('newTicketLayoutId').value = '';
-
-  newTicketSelectedFiles = [];
-  newTicketSelectedLabels = new Set();
-  renderSelectedFilesList();
-  renderLabelsPicker();
-
-  const errBox = document.getElementById('createTicketError');
-  if (errBox) errBox.style.display = 'none';
-
-  const layoutTag = document.getElementById('selectedLayoutTag');
-  if (layoutTag) {
-    layoutTag.innerHTML = '';
-    layoutTag.style.display = 'none';
-  }
+  renderNewTicketLayoutField('', null, '');
   checkNewTicketLayoutConflicts(null, null);
 
   // Populate Types
@@ -6344,35 +6354,23 @@ function setupLayoutAutocomplete() {
             const id = item.dataset.id;
             const code = item.dataset.code;
             const name = item.dataset.name;
-            hiddenId.value = id;
-            input.value = '';
-            dropdown.style.display = 'none';
-
-            // Alerta se já houver chamados abertos para este layout
+            renderNewTicketLayoutField(id, code, name);
             checkNewTicketLayoutConflicts(code, id);
-
-            if (tagBox) {
-              tagBox.innerHTML = `
-                <span class="selected-layout-pill">
-                  📐 Layout ${code} - ${name}
-                  <span class="btn-remove-layout" title="Remover layout">&times;</span>
-                </span>
-              `;
-              tagBox.style.display = 'block';
-
-              tagBox.querySelector('.btn-remove-layout').addEventListener('click', () => {
-                hiddenId.value = '';
-                tagBox.innerHTML = '';
-                tagBox.style.display = 'none';
-                checkNewTicketLayoutConflicts(null, null);
-              });
-            }
           });
         });
       } catch (err) {
         console.warn('Layout search error:', err);
       }
     }, 250);
+  });
+
+  document.getElementById('btnNewTicketClearLayoutField')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    renderNewTicketLayoutField('', null, '');
+    checkNewTicketLayoutConflicts(null, null);
+    const searchInput = document.getElementById('newTicketLayoutSearch');
+    if (searchInput) searchInput.focus();
   });
 
   document.addEventListener('click', (e) => {

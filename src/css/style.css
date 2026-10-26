@@ -2931,6 +2931,109 @@ body {
   color: #f87171;
 }
 
+/* ------------------- Layout Single-Select Inside Field ------------------- */
+.layout-field-wrapper {
+  width: 100%;
+  position: relative;
+}
+
+.layout-field-selected {
+  min-height: 38px;
+  height: 38px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0 8px 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.layout-field-selected:hover {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.layout-field-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.layout-field-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.layout-field-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #34d399;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.layout-field-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-layout-inline-open {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-layout-inline-open:hover {
+  background: rgba(16, 185, 129, 0.3);
+  color: #ffffff;
+  border-color: rgba(16, 185, 129, 0.6);
+}
+
+.btn-layout-inline-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-layout-inline-clear:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
 /* ------------------- Ultra Large Dual Layout Modal ------------------- */
 .modal-card-ultra-large {
   width: min(1260px, 96vw);

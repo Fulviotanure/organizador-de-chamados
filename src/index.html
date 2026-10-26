@@ -110,7 +110,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.21</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.22</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -615,10 +615,30 @@
             </div>
             <div class="drawer-field-row" style="position: relative;">
               <label class="drawer-field-label">Layout Associado</label>
-              <input type="text" class="form-input" id="drawerEditLayoutSearch" placeholder="Digite nº ou nome do layout..." autocomplete="off">
               <input type="hidden" id="drawerEditLayoutId">
-              <div id="drawerLayoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
-              <div id="drawerSelectedLayoutTag" style="display: none; margin-top: 4px;"></div>
+              <div class="layout-field-wrapper" id="drawerLayoutFieldWrapper">
+                <!-- Estado Selecionado: DENTRO do campo -->
+                <div id="drawerSelectedLayoutBox" class="layout-field-selected" style="display: none;">
+                  <div class="layout-field-content">
+                    <span class="layout-field-icon">📐</span>
+                    <span class="layout-field-title" id="drawerSelectedLayoutLabel">Layout</span>
+                    <span class="layout-field-sub" id="drawerSelectedLayoutSub"></span>
+                  </div>
+                  <div class="layout-field-actions">
+                    <button type="button" class="btn-layout-inline-open" id="btnDrawerOpenLayoutFromField" title="Abrir Layout no Importer Ultra">
+                      Abrir no Importer ↗
+                    </button>
+                    <button type="button" class="btn-layout-inline-clear" id="btnDrawerClearLayoutField" title="Remover ou alterar layout">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <!-- Estado de Busca: DENTRO do campo quando não há layout selecionado -->
+                <div id="drawerLayoutSearchBox" class="layout-field-search" style="display: none; position: relative;">
+                  <input type="text" class="form-input" id="drawerEditLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 5190)..." autocomplete="off" style="width: 100%;">
+                  <div id="drawerLayoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+                </div>
+              </div>
             </div>
             <div class="drawer-field-row">
               <label class="drawer-field-label">Tipo de Chamado</label>
@@ -782,13 +802,29 @@
             <input type="text" class="form-input" id="newTicketTitle" placeholder="Ex: Criação de novo layout para extrato bancário...">
           </div>
 
-          <!-- 2. LAYOUT ASSOCIADO (BUSCA) -->
           <div class="form-group" style="position: relative;">
-            <label class="form-label">Layout Associado (Busca)</label>
-            <input type="text" class="form-input" id="newTicketLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 13, 5190, Bradesco)..." autocomplete="off">
+            <label class="form-label">Layout Associado</label>
             <input type="hidden" id="newTicketLayoutId">
-            <div id="layoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
-            <div id="selectedLayoutTag" style="display: none; margin-top: 6px;"></div>
+            <div class="layout-field-wrapper" id="newTicketLayoutFieldWrapper">
+              <!-- Estado Selecionado: DENTRO do campo -->
+              <div id="newTicketSelectedLayoutBox" class="layout-field-selected" style="display: none;">
+                <div class="layout-field-content">
+                  <span class="layout-field-icon">📐</span>
+                  <span class="layout-field-title" id="newTicketSelectedLayoutLabel">Layout</span>
+                  <span class="layout-field-sub" id="newTicketSelectedLayoutSub"></span>
+                </div>
+                <div class="layout-field-actions">
+                  <button type="button" class="btn-layout-inline-clear" id="btnNewTicketClearLayoutField" title="Remover ou alterar layout">
+                    ✕
+                  </button>
+                </div>
+              </div>
+              <!-- Estado de Busca: DENTRO do campo quando não há layout selecionado -->
+              <div id="newTicketLayoutSearchBox" class="layout-field-search" style="position: relative;">
+                <input type="text" class="form-input" id="newTicketLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 13, 5190, Bradesco)..." autocomplete="off" style="width: 100%;">
+                <div id="layoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+              </div>
+            </div>
             <!-- Alert de Chamados Abertos para o Layout Escolhido em Novo Chamado -->
             <div id="newTicketSameLayoutAlert" class="new-ticket-same-layout-alert" style="display: none; margin-top: 8px;"></div>
           </div>
