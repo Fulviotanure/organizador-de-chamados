@@ -215,7 +215,15 @@ function showAppConfirm(message, title = 'Confirmação', options = {}) {
     if (btnConfirm) {
       btnConfirm.style.display = 'inline-flex';
       btnConfirm.textContent = options.confirmText || 'Confirmar';
-      btnConfirm.className = options.confirmClass || (isDanger ? 'btn-danger' : 'btn-primary');
+      const baseClass = isDanger ? 'btn-danger' : 'btn-primary';
+      const extraClass = (options.confirmClass || '').trim();
+      if (!extraClass) {
+        btnConfirm.className = baseClass;
+      } else if (extraClass.includes('btn-primary') || extraClass.includes('btn-danger')) {
+        btnConfirm.className = extraClass;
+      } else {
+        btnConfirm.className = `${baseClass} ${extraClass}`;
+      }
     }
 
     modal.style.display = 'flex';
