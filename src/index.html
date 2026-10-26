@@ -112,7 +112,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.31</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.32</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -561,50 +561,53 @@
               </select>
             </div>
 
-            <!-- Prazo de Entrega com Calendário de Disponibilidade -->
-            <div class="drawer-field-row" style="position: relative;" id="drawerDeliveryDateGroup">
-              <label class="drawer-field-label">
-                <span>Prazo de Entrega</span>
-                <span id="drawerDeliveryBadge" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
-              </label>
-              <div class="date-input-wrapper">
-                <input type="text" class="form-input" id="drawerEditDeliveryDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #38bdf8; cursor: pointer;">
-                <button type="button" class="btn-input-calendar" id="btnToggleDrawerDeliveryCal" title="Abrir calendário de disponibilidade">📅</button>
-              </div>
-              <!-- Floating Popover Delivery -->
-              <div class="cal-floating-popover" id="calDrawerDeliveryPopover" style="display: none; left: auto; right: 0;">
-                <div class="cal-popover-header">
-                  <div class="cal-top-header" id="calDrawerAgendaHeader">Agenda de Entrega</div>
-                  <button type="button" class="btn-close-popover" id="btnCloseDrawerDeliveryCal">✕</button>
+            <!-- Prazos de Entrega e do Cliente lado a lado -->
+            <div class="drawer-dates-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <!-- Prazo de Entrega com Calendário de Disponibilidade -->
+              <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerDeliveryDateGroup">
+                <label class="drawer-field-label">
+                  <span>Prazo de Entrega</span>
+                  <span id="drawerDeliveryBadge" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
+                </label>
+                <div class="date-input-wrapper">
+                  <input type="text" class="form-input" id="drawerEditDeliveryDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #38bdf8; cursor: pointer;">
+                  <button type="button" class="btn-input-calendar" id="btnToggleDrawerDeliveryCal" title="Abrir calendário de disponibilidade">📅</button>
                 </div>
-                <div class="cal-dual-months" id="calDrawerDualMonthsContainer"></div>
-                <div class="cal-popover-footer">
-                  <div class="cal-selected-pill" id="calDrawerDeliverySelectedDateText">Nenhuma data</div>
-                  <button type="button" id="btnClearDrawerDeliveryDate" class="btn-clear-date">Limpar</button>
+                <!-- Floating Popover Delivery -->
+                <div class="cal-floating-popover" id="calDrawerDeliveryPopover" style="display: none; left: 0; right: auto;">
+                  <div class="cal-popover-header">
+                    <div class="cal-top-header" id="calDrawerAgendaHeader">Agenda de Entrega</div>
+                    <button type="button" class="btn-close-popover" id="btnCloseDrawerDeliveryCal">✕</button>
+                  </div>
+                  <div class="cal-dual-months" id="calDrawerDualMonthsContainer"></div>
+                  <div class="cal-popover-footer">
+                    <div class="cal-selected-pill" id="calDrawerDeliverySelectedDateText">Nenhuma data</div>
+                    <button type="button" id="btnClearDrawerDeliveryDate" class="btn-clear-date">Limpar</button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Prazo do Cliente com Calendário Comum -->
-            <div class="drawer-field-row" style="position: relative;" id="drawerClientDateGroup">
-              <label class="drawer-field-label">
-                <span>Prazo do Cliente</span>
-                <span style="font-size: 10px; color: #34d399; font-weight: 600;">Calendário comum</span>
-              </label>
-              <div class="date-input-wrapper">
-                <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
-                <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #34d399;">📅</button>
-              </div>
-              <!-- Common Calendar Popover Client -->
-              <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none;">
-                <div class="cal-popover-header">
-                  <div class="cal-top-header" style="font-size: 13px;">📅 <strong>Calendário</strong> (Prazo do Cliente)</div>
-                  <button type="button" class="btn-close-popover" id="btnCloseDrawerClientCal">✕</button>
+              <!-- Prazo do Cliente com Calendário Comum -->
+              <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerClientDateGroup">
+                <label class="drawer-field-label">
+                  <span>Prazo do Cliente</span>
+                  <span style="font-size: 10px; color: #34d399; font-weight: 600;">Calendário comum</span>
+                </label>
+                <div class="date-input-wrapper">
+                  <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
+                  <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #34d399;">📅</button>
                 </div>
-                <div class="cal-common-body" id="calDrawerClientMonthContainer"></div>
-                <div class="cal-popover-footer">
-                  <button type="button" id="btnDrawerClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
-                  <button type="button" id="btnClearDrawerClientDate" class="btn-clear-date">Limpar</button>
+                <!-- Common Calendar Popover Client -->
+                <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none; right: 0; left: auto;">
+                  <div class="cal-popover-header">
+                    <div class="cal-top-header" style="font-size: 13px;">📅 <strong>Calendário</strong> (Prazo do Cliente)</div>
+                    <button type="button" class="btn-close-popover" id="btnCloseDrawerClientCal">✕</button>
+                  </div>
+                  <div class="cal-common-body" id="calDrawerClientMonthContainer"></div>
+                  <div class="cal-popover-footer">
+                    <button type="button" id="btnDrawerClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
+                    <button type="button" id="btnClearDrawerClientDate" class="btn-clear-date">Limpar</button>
+                  </div>
                 </div>
               </div>
             </div>
