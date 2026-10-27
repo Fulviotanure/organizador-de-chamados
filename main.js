@@ -1,4 +1,11 @@
 const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('electron');
+
+// Garante instância única imediatamente no topo, antes de acessar userData ou inicializar serviços
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.exit(0);
+}
+
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -89,7 +96,12 @@ ipcMain.handle('window-maximize', () => {
 });
 
 ipcMain.handle('window-close', () => {
-  if (mainWindow) mainWindow.close();
+  if (mainWindow) {
+    try {
+      mainWindow.destroy();
+    } catch (e) {}
+  }
+  app.exit(0);
 });
 
 ipcMain.handle('window-is-maximized', () => {
@@ -229,7 +241,7 @@ ipcMain.handle('drive-start-oauth', async () => {
               <html><body style="font-family: sans-serif; text-align: center; padding: 40px; background: #0f172a; color: #fff;">
                 <h2 style="color: #ef4444;">❌ Autorização Cancelada</h2>
                 <p>O acesso ao Google Drive não foi autorizado (${error}).</p>
-                <p>Você pode fechar esta aba e tentar novamente no Organizador de Chamados.</p>
+                <p>Você pode fechar esta aba e tentar novamente no Chamados Conciliador Contábil.</p>
               </body></html>
             `);
             cleanup();
@@ -284,7 +296,7 @@ ipcMain.handle('drive-start-oauth', async () => {
                   <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
                   <h2 style="color: #38bdf8; margin: 0 0 12px;">Google Drive Conectado!</h2>
                   <p style="color: #94a3b8; line-height: 1.6; margin: 0 0 20px;">
-                    Sua conta ${userEmail ? `<strong>(${userEmail})</strong> ` : ''}foi vinculada com sucesso ao <strong>Organizador de Chamados</strong>.
+                    Sua conta ${userEmail ? `<strong>(${userEmail})</strong> ` : ''}foi vinculada com sucesso ao <strong>Chamados Conciliador Contábil</strong>.
                   </p>
                   <div style="font-size: 13px; color: #64748b; background: #0f172a; padding: 10px; border-radius: 6px;">
                     Você já pode fechar esta aba e voltar ao aplicativo.
@@ -664,7 +676,7 @@ if (autoUpdater) {
   autoUpdater.on('update-not-available', (info) => {
     sendUpdaterStatus({
       status: 'not-available',
-      message: 'Seu Organizador de Chamados está na versão mais recente.'
+      message: 'Seu aplicativo Chamados Conciliador Contábil está na versão mais recente.'
     });
   });
 
@@ -746,6 +758,14 @@ ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
 
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -767,5 +787,5 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.exit(0);
 });

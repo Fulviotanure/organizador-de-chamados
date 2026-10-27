@@ -141,7 +141,7 @@ function showAppAlert(message, title = 'Aviso do Sistema', type = 'info', techDe
 
     if (titleEl) titleEl.textContent = title;
     if (subtitleEl) {
-      subtitleEl.textContent = type === 'error' ? 'Falha na Operação' : (type === 'warning' ? 'Atenção Necessária' : (type === 'success' ? 'Operação Concluída' : 'Organizador de Chamados'));
+      subtitleEl.textContent = type === 'error' ? 'Falha na Operação' : (type === 'warning' ? 'Atenção Necessária' : (type === 'success' ? 'Operação Concluída' : 'Chamados Conciliador Contábil'));
     }
 
     if (iconEl) {
@@ -444,7 +444,7 @@ function setupAutoUpdaterRenderer() {
           banner.style.background = 'rgba(56, 189, 248, 0.15)';
           banner.style.borderColor = 'rgba(56, 189, 248, 0.35)';
           text.style.color = '#38bdf8';
-          text.textContent = 'Organizador de Chamados já está na versão mais recente.';
+          text.textContent = 'Chamados Conciliador Contábil já está na versão mais recente.';
           if (btnRestart) btnRestart.style.display = 'none';
           setTimeout(() => { banner.style.display = 'none'; delete banner.dataset.manualCheck; }, 4000);
         }
@@ -514,6 +514,10 @@ async function initApplication() {
     showLoginOverlay();
     return;
   } else {
+    // Restaurar cache de layouts persistido e alças de redimensionamento
+    restoreLayoutCacheFromStore();
+    initTableColumnResizing();
+
     updateUserProfileUI();
     renderFixedFiltersList();
     populateDeveloperSelects();
@@ -521,6 +525,10 @@ async function initApplication() {
     // Render cached demands immediately for instant UI
     if (window.appStore.demands && window.appStore.demands.length > 0) {
       renderDemands();
+      // Resolver em background layouts sem status
+      if (typeof resolveMissingLayoutStatuses === 'function') {
+        resolveMissingLayoutStatuses().catch(() => {});
+      }
     }
 
     // Now sync fresh data from API
@@ -538,6 +546,13 @@ async function initApplication() {
   }
 
   setupAutoRefresh();
+
+  // Varredor de segurança contínuo para garantir que todo layout na tela receba o badge de status
+  setInterval(() => {
+    if (typeof sweepAndInjectMissingLayoutBadges === 'function') {
+      sweepAndInjectMissingLayoutBadges();
+    }
+  }, 10000);
 }
 
 function showLoginOverlay() {
@@ -582,6 +597,8 @@ async function doLogin(email, password, remember = true) {
     await window.appStore.saveAuth(data.accessToken, data.user, creds);
 
     hideLoginOverlay();
+    restoreLayoutCacheFromStore();
+    initTableColumnResizing();
     updateUserProfileUI();
     renderFixedFiltersList();
     populateDeveloperSelects();
@@ -1449,12 +1466,12 @@ function renderTableView(demands) {
         <td style="font-weight: 700; color: var(--accent-primary);">#${t.number || '-'}</td>
         <td style="font-weight: 600; font-size: 13px;">
           ${layoutCode ? `
-            <div style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+            <div class="table-layout-cell-wrapper" style="display: flex; flex-direction: column; align-items: flex-start; gap: 3px;">
               <a href="#" class="btn-open-layout table-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
-                <span>📐</span> <span>${layoutCode}</span> <span class="layout-link-icon" style="font-size: 10px; opacity: 0.85;">↗</span>
+                <span>${layoutCode}</span> <span class="layout-link-icon" style="font-size: 10px; opacity: 0.85;">↗</span>
               </a>
               ${(() => {
-                const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
+                const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null) || 'draft';
                 const sBadge = formatLayoutStatusBadge(lStatus);
                 return sBadge ? `<span class="badge-layout-status ${sBadge.className}" style="font-size: 9.5px; padding: 1px 5px;" title="Status do Layout no Importer Ultra: ${sBadge.label}">${sBadge.icon} ${sBadge.label}</span>` : '';
               })()}
@@ -1472,8 +1489,8 @@ function renderTableView(demands) {
             </a>
           ` : '<span style="color: var(--text-muted);">-</span>'}
         </td>
-        <td>
-          <code style="background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #a5b4fc;">
+        <td class="table-cell-client">
+          <code style="background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #a5b4fc; max-width: 100%; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;" title="${escapeHtml(t.clientDatabase || '-')}">
             ${escapeHtml(t.clientDatabase || '-')}
           </code>
         </td>
@@ -1571,6 +1588,226 @@ function renderTableView(demands) {
       openLayoutInImporter(id, code);
     });
   });
+
+  applySavedColumnWidths();
+  sweepAndInjectMissingLayoutBadges();
+}
+
+const tableColumnMinLimits = {
+  star: 36,
+  number: 55,
+  layout: 70,
+  title: 120,
+  movidesk: 70,
+  client: 80,
+  type: 70,
+  status: 80,
+  assignedTo: 80,
+  reviewer: 80,
+  deliveryDueDate: 90,
+  actions: 50
+};
+
+const tableColumnDefaultWidths = {
+  star: 42,
+  number: 75,
+  layout: 105,
+  title: 380,
+  movidesk: 95,
+  client: 130,
+  type: 105,
+  status: 130,
+  assignedTo: 130,
+  reviewer: 130,
+  deliveryDueDate: 145,
+  actions: 65
+};
+
+function applySavedColumnWidths() {
+  const table = document.getElementById('demandsTable');
+  if (!table) return;
+
+  const colgroup = document.getElementById('demandsTableColgroup');
+  const ths = table.querySelectorAll('thead th');
+  const savedWidths = window.appStore?.tableColumnWidths || {};
+
+  let totalWidth = 0;
+
+  ths.forEach(th => {
+    const colName = th.dataset.col;
+    const colElem = colgroup ? colgroup.querySelector(`col[data-col="${colName}"]`) : null;
+    const minLimit = (colName && tableColumnMinLimits[colName]) ? tableColumnMinLimits[colName] : 45;
+
+    let w = null;
+    if (colName && savedWidths[colName] != null) {
+      const parsed = parseInt(savedWidths[colName], 10);
+      if (!isNaN(parsed) && parsed >= minLimit) {
+        w = parsed;
+      }
+    }
+
+    if (w === null) {
+      if (colName && tableColumnDefaultWidths[colName]) {
+        w = tableColumnDefaultWidths[colName];
+      } else {
+        w = parseInt(th.style.width, 10) || th.offsetWidth || 100;
+      }
+      if (w < minLimit) w = minLimit;
+    }
+
+    const wPx = w + 'px';
+    th.style.width = wPx;
+    th.style.minWidth = wPx;
+    th.style.maxWidth = wPx;
+
+    if (colElem) {
+      colElem.style.width = wPx;
+      colElem.style.minWidth = wPx;
+      colElem.style.maxWidth = wPx;
+    }
+
+    totalWidth += w;
+  });
+
+  table.style.width = totalWidth + 'px';
+}
+
+let tableColResizingInitialized = false;
+function initTableColumnResizing() {
+  applySavedColumnWidths();
+  if (tableColResizingInitialized) return;
+
+  const table = document.getElementById('demandsTable');
+  if (!table) return;
+
+  const resizers = table.querySelectorAll('thead .col-resizer');
+  if (resizers.length === 0) return;
+  tableColResizingInitialized = true;
+
+  resizers.forEach(resizer => {
+    const th = resizer.parentElement;
+    if (!th) return;
+
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const currentTable = document.getElementById('demandsTable');
+      if (!currentTable) return;
+      const colgroup = document.getElementById('demandsTableColgroup');
+
+      const colName = th.dataset.col;
+      const colElem = colgroup ? colgroup.querySelector(`col[data-col="${colName}"]`) : null;
+      const minW = (colName && tableColumnMinLimits[colName]) ? tableColumnMinLimits[colName] : 45;
+
+      const allThs = Array.from(currentTable.querySelectorAll('thead th'));
+      const startWidths = new Map();
+      let startTotalWidth = 0;
+
+      // Trava cada coluna individualmente com minWidth e maxWidth para que NENHUMA outra coluna se mova ou distorça
+      allThs.forEach(h => {
+        const cName = h.dataset.col;
+        const cEl = colgroup ? colgroup.querySelector(`col[data-col="${cName}"]`) : null;
+        const cw = parseInt(h.style.width, 10) || h.offsetWidth || 100;
+        startWidths.set(h, cw);
+
+        const cwPx = cw + 'px';
+        h.style.width = cwPx;
+        h.style.minWidth = cwPx;
+        h.style.maxWidth = cwPx;
+        if (cEl) {
+          cEl.style.width = cwPx;
+          cEl.style.minWidth = cwPx;
+          cEl.style.maxWidth = cwPx;
+        }
+        startTotalWidth += cw;
+      });
+
+      currentTable.style.width = startTotalWidth + 'px';
+
+      const startX = e.pageX;
+      const startColWidth = startWidths.get(th) || parseInt(th.style.width, 10) || th.offsetWidth;
+
+      document.body.classList.add('table-col-resizing');
+      resizer.classList.add('resizing');
+
+      let currentNewWidth = startColWidth;
+
+      const onMouseMove = (moveEvt) => {
+        const deltaX = moveEvt.pageX - startX;
+        currentNewWidth = Math.max(minW, startColWidth + deltaX);
+        const diff = currentNewWidth - startColWidth;
+
+        const newColWidthPx = currentNewWidth + 'px';
+        th.style.width = newColWidthPx;
+        th.style.minWidth = newColWidthPx;
+        th.style.maxWidth = newColWidthPx;
+
+        if (colElem) {
+          colElem.style.width = newColWidthPx;
+          colElem.style.minWidth = newColWidthPx;
+          colElem.style.maxWidth = newColWidthPx;
+        }
+
+        currentTable.style.width = (startTotalWidth + diff) + 'px';
+      };
+
+      const onMouseUp = () => {
+        document.body.classList.remove('table-col-resizing');
+        resizer.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+
+        // Previne clique acidental de ordenação logo após arrasto
+        th._justResized = true;
+        setTimeout(() => { th._justResized = false; }, 200);
+
+        // Recalcula soma exata da tabela
+        let finalTableWidth = 0;
+        allThs.forEach(h => {
+          finalTableWidth += parseInt(h.style.width, 10) || h.offsetWidth;
+        });
+        currentTable.style.width = finalTableWidth + 'px';
+
+        // Salva largura no appStore e storage.json
+        if (window.appStore) {
+          if (!window.appStore.tableColumnWidths) {
+            window.appStore.tableColumnWidths = {};
+          }
+          if (colName) {
+            window.appStore.tableColumnWidths[colName] = currentNewWidth;
+          }
+          if (window.electronAPI?.saveStorage) {
+            window.electronAPI.saveStorage('tableColumnWidths', window.appStore.tableColumnWidths);
+          }
+        }
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Duplo clique na alça reseta a coluna para a largura padrão
+    resizer.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const colName = th.dataset.col;
+      if (colName && tableColumnDefaultWidths[colName]) {
+        if (window.appStore?.tableColumnWidths) {
+          delete window.appStore.tableColumnWidths[colName];
+          if (window.electronAPI?.saveStorage) {
+            window.electronAPI.saveStorage('tableColumnWidths', window.appStore.tableColumnWidths);
+          }
+        }
+        applySavedColumnWidths();
+      }
+    });
+
+    resizer.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
 }
 
 
@@ -1641,12 +1878,12 @@ function renderKanbanView(demands) {
             <span class="kanban-card-number">#${t.number}</span>
             <div style="display: flex; align-items: center; gap: 6px;">
               ${layoutCode ? `
-                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                <div class="kanban-layout-badge-container" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
                   <a href="#" class="btn-open-layout kanban-layout-link" data-ticket-id="${t.id}" data-layout-id="${layoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra">
-                    <span>📐</span> <span>${layoutCode}</span> <span style="font-size: 10px; opacity: 0.85;">↗</span>
+                    <span>${layoutCode}</span> <span style="font-size: 10px; opacity: 0.85;">↗</span>
                   </a>
                   ${(() => {
-                    const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
+                    const lStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null) || 'draft';
                     const sBadge = formatLayoutStatusBadge(lStatus);
                     return sBadge ? `<span class="badge-layout-status ${sBadge.className}" style="font-size: 8.5px; padding: 1px 4px;" title="Status do Layout no Importer Ultra: ${sBadge.label}">${sBadge.icon} ${sBadge.label}</span>` : '';
                   })()}
@@ -1763,6 +2000,13 @@ function renderKanbanView(demands) {
       openLayoutInImporter(id, code);
     });
   });
+
+  sweepAndInjectMissingLayoutBadges();
+
+  // Resolve status de layouts que ainda não estão no cache
+  if (typeof resolveMissingLayoutStatuses === 'function') {
+    resolveMissingLayoutStatuses().catch(() => {});
+  }
 }
 
 
@@ -2527,38 +2771,154 @@ function switchDrawerTab(tabName) {
   }
 }
 
-function renderDrawerLabelsPicker() {
-  const container = document.getElementById('drawerEditLabelsPicker');
-  if (!container) return;
+let drawerLabelsSearchQuery = '';
+let drawerLabelsInitialized = false;
 
-  const labels = window.appStore.getAvailableLabels();
-  container.innerHTML = labels.map(l => {
-    const isSelected = selectedDrawerLabels.has(l.id);
-    const color = l.color || '#6366f1';
-    const activeStyle = isSelected
-      ? `background: ${color}28; border-color: ${color}; color: ${color}; font-weight: 600; box-shadow: 0 0 8px ${color}33;`
-      : `border-color: rgba(255,255,255,0.12); opacity: 0.75;`;
+function initDrawerLabelsListeners() {
+  if (drawerLabelsInitialized) return;
+  drawerLabelsInitialized = true;
 
-    return `
-      <div class="drawer-label-chip ${isSelected ? 'active' : ''}" data-label-id="${l.id}" style="${activeStyle}">
-        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${color}; margin-right: 5px;"></span>
-        <span>${escapeHtml(l.name)}</span>
-        ${isSelected ? '<span style="margin-left: 5px; font-weight: 800;">✓</span>' : ''}
-      </div>
-    `;
-  }).join('');
+  const btn = document.getElementById('btnDrawerLabels');
+  const panel = document.getElementById('panelDrawerLabels');
+  const searchInput = document.getElementById('searchDrawerLabels');
+  const clearBtn = document.getElementById('actionDrawerLabelsClear');
 
-  container.querySelectorAll('.drawer-label-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const id = chip.dataset.labelId;
-      if (selectedDrawerLabels.has(id)) {
-        selectedDrawerLabels.delete(id);
-      } else {
-        selectedDrawerLabels.add(id);
+  if (btn && panel) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = panel.style.display !== 'none';
+      document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+        if (p !== panel) p.style.display = 'none';
+      });
+      panel.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible && searchInput) {
+        setTimeout(() => searchInput.focus(), 60);
       }
+    });
+
+    panel.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && !btn.contains(e.target)) {
+        panel.style.display = 'none';
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      drawerLabelsSearchQuery = e.target.value || '';
       renderDrawerLabelsPicker();
     });
-  });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectedDrawerLabels.clear();
+      renderDrawerLabelsPicker();
+    });
+  }
+}
+
+function renderDrawerLabelsPicker() {
+  initDrawerLabelsListeners();
+
+  const listEl = document.getElementById('listDrawerLabels');
+  const btnText = document.getElementById('btnDrawerLabelsText');
+  const badgeEl = document.getElementById('btnDrawerLabelsBadge');
+  const countText = document.getElementById('drawerLabelsCountText');
+  const previewBox = document.getElementById('drawerActiveLabelsPreview');
+  const btn = document.getElementById('btnDrawerLabels');
+
+  if (!listEl) return;
+
+  const allLabels = window.appStore ? window.appStore.getAvailableLabels() : [];
+  const q = drawerLabelsSearchQuery.trim().toLowerCase();
+  const filtered = q ? allLabels.filter(l => l.name.toLowerCase().includes(q)) : allLabels;
+
+  listEl.innerHTML = '';
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div style="padding: 12px; text-align: center; font-size: 11.5px; color: var(--text-muted);">Nenhuma etiqueta encontrada</div>';
+  } else {
+    filtered.forEach(l => {
+      const isSelected = selectedDrawerLabels.has(l.id);
+      const color = l.color || '#6366f1';
+      const row = document.createElement('label');
+      row.className = `filter-option-row ${isSelected ? 'selected' : ''}`;
+      row.innerHTML = `
+        <input type="checkbox" value="${escapeHtml(l.id)}" ${isSelected ? 'checked' : ''}>
+        <span class="filter-option-color-dot" style="background-color: ${escapeHtml(color)}"></span>
+        <span class="filter-option-text">${escapeHtml(l.name)}</span>
+      `;
+      row.querySelector('input').addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+          selectedDrawerLabels.add(l.id);
+        } else {
+          selectedDrawerLabels.delete(l.id);
+        }
+        renderDrawerLabelsPicker();
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  const selectedCount = selectedDrawerLabels.size;
+  const selectedObjs = allLabels.filter(l => selectedDrawerLabels.has(l.id));
+
+  if (countText) {
+    countText.textContent = `${selectedCount} selecionada${selectedCount === 1 ? '' : 's'}`;
+  }
+
+  if (selectedCount === 0) {
+    if (btnText) btnText.textContent = 'Nenhuma etiqueta';
+    if (badgeEl) badgeEl.style.display = 'none';
+    if (btn) btn.classList.remove('active');
+  } else if (selectedCount <= 2) {
+    if (btnText) btnText.textContent = selectedObjs.map(l => l.name).join(', ');
+    if (badgeEl) {
+      badgeEl.textContent = String(selectedCount);
+      badgeEl.style.display = 'inline-flex';
+    }
+    if (btn) btn.classList.add('active');
+  } else {
+    if (btnText) btnText.textContent = `${selectedCount} etiquetas selecionadas`;
+    if (badgeEl) {
+      badgeEl.textContent = String(selectedCount);
+      badgeEl.style.display = 'inline-flex';
+    }
+    if (btn) btn.classList.add('active');
+  }
+
+  if (previewBox) {
+    if (selectedCount === 0) {
+      previewBox.innerHTML = '<span style="font-size: 11px; color: var(--text-muted); font-style: italic;">Nenhuma etiqueta atribuída</span>';
+    } else {
+      previewBox.innerHTML = selectedObjs.map(l => {
+        const color = l.color || '#6366f1';
+        return `
+          <span class="drawer-label-active-pill" data-label-id="${l.id}" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: ${color}22; color: ${color}; border: 1px solid ${color}66; cursor: pointer;" title="Clique para remover">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${color};"></span>
+            <span>${escapeHtml(l.name)}</span>
+            <span style="font-size: 9px; opacity: 0.7; margin-left: 2px;">✕</span>
+          </span>
+        `;
+      }).join('');
+
+      previewBox.querySelectorAll('.drawer-label-active-pill').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = pill.dataset.labelId;
+          selectedDrawerLabels.delete(id);
+          renderDrawerLabelsPicker();
+        });
+      });
+    }
+  }
 }
 
 // Formata o badge de status do layout (Em Revisão, Publicado, Aprovado, Rascunho, Rejeitado, etc.)
@@ -2594,10 +2954,19 @@ function formatLayoutStatusBadge(status) {
       };
     case 'draft':
     case 'rascunho':
+    case 'empty':
       return {
         label: 'Rascunho',
         icon: '📝',
         className: 'layout-badge-draft',
+        isReview: false
+      };
+    case 'deprecated':
+    case 'descontinuado':
+      return {
+        label: 'Descontinuado',
+        icon: '⚪',
+        className: 'layout-badge-deprecated',
         isReview: false
       };
     case 'rejected':
@@ -2609,17 +2978,20 @@ function formatLayoutStatusBadge(status) {
         isReview: false
       };
     case 'skeleton_only':
+    case 'somente_identificacao':
+    case 'somente identificação':
+    case 'somente identificacao':
       return {
-        label: 'Estrutura Inicial',
-        icon: '🦴',
+        label: 'Somente Identificação',
+        icon: '🔹',
         className: 'layout-badge-skeleton',
         isReview: false
       };
     default:
       return {
         label: s.replace(/_/g, ' '),
-        icon: '📐',
-        className: 'layout-badge-default',
+        icon: '•',
+        className: 'layout-badge-draft',
         isReview: false
       };
   }
@@ -2664,15 +3036,10 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
   if (!ok) return;
 
   const btnApprove = document.getElementById('btnDrawerApproveLayout');
-  const btnTopApprove = document.getElementById('btnDrawerTopApproveLayout');
 
   if (btnApprove) {
     btnApprove.disabled = true;
     btnApprove.innerHTML = '<span>⏳</span> Aprovando...';
-  }
-  if (btnTopApprove) {
-    btnTopApprove.disabled = true;
-    btnTopApprove.innerHTML = '<span>⏳</span> <span>Aprovando...</span>';
   }
 
   try {
@@ -2693,16 +3060,8 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
     renderDrawerLayoutField(targetId, layoutCode, layoutName, 'published');
 
     // Atualizar cabeçalho do drawer
-    const numEl = document.getElementById('drawerDemandNumber');
-    if (numEl && selectedTicket) {
-      const statusBadge = formatLayoutStatusBadge('published');
-      const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="margin-left: 6px;">${statusBadge.icon} ${statusBadge.label}</span>` : '';
-      numEl.innerHTML = `<span>#${selectedTicket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${targetId}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName ? ' - ' + layoutName : '')}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
-      numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openLayoutInImporter(targetId, layoutCode);
-      });
+    if (selectedTicket) {
+      renderDrawerHeaderMetaAndTitle(selectedTicket, 'published');
     }
 
     // Re-renderizar lista de demandas
@@ -2714,10 +3073,6 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
     if (btnApprove) {
       btnApprove.disabled = false;
       btnApprove.innerHTML = '<span>✅</span> Aprovar Layout';
-    }
-    if (btnTopApprove) {
-      btnTopApprove.disabled = false;
-      btnTopApprove.innerHTML = '<span>✅</span> <span>Aprovar Layout</span>';
     }
   }
 }
@@ -2732,7 +3087,6 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus 
   const subEl = document.getElementById('drawerSelectedLayoutSub');
   const statusEl = document.getElementById('drawerSelectedLayoutStatus');
   const btnApprove = document.getElementById('btnDrawerApproveLayout');
-  const btnTopApprove = document.getElementById('btnDrawerTopApproveLayout');
   const btnOpen = document.getElementById('btnDrawerOpenLayoutFromField');
   const searchInput = document.getElementById('drawerEditLayoutSearch');
   const dropdown = document.getElementById('drawerLayoutSearchResults');
@@ -2742,10 +3096,10 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus 
   const cleanName = layoutName ? String(layoutName).replace(/^[\s\-_:]+/, '').trim() : '';
 
   if (layoutCode) {
-    if (labelEl) labelEl.textContent = `Layout ${layoutCode}`;
+    if (labelEl) labelEl.textContent = String(layoutCode);
     if (subEl) {
       subEl.textContent = cleanName ? `• ${cleanName}` : '';
-      subEl.title = cleanName ? `Layout ${layoutCode} • ${cleanName}` : `Layout ${layoutCode}`;
+      subEl.title = cleanName ? `${layoutCode} • ${cleanName}` : String(layoutCode);
     }
 
     // Se layoutStatus não foi passado explicitamente, consultar cache
@@ -2767,22 +3121,12 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus 
       }
     }
 
-    // Botão de Aprovação de Layout (ativo apenas quando em revisão)
+    // Botão de Aprovação de Layout (ativo apenas quando em revisão, exclusivamente no campo do layout associado)
     const isReview = statusInfo && statusInfo.isReview;
     if (btnApprove) {
       btnApprove.style.display = isReview ? 'inline-flex' : 'none';
       if (isReview) {
         btnApprove.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          await handleApproveLayout(layoutId, layoutCode, cleanName);
-        };
-      }
-    }
-    if (btnTopApprove) {
-      btnTopApprove.style.display = isReview ? 'inline-flex' : 'none';
-      if (isReview) {
-        btnTopApprove.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
           await handleApproveLayout(layoutId, layoutCode, cleanName);
@@ -2795,12 +3139,20 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus 
     if (dropdown) dropdown.style.display = 'none';
     if (searchInput) searchInput.value = '';
 
-    if (btnOpen) {
-      btnOpen.onclick = (e) => {
+    // Torna o layout clicável diretamente no próprio campo para abrir no Importer Ultra
+    const layoutContentEl = document.getElementById('drawerSelectedLayoutContent') || selectedBox?.querySelector('.layout-field-content');
+    if (layoutContentEl) {
+      layoutContentEl.classList.add('clickable');
+      layoutContentEl.title = `Clique para abrir o Layout ${layoutCode} no Importer Ultra ↗`;
+      layoutContentEl.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
         openLayoutInImporter(layoutId, layoutCode);
       };
+    }
+
+    if (btnOpen) {
+      btnOpen.style.display = 'none';
     }
   } else {
     if (selectedBox) selectedBox.style.display = 'none';
@@ -2809,7 +3161,6 @@ function renderDrawerLayoutField(layoutId, layoutCode, layoutName, layoutStatus 
     if (dropdown) dropdown.style.display = 'none';
     if (statusEl) statusEl.style.display = 'none';
     if (btnApprove) btnApprove.style.display = 'none';
-    if (btnTopApprove) btnTopApprove.style.display = 'none';
   }
 }
 
@@ -2827,10 +3178,10 @@ function renderNewTicketLayoutField(layoutId, layoutCode, layoutName) {
   const cleanName = layoutName ? String(layoutName).replace(/^[\s\-_:]+/, '').trim() : '';
 
   if (layoutCode) {
-    if (labelEl) labelEl.textContent = `Layout ${layoutCode}`;
+    if (labelEl) labelEl.textContent = String(layoutCode);
     if (subEl) {
       subEl.textContent = cleanName ? `• ${cleanName}` : '';
-      subEl.title = cleanName ? `Layout ${layoutCode} • ${cleanName}` : `Layout ${layoutCode}`;
+      subEl.title = cleanName ? `${layoutCode} • ${cleanName}` : String(layoutCode);
     }
     if (selectedBox) selectedBox.style.display = 'flex';
     if (searchBox) searchBox.style.display = 'none';
@@ -2844,6 +3195,84 @@ function renderNewTicketLayoutField(layoutId, layoutCode, layoutName) {
   }
 }
 
+// Abre a página do Chamado no Importer Ultra (https://importer.conciliadorcontabil.com.br/support/tickets/:id)
+function openTicketInImporter(ticketOrId) {
+  const target = ticketOrId || selectedTicket;
+  const targetId = (typeof target === 'object' && target !== null) ? target.id : target;
+  if (targetId) {
+    const url = `https://importer.conciliadorcontabil.com.br/support/tickets/${targetId}`;
+    if (window.electronAPI && window.electronAPI.openExternal) {
+      window.electronAPI.openExternal(url);
+    } else {
+      window.open(url, '_blank');
+    }
+  } else {
+    showAppAlert('Identificador do chamado não encontrado.', 'Chamado no Importer', 'warning');
+  }
+}
+window.openTicketInImporter = openTicketInImporter;
+
+function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
+  if (!ticket) return;
+  const layoutInfo = getTicketLayoutInfo(ticket);
+  const layoutCode = layoutInfo.code;
+  const currentLayoutStatus = customLayoutStatus || layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
+
+  const numEl = document.getElementById('drawerDemandNumber');
+  if (numEl) {
+    numEl.textContent = `#${ticket.number || '---'}`;
+  }
+
+  // Badges no topo (Status do Layout, Tipo, Situação, Prioridade, Etiquetas, Ignorado)
+  const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
+  const badgesBox = document.getElementById('drawerBadges');
+  if (badgesBox) {
+    const statusBadge = formatLayoutStatusBadge(currentLayoutStatus);
+    const layoutStatusBadgeHtml = statusBadge
+      ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 10px; padding: 2px 7px;" title="Status do Layout no Importer Ultra: ${statusBadge.label}">${statusBadge.icon} ${statusBadge.label}</span>`
+      : '';
+    const ignoredBadge = isDrawerIgnored
+      ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>'
+      : '';
+    badgesBox.innerHTML = `${layoutStatusBadgeHtml} ${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml(ticket.status)} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
+  }
+
+  // Título Verde clicável: número do layout (se tiver) mais o título do chamado.
+  // Ao clicar, deve levar para o chamado no Importer Ultra.
+  const titleEl = document.getElementById('drawerDemandTitle');
+  if (titleEl) {
+    const rawTitle = (ticket.title || '').trim();
+    let cleanTitle = rawTitle;
+    if (layoutCode) {
+      const escapedCode = String(layoutCode).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const codeRegex = new RegExp(`^\\s*#?\\s*${escapedCode}\\s*[-–—:]?\\s*`, 'i');
+      cleanTitle = cleanTitle.replace(codeRegex, '').trim();
+    }
+    const fullDisplayTitle = layoutCode
+      ? (cleanTitle ? `${layoutCode} – ${cleanTitle}` : String(layoutCode))
+      : (cleanTitle || 'Chamado sem título');
+
+    const ticketNumberStr = ticket.number ? `#${ticket.number}` : '';
+    titleEl.innerHTML = `
+      <a href="#" class="drawer-header-layout-title" data-ticket-id="${ticket.id || ''}" title="Abrir chamado ${ticketNumberStr} no Importer Ultra ↗">
+        <span>${escapeHtml(fullDisplayTitle)}</span>
+        <span style="font-size: 13px; opacity: 0.85;">↗</span>
+      </a>
+    `;
+    titleEl.querySelector('.drawer-header-layout-title')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openTicketInImporter(ticket);
+    });
+  }
+
+  // Oculta botões redundantes na barra superior
+  const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
+  if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
+  const btnDrawerConciliador = document.getElementById('btnDrawerOpenConciliador');
+  if (btnDrawerConciliador) btnDrawerConciliador.style.display = 'none';
+}
+
 async function openDemandDrawer(ticket) {
   selectedTicket = ticket;
   const overlay = document.getElementById('drawerOverlay');
@@ -2855,46 +3284,10 @@ async function openDemandDrawer(ticket) {
   const currentLayoutId = resolveLayoutId(layoutInfo.id, layoutCode);
   const currentLayoutStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
 
-  const numEl = document.getElementById('drawerDemandNumber');
-  if (numEl) {
-    if (layoutCode) {
-      const statusBadge = formatLayoutStatusBadge(currentLayoutStatus);
-      const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 10px; padding: 2px 7px; margin-left: 6px;" title="Status do Layout no Importer Ultra: ${statusBadge.label}">${statusBadge.icon} ${statusBadge.label}</span>` : '';
-      numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${currentLayoutId || ''}" data-layout-code="${layoutCode}" title="Abrir Layout ${layoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${layoutCode}${escapeHtml(layoutName)}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
-      numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openLayoutInImporter(currentLayoutId, layoutCode);
-      });
-    } else {
-      numEl.textContent = `#${ticket.number} • Sem Layout`;
-    }
-  }
-
-  // Top action bar button for Layout
-  const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
-  const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
-  if (btnDrawerLayout) {
-    if (layoutCode) {
-      btnDrawerLayout.style.display = 'inline-flex';
-      if (btnDrawerLayoutText) {
-        btnDrawerLayoutText.textContent = `Abrir Layout (${layoutCode}) ↗`;
-      }
-    } else {
-      btnDrawerLayout.style.display = 'none';
-    }
-  }
-  document.getElementById('drawerDemandTitle').textContent = ticket.title || '';
-
-  // Badges
-  const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
-  const badgesBox = document.getElementById('drawerBadges');
-  if (badgesBox) {
-    const ignoredBadge = isDrawerIgnored ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚫 Ignorado</span>' : '';
-    badgesBox.innerHTML = `${getTypeBadgeHtml(ticket.ticketType?.name)} ${getStatusBadgeHtml(ticket.status)} ${getPriorityBadgeHtml(ticket.priority)} ${getLabelsBadgesHtml(ticket.labels)} ${ignoredBadge}`;
-  }
+  renderDrawerHeaderMetaAndTitle(ticket, currentLayoutStatus);
 
   // Action buttons
+  const isDrawerIgnored = window.appStore.isIgnored(ticket.id);
   const btnDrawerIgnore = document.getElementById('btnToggleDrawerIgnore');
   if (btnDrawerIgnore) {
     btnDrawerIgnore.innerHTML = isDrawerIgnored ? '<span>↩️</span> Reativar Chamado' : '<span>🚫</span> Ignorar Chamado';
@@ -3073,35 +3466,7 @@ async function openDemandDrawer(ticket) {
       registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name, status: finalLayoutStatus });
     }
 
-    function updateDrawerHeaderWithLayout(statusToDisplay) {
-      if (!numEl) return;
-      if (finalLayoutCode) {
-        const statusBadge = formatLayoutStatusBadge(statusToDisplay);
-        const statusBadgeHtml = statusBadge ? `<span class="badge-layout-status ${statusBadge.className}" style="font-size: 10px; padding: 2px 7px; margin-left: 6px;" title="Status do Layout no Importer Ultra: ${statusBadge.label}">${statusBadge.icon} ${statusBadge.label}</span>` : '';
-        numEl.innerHTML = `<span>#${ticket.number}</span> • <a href="#" class="btn-open-layout drawer-header-layout-link" data-layout-id="${finalLayoutId || ''}" data-layout-code="${finalLayoutCode}" title="Abrir Layout ${finalLayoutCode} no Importer Ultra" style="color: #34d399; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;"><span>📐 Layout ${finalLayoutCode}${escapeHtml(finalLayoutName)}</span> <span style="font-size: 11px;">↗</span></a>${statusBadgeHtml}`;
-        numEl.querySelector('.drawer-header-layout-link')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openLayoutInImporter(finalLayoutId, finalLayoutCode);
-        });
-      } else {
-        numEl.textContent = `#${ticket.number} • Sem Layout`;
-      }
-    }
-
-    updateDrawerHeaderWithLayout(finalLayoutStatus);
-
-    if (btnDrawerLayout) {
-      if (finalLayoutCode) {
-        btnDrawerLayout.style.display = 'inline-flex';
-        if (btnDrawerLayoutText) {
-          btnDrawerLayoutText.textContent = `Abrir Layout (${finalLayoutCode}) ↗`;
-        }
-      } else {
-        btnDrawerLayout.style.display = 'none';
-      }
-    }
-
+    renderDrawerHeaderMetaAndTitle(selectedTicket, finalLayoutStatus);
     renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName, finalLayoutStatus);
 
     // Se temos o ID do layout mas o status ainda não foi identificado, buscar diretamente no Importer Ultra
@@ -3114,7 +3479,7 @@ async function openDemandDrawer(ticket) {
             if (selectedTicket.layout) selectedTicket.layout.status = finalLayoutStatus;
             selectedTicket.layoutStatus = finalLayoutStatus;
           }
-          updateDrawerHeaderWithLayout(finalLayoutStatus);
+          renderDrawerHeaderMetaAndTitle(selectedTicket, finalLayoutStatus);
           renderDrawerLayoutField(finalLayoutId, finalLayoutCode, finalLayoutName, finalLayoutStatus);
         }
       }).catch(e => console.warn('Erro ao carregar detalhes do layout do Importer:', e));
@@ -4711,18 +5076,53 @@ function renderDrawerWorkflowButtons(ticket) {
 // Cache em memória de mapeamento código de layout -> { id, name, status }
 const layoutCodeToIdCache = new Map();
 
-function registerLayoutInCache(layout) {
+function restoreLayoutCacheFromStore() {
+  if (window.appStore?.layoutCache && typeof window.appStore.layoutCache === 'object') {
+    Object.entries(window.appStore.layoutCache).forEach(([code, val]) => {
+      if (val && (val.status || val.id)) {
+        layoutCodeToIdCache.set(String(code).trim(), val);
+      }
+    });
+  }
+}
+window.restoreLayoutCacheFromStore = restoreLayoutCacheFromStore;
+
+let persistLayoutCacheDebounce = null;
+function persistLayoutCache() {
+  clearTimeout(persistLayoutCacheDebounce);
+  persistLayoutCacheDebounce = setTimeout(() => {
+    if (window.electronAPI?.saveStorage) {
+      const obj = {};
+      layoutCodeToIdCache.forEach((val, key) => {
+        if (val && (val.status || val.id)) {
+          obj[key] = val;
+        }
+      });
+      window.electronAPI.saveStorage('layoutCache', obj);
+      if (window.appStore) {
+        window.appStore.layoutCache = obj;
+      }
+    }
+  }, 400);
+}
+
+function registerLayoutInCache(layout, autoPersist = true) {
   if (!layout) return;
   const id = layout.id || layout.layoutId;
   const code = layout.code != null ? layout.code : (typeof layout === 'number' || typeof layout === 'string' ? layout : null);
   if (code) {
     const codeStr = String(code).trim();
     const existing = layoutCodeToIdCache.get(codeStr) || {};
-    layoutCodeToIdCache.set(codeStr, {
+    const newObj = {
       id: id ? String(id) : (existing.id || null),
+      code: codeStr,
       name: layout.name || existing.name || '',
       status: layout.status || existing.status || null
-    });
+    };
+    layoutCodeToIdCache.set(codeStr, newObj);
+    if (autoPersist) {
+      persistLayoutCache();
+    }
   }
 }
 
@@ -4734,11 +5134,32 @@ function getTicketLayoutInfo(ticket) {
   let name = ticket.layout?.name || '';
   let status = ticket.layout?.status || ticket.layoutStatus || null;
   
+  if (!code) {
+    code = ticket.layoutCode || ticket.layout_code || null;
+  }
+
   // Fallback: se não tiver no objeto, tentar extrair do título caso seja "14 - ERRO..." ou "3024 - NOVO LAYOUT..."
   if (!code && ticket.title) {
-    const match = ticket.title.match(/^\s*(\d{2,5})\s*[-–—]/) || ticket.title.match(/layout\s*(\d{2,5})/i);
-    if (match) {
-      code = parseInt(match[1], 10);
+    // 1. Caso o título comece com o número do chamado seguido do código do layout, ex: "18 5706 - ERRO..." ou "18 - 5706 - ..."
+    if (ticket.number) {
+      const numMatch = ticket.title.match(new RegExp(`^\\s*#?${ticket.number}\\s*[-–—:]?\\s*(\\d{2,5})\\s*[-–—:]`, 'i'));
+      if (numMatch) {
+        code = parseInt(numMatch[1], 10);
+      }
+    }
+    // 2. Título iniciando com número: "3024 - NOVO...", "#3024 - ...", "[3024] - ...", "3024: NOVO..."
+    if (!code) {
+      const match = ticket.title.match(/^\s*#?\[?(\d{2,5})\]?\s*[-–—:]/);
+      if (match) {
+        code = parseInt(match[1], 10);
+      }
+    }
+    // 3. Título contendo a palavra layout seguida do número: "NOVO LAYOUT 3024", "LAYOUT: 3024", "LAYOUT - 3024", "LAYOUT #3024"
+    if (!code) {
+      const matchLayout = ticket.title.match(/layout\s*[-–—:#]?\s*(\d{2,5})/i);
+      if (matchLayout) {
+        code = parseInt(matchLayout[1], 10);
+      }
     }
   }
 
@@ -4750,17 +5171,17 @@ function getTicketLayoutInfo(ticket) {
       if (!name && cached.name) name = cached.name;
       if (!status && cached.status) status = cached.status;
     }
-    registerLayoutInCache({ id, code, name, status });
+    registerLayoutInCache({ id, code, name, status }, false);
   }
 
   return { code, name, id, status };
 }
 
-// Pré-carrega layouts recentes do Importer Ultra para saber o status em tempo hábil
+// Pré-carrega todos os layouts do Importer Ultra para saber o status em tempo hábil
 async function loadActiveLayoutsCache() {
   if (!window.conciliadorAPI?.fetchRecentLayouts) return;
   try {
-    const layouts = await window.conciliadorAPI.fetchRecentLayouts(300);
+    const layouts = await window.conciliadorAPI.fetchRecentLayouts(4000);
     if (Array.isArray(layouts) && layouts.length > 0) {
       let hasChanges = false;
       layouts.forEach(l => {
@@ -4771,18 +5192,226 @@ async function loadActiveLayoutsCache() {
           if (!prev || prev.status !== l.status || !prev.id) {
             hasChanges = true;
           }
-          registerLayoutInCache(l);
+          registerLayoutInCache(l, false);
         }
       });
+      persistLayoutCache();
+      sweepAndInjectMissingLayoutBadges();
       if (hasChanges && !selectedTicket) {
         renderDemands();
       }
     }
   } catch (err) {
-    console.warn('Erro ao carregar cache de layouts recentes:', err);
+    console.warn('Erro ao carregar catálogo completo de layouts:', err);
+  } finally {
+    sweepAndInjectMissingLayoutBadges();
+    if (typeof resolveMissingLayoutStatuses === 'function') {
+      resolveMissingLayoutStatuses().catch(() => {});
+    }
   }
 }
 window.loadActiveLayoutsCache = loadActiveLayoutsCache;
+
+const resolvingLayoutCodes = new Set();
+
+// Varredor contínuo: injeta o badge de status em todo botão de layout que estiver sem na tela
+function sweepAndInjectMissingLayoutBadges() {
+  // 1. Varre a tabela
+  document.querySelectorAll('.table-layout-cell-wrapper').forEach(wrapper => {
+    const link = wrapper.querySelector('.table-layout-link');
+    const existingBadge = wrapper.querySelector('.badge-layout-status');
+    const code = link?.dataset?.layoutCode ? String(link.dataset.layoutCode).trim() : null;
+    if (code) {
+      const cached = layoutCodeToIdCache.get(code);
+      const status = cached?.status || 'draft';
+      const sBadge = formatLayoutStatusBadge(status);
+      if (sBadge) {
+        if (existingBadge) {
+          existingBadge.className = `badge-layout-status ${sBadge.className}`;
+          existingBadge.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+          existingBadge.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        } else {
+          const span = document.createElement('span');
+          span.className = `badge-layout-status ${sBadge.className}`;
+          span.style.fontSize = '9.5px';
+          span.style.padding = '1px 5px';
+          span.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+          span.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+          wrapper.appendChild(span);
+        }
+      }
+    }
+  });
+
+  // 2. Varre os cards de Kanban
+  document.querySelectorAll('.kanban-layout-badge-container').forEach(wrapper => {
+    const link = wrapper.querySelector('.kanban-layout-link');
+    const existingBadge = wrapper.querySelector('.badge-layout-status');
+    const code = link?.dataset?.layoutCode ? String(link.dataset.layoutCode).trim() : null;
+    if (code) {
+      const cached = layoutCodeToIdCache.get(code);
+      const status = cached?.status || 'draft';
+      const sBadge = formatLayoutStatusBadge(status);
+      if (sBadge) {
+        if (existingBadge) {
+          existingBadge.className = `badge-layout-status ${sBadge.className}`;
+          existingBadge.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+          existingBadge.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        } else {
+          const span = document.createElement('span');
+          span.className = `badge-layout-status ${sBadge.className}`;
+          span.style.fontSize = '8.5px';
+          span.style.padding = '1px 4px';
+          span.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+          span.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+          wrapper.appendChild(span);
+        }
+      }
+    }
+  });
+}
+window.sweepAndInjectMissingLayoutBadges = sweepAndInjectMissingLayoutBadges;
+
+function updateLayoutBadgeInDom(code, exact) {
+  const sBadge = formatLayoutStatusBadge(exact.status);
+  if (!sBadge) return;
+
+  // Atualiza os badges na tabela (garantindo que fique sempre embaixo do número)
+  document.querySelectorAll(`.btn-open-layout.table-layout-link[data-layout-code="${code}"]`).forEach(link => {
+    link.dataset.layoutId = exact.id || '';
+    const parentContainer = link.parentElement;
+    if (parentContainer) {
+      parentContainer.classList.add('table-layout-cell-wrapper');
+      parentContainer.style.display = 'flex';
+      parentContainer.style.flexDirection = 'column';
+      parentContainer.style.alignItems = 'flex-start';
+      parentContainer.style.gap = '3px';
+      let existingBadge = parentContainer.querySelector('.badge-layout-status');
+      if (existingBadge) {
+        existingBadge.className = `badge-layout-status ${sBadge.className}`;
+        existingBadge.style.fontSize = '9.5px';
+        existingBadge.style.padding = '1px 5px';
+        existingBadge.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        existingBadge.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+      } else {
+        const span = document.createElement('span');
+        span.className = `badge-layout-status ${sBadge.className}`;
+        span.style.fontSize = '9.5px';
+        span.style.padding = '1px 5px';
+        span.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        span.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+        parentContainer.appendChild(span);
+      }
+    }
+  });
+
+  // Atualiza também nos cards de Kanban
+  document.querySelectorAll(`.kanban-layout-link[data-layout-code="${code}"]`).forEach(link => {
+    link.dataset.layoutId = exact.id || '';
+    const parentContainer = link.parentElement;
+    if (parentContainer) {
+      let existingBadge = parentContainer.querySelector('.badge-layout-status');
+      if (existingBadge) {
+        existingBadge.className = `badge-layout-status ${sBadge.className}`;
+        existingBadge.style.fontSize = '8.5px';
+        existingBadge.style.padding = '1px 4px';
+        existingBadge.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        existingBadge.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+      } else {
+        const span = document.createElement('span');
+        span.className = `badge-layout-status ${sBadge.className}`;
+        span.style.fontSize = '8.5px';
+        span.style.padding = '1px 4px';
+        span.title = `Status do Layout no Importer Ultra: ${sBadge.label}`;
+        span.innerHTML = `${sBadge.icon} ${sBadge.label}`;
+        parentContainer.appendChild(span);
+      }
+    }
+  });
+
+  // Se o drawer estiver aberto com este chamado/layout, atualiza o campo e o header meta
+  if (selectedTicket) {
+    const curInfo = getTicketLayoutInfo(selectedTicket);
+    if (curInfo && String(curInfo.code).trim() === String(code).trim()) {
+      renderDrawerLayoutField(exact.id, exact.code, exact.name, exact.status);
+      renderDrawerHeaderMetaAndTitle(selectedTicket, exact.status);
+    }
+  }
+}
+
+async function resolveMissingLayoutStatuses() {
+  if (!window.conciliadorAPI?.searchLayouts) return;
+  const demands = window.appStore?.demands || [];
+  const missingItems = new Map();
+
+  // Prioriza chamados na ordem inversa (mais recentes primeiro)
+  demands.slice().reverse().forEach(d => {
+    const info = getTicketLayoutInfo(d);
+    if (info && info.code) {
+      const codeStr = String(info.code).trim();
+      const cached = layoutCodeToIdCache.get(codeStr);
+      if (!cached || !cached.status) {
+        if (!resolvingLayoutCodes.has(codeStr)) {
+          missingItems.set(codeStr, { code: codeStr, name: info.name || d.title || '' });
+        }
+      }
+    }
+  });
+
+  if (missingItems.size === 0) {
+    sweepAndInjectMissingLayoutBadges();
+    return;
+  }
+
+  const itemsToFetch = Array.from(missingItems.values());
+  for (const item of itemsToFetch) {
+    resolvingLayoutCodes.add(item.code);
+  }
+
+  // Resolve um a um com pequeno intervalo seguro para nunca tomar 429
+  for (const item of itemsToFetch) {
+    const code = item.code;
+    const name = item.name;
+    try {
+      let res = await window.conciliadorAPI.searchLayouts(code, 5);
+      let items = res?.data || (Array.isArray(res) ? res : []);
+      let exact = items.find(l => String(l.code != null ? l.code : '').trim() === String(code).trim());
+
+      if (!exact && name) {
+        const cleanNameSearch = name.replace(/^[\s\-_:\d]+/, '').split(/[-–—/]/)[0].trim();
+        if (cleanNameSearch.length >= 3) {
+          const resByName = await window.conciliadorAPI.searchLayouts(cleanNameSearch, 10);
+          const itemsByName = resByName?.data || (Array.isArray(resByName) ? resByName : []);
+          exact = itemsByName.find(l => String(l.code != null ? l.code : '').trim() === String(code).trim());
+        }
+      }
+
+      if (exact) {
+        const resolvedStatus = exact.status || 'published';
+        const resolvedObj = { ...exact, status: resolvedStatus };
+        registerLayoutInCache(resolvedObj);
+        updateLayoutBadgeInDom(code, resolvedObj);
+      } else {
+        const draftObj = { code, name, status: 'draft' };
+        registerLayoutInCache(draftObj);
+        updateLayoutBadgeInDom(code, draftObj);
+      }
+    } catch (e) {
+      const draftObj = { code, name, status: 'draft' };
+      registerLayoutInCache(draftObj);
+      updateLayoutBadgeInDom(code, draftObj);
+    } finally {
+      resolvingLayoutCodes.delete(code);
+    }
+
+    // Pequena pausa (120ms) anti-throttler para proteção
+    await new Promise(r => setTimeout(r, 120));
+  }
+
+  persistLayoutCache();
+  sweepAndInjectMissingLayoutBadges();
+}
+window.resolveMissingLayoutStatuses = resolveMissingLayoutStatuses;
 
 function resolveLayoutId(layoutId, layoutCode) {
   if (layoutId) {
@@ -5792,6 +6421,12 @@ function setupDrawerLayoutAutocomplete() {
     renderDrawerLayoutField('', null, '');
     const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
     if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
+    if (selectedTicket) {
+      selectedTicket.layoutId = null;
+      selectedTicket.layout = null;
+      selectedTicket.layoutStatus = null;
+      renderDrawerHeaderMetaAndTitle(selectedTicket, null);
+    }
     const searchInput = document.getElementById('drawerEditLayoutSearch');
     if (searchInput) searchInput.focus();
   });
@@ -5874,6 +6509,12 @@ function setupDrawerLayoutAutocomplete() {
 
             registerLayoutInCache({ id, code, name, status });
             renderDrawerLayoutField(id, code, name, status);
+            if (selectedTicket) {
+              selectedTicket.layoutId = id;
+              selectedTicket.layout = { id, code, name, status };
+              selectedTicket.layoutStatus = status;
+              renderDrawerHeaderMetaAndTitle(selectedTicket, status);
+            }
 
             const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
             const btnDrawerLayoutText = document.getElementById('btnDrawerOpenLayoutText');
@@ -7689,6 +8330,7 @@ function setupEventListeners() {
   // Table header click sorting
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => {
+      if (th._justResized) return;
       const field = th.dataset.sort;
       if (field === 'number') {
         window.appStore.sortBy = window.appStore.sortBy === 'number_desc' ? 'number_asc' : 'number_desc';
@@ -7931,14 +8573,6 @@ function setupEventListeners() {
   document.getElementById('btnCloseDrawer')?.addEventListener('click', closeDemandDrawer);
   document.getElementById('drawerOverlay')?.addEventListener('click', closeDemandDrawer);
 
-  const openTicketInImporter = () => {
-    if (selectedTicket && window.electronAPI) {
-      window.electronAPI.openExternal(`https://importer.conciliadorcontabil.com.br/support/tickets/${selectedTicket.id}`);
-    } else if (selectedTicket) {
-      window.open(`https://importer.conciliadorcontabil.com.br/support/tickets/${selectedTicket.id}`, '_blank');
-    }
-  };
-
   const openTicketInMovidesk = () => {
     const movId = document.getElementById('drawerEditMovidesk')?.value || selectedTicket?.movideskTicketId;
     if (movId && window.electronAPI) {
@@ -7950,8 +8584,8 @@ function setupEventListeners() {
     }
   };
 
-  document.getElementById('btnOpenWeb')?.addEventListener('click', openTicketInImporter);
-  document.getElementById('btnDrawerOpenConciliador')?.addEventListener('click', openTicketInImporter);
+  document.getElementById('btnOpenWeb')?.addEventListener('click', () => openTicketInImporter(selectedTicket));
+  document.getElementById('btnDrawerOpenConciliador')?.addEventListener('click', () => openTicketInImporter(selectedTicket));
   document.getElementById('btnDrawerOpenLayout')?.addEventListener('click', () => {
     if (!selectedTicket) return;
     const info = getTicketLayoutInfo(selectedTicket);
@@ -8404,6 +9038,9 @@ function setupEventListeners() {
 
   // Configurações do usuário & Engrenagem ⚙️
   setupUserSettingsHandlers();
+
+  // Inicializar alças móveis para ajuste de largura das colunas da tabela
+  initTableColumnResizing();
 }
 
 function setupAutoRefresh() {

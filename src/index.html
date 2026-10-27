@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Organizador de Chamados - Conciliador Contábil</title>
+  <title>Chamados Conciliador Contábil</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
   <header class="window-titlebar" id="windowTitlebar">
     <div class="titlebar-brand">
       <img src="assets/logo-icon.png" alt="Conciliador Contábil" class="brand-logo-img">
-      <span class="brand-title">Organizador de Chamados</span>
+      <span class="brand-title">Chamados Conciliador Contábil</span>
     </div>
 
     <div class="titlebar-center">
@@ -116,7 +116,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.38</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.39</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -329,21 +329,70 @@
         
         <!-- Table View Container -->
         <div class="table-wrapper" id="tableViewContainer">
-          <table class="demands-table">
+          <table class="demands-table" id="demandsTable">
+            <colgroup id="demandsTableColgroup">
+              <col data-col="star" style="width: 42px;">
+              <col data-col="number" style="width: 75px;">
+              <col data-col="layout" style="width: 105px;">
+              <col data-col="title" style="width: 380px;">
+              <col data-col="movidesk" style="width: 95px;">
+              <col data-col="client" style="width: 130px;">
+              <col data-col="type" style="width: 105px;">
+              <col data-col="status" style="width: 130px;">
+              <col data-col="assignedTo" style="width: 130px;">
+              <col data-col="reviewer" style="width: 130px;">
+              <col data-col="deliveryDueDate" style="width: 145px;">
+              <col data-col="actions" style="width: 65px;">
+            </colgroup>
             <thead>
-              <tr>
-                <th style="width: 40px; text-align: center;">⭐</th>
-                <th class="sortable" data-sort="number" style="width: 75px;">Nº <span class="sort-indicator" id="sortInd_number"></span></th>
-                <th class="sortable" data-sort="layout" style="width: 85px;">Layout <span class="sort-indicator" id="sortInd_layout"></span></th>
-                <th>Título da Demanda</th>
-                <th style="width: 100px;">Movidesk</th>
-                <th style="width: 170px;">Banco / Cliente</th>
-                <th style="width: 115px;">Tipo</th>
-                <th style="width: 130px;">Situação</th>
-                <th style="width: 135px;">Responsável</th>
-                <th style="width: 135px;">Validador</th>
-                <th class="sortable" data-sort="deliveryDueDate" style="width: 130px;">Prazo de Entrega <span class="sort-indicator" id="sortInd_deliveryDueDate">▲</span></th>
-                <th style="width: 60px; text-align: right;">Ações</th>
+              <tr id="demandsTableHeaderRow">
+                <th data-col="star" title="Favorito" style="width: 42px; text-align: center;">
+                  <div class="th-content" style="justify-content: center;"><span class="th-text">⭐</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th class="sortable" data-col="number" data-sort="number" title="Número do Chamado" style="width: 75px;">
+                  <div class="th-content"><span class="th-text">Nº</span><span class="sort-indicator" id="sortInd_number"></span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th class="sortable" data-col="layout" data-sort="layout" title="Código do Layout no Importer Ultra" style="width: 105px;">
+                  <div class="th-content"><span class="th-text">Layout</span><span class="sort-indicator" id="sortInd_layout"></span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="title" title="Título da Demanda" style="width: 380px;">
+                  <div class="th-content"><span class="th-text">Título da Demanda</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="movidesk" title="Ticket Movidesk" style="width: 95px;">
+                  <div class="th-content"><span class="th-text">Movidesk</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="client" title="Banco / Base de Dados do Cliente" style="width: 130px;">
+                  <div class="th-content"><span class="th-text">Banco / Cliente</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="type" title="Tipo da Demanda" style="width: 105px;">
+                  <div class="th-content"><span class="th-text">Tipo</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="status" title="Situação da Demanda" style="width: 130px;">
+                  <div class="th-content"><span class="th-text">Situação</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="assignedTo" title="Responsável Técnico" style="width: 130px;">
+                  <div class="th-content"><span class="th-text">Responsável</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="reviewer" title="Validador Técnico" style="width: 130px;">
+                  <div class="th-content"><span class="th-text">Validador</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th class="sortable" data-col="deliveryDueDate" data-sort="deliveryDueDate" title="Prazo de Entrega Estimado" style="width: 145px;">
+                  <div class="th-content"><span class="th-text">Prazo de Entrega</span><span class="sort-indicator" id="sortInd_deliveryDueDate">▲</span></div>
+                  <div class="col-resizer"></div>
+                </th>
+                <th data-col="actions" title="Ações Rápidas" style="width: 65px; text-align: right;">
+                  <div class="th-content" style="justify-content: flex-end;"><span class="th-text">Ações</span></div>
+                </th>
               </tr>
             </thead>
             <tbody id="demandsTableBody">
@@ -401,14 +450,11 @@
           <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
             <span>🎫</span> <span>Abrir no Movidesk</span>
           </button>
-          <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra">
+          <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra" style="display: none;">
             <span>🌐</span> <span>Abrir no Importer</span>
           </button>
           <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
             <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
-          </button>
-          <button type="button" class="btn-action-fixed btn-action-approve-layout" id="btnDrawerTopApproveLayout" title="Aprovar layout diretamente no Importer Ultra" style="display: none;">
-            <span>✅</span> <span>Aprovar Layout</span>
           </button>
           <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
             <span>🚀</span> <span>Google Drive / AutoDrive</span>
@@ -471,13 +517,34 @@
           <div class="drawer-col-labels">
             <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <span>🏷️ Etiquetas da Demanda</span>
-              <span style="font-size: 11px; color: var(--text-muted);">Clique para marcar</span>
+              <span style="font-size: 11px; color: var(--text-muted);" id="drawerLabelsCountText">0 selecionadas</span>
             </label>
-            <div class="drawer-floating-labels-box">
-              <div class="drawer-labels-picker" id="drawerEditLabelsPicker">
-                <!-- Badges de etiquetas geradas dinamicamente -->
+            <div class="filter-dropdown drawer-labels-dropdown" id="dropdownDrawerLabels" style="position: relative; width: 100%;">
+              <button type="button" class="filter-dropdown-btn drawer-labels-dropdown-btn" id="btnDrawerLabels" title="Selecionar etiquetas da demanda" style="width: 100%; height: 38px; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span class="filter-btn-prefix">🏷️</span>
+                  <span class="filter-btn-text" id="btnDrawerLabelsText">Nenhuma etiqueta</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                  <span class="filter-btn-badge" id="btnDrawerLabelsBadge" style="display: none;">0</span>
+                  <span class="filter-btn-arrow">▾</span>
+                </div>
+              </button>
+              <div class="filter-dropdown-panel drawer-labels-panel" id="panelDrawerLabels" style="display: none; width: 100%; max-width: 380px; position: absolute; top: calc(100% + 4px); right: 0; z-index: 1050; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <div class="filter-panel-header">
+                  <span class="filter-panel-title">Etiquetas</span>
+                  <div class="filter-panel-actions">
+                    <button type="button" class="filter-action-link" id="actionDrawerLabelsClear">Limpar</button>
+                  </div>
+                </div>
+                <div class="filter-panel-search">
+                  <input type="text" class="filter-search-input" id="searchDrawerLabels" placeholder="🔍 Pesquisar etiqueta..." autocomplete="off">
+                </div>
+                <div class="filter-panel-list" id="listDrawerLabels" style="max-height: 220px; overflow-y: auto;"></div>
               </div>
             </div>
+            <!-- Badges ativas exibidas logo abaixo para confirmação visual rápida -->
+            <div class="drawer-active-labels-container" id="drawerActiveLabelsPreview" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px;"></div>
           </div>
         </div>
 
@@ -657,18 +724,15 @@
               <div class="layout-field-wrapper" id="drawerLayoutFieldWrapper">
                 <!-- Estado Selecionado: DENTRO do campo -->
                 <div id="drawerSelectedLayoutBox" class="layout-field-selected" style="display: none;">
-                  <div class="layout-field-content">
-                    <span class="layout-field-icon">📐</span>
-                    <span class="layout-field-title" id="drawerSelectedLayoutLabel">Layout</span>
+                  <div class="layout-field-content clickable" id="drawerSelectedLayoutContent" title="Clique para abrir no Importer Ultra ↗">
+                    <span class="layout-field-title" id="drawerSelectedLayoutLabel"></span>
                     <span class="layout-field-sub" id="drawerSelectedLayoutSub"></span>
                     <span class="badge-layout-status" id="drawerSelectedLayoutStatus" style="display: none;"></span>
+                    <span class="layout-field-open-indicator" style="font-size: 11px; opacity: 0.8; margin-left: 2px;">↗</span>
                   </div>
                   <div class="layout-field-actions">
                     <button type="button" class="btn-layout-inline-approve" id="btnDrawerApproveLayout" title="Aprovar Layout diretamente no Importer Ultra" style="display: none;">
                       <span>✅</span> Aprovar Layout
-                    </button>
-                    <button type="button" class="btn-layout-inline-open" id="btnDrawerOpenLayoutFromField" title="Abrir Layout no Importer Ultra">
-                      Abrir no Importer ↗
                     </button>
                     <button type="button" class="btn-layout-inline-clear" id="btnDrawerClearLayoutField" title="Remover ou alterar layout">
                       ✕
@@ -1766,7 +1830,7 @@
         </div>
         <div class="app-dialog-titles">
           <h3 class="app-dialog-title" id="appDialogTitle">Mensagem do Sistema</h3>
-          <p class="app-dialog-subtitle" id="appDialogSubtitle">Organizador de Chamados</p>
+          <p class="app-dialog-subtitle" id="appDialogSubtitle">Chamados Conciliador Contábil</p>
         </div>
         <button type="button" class="icon-btn-ghost app-dialog-close-btn" id="btnAppDialogClose" title="Fechar">✕</button>
       </div>

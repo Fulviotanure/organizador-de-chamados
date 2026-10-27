@@ -1,7 +1,7 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.38",
-  "description": "Organizador Desktop de Demandas e Chamados do Conciliador Contábil",
+  "version": "1.0.39",
+  "description": "Chamados Conciliador Contábil",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -20,7 +20,7 @@
   "license": "MIT",
   "build": {
     "appId": "com.conciliador.organizadorchamados",
-    "productName": "Organizador de Chamados",
+    "productName": "Chamados Conciliador Contábil",
     "copyright": "Copyright © 2026 Fulvio Tanure",
     "directories": {
       "output": "dist"
@@ -43,8 +43,8 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Organizador de Chamados",
-      "artifactName": "Organizador-de-Chamados-Setup-${version}.${ext}",
+      "shortcutName": "Chamados Conciliador Contábil",
+      "artifactName": "Chamados-Conciliador-Contabil-Setup-${version}.${ext}",
       "differentialPackage": true
     },
     "files": [

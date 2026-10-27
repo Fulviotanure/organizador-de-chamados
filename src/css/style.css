@@ -1085,11 +1085,16 @@ body {
 .table-wrapper {
   flex: 1;
   overflow: auto;
+  position: relative;
+  width: 100%;
 }
 
 .demands-table {
-  width: 100%;
-  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
   text-align: left;
 }
@@ -1097,22 +1102,117 @@ body {
 .demands-table thead {
   position: sticky;
   top: 0;
-  background: rgba(22, 24, 27, 0.94);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  z-index: 10;
-  border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: #111419;
+  z-index: 15;
+}
+
+.demands-table thead tr {
+  background: #111419;
 }
 
 .demands-table th {
-  padding: 11px 14px;
+  padding: 9px 8px;
+  padding-right: 12px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+  position: relative;
+  box-sizing: border-box;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-color);
+  background: #111419;
+  user-select: none;
+}
+
+/* Container flex interno do TH para nunca vazar nem sobrepor título */
+.demands-table .th-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.demands-table .th-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Alça Móvel para Redimensionar Colunas da Tabela */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 25;
+  transition: background-color 0.15s ease;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  right: 3px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 1px;
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.col-resizer:hover::after,
+.col-resizer.resizing::after {
+  background: var(--accent-primary, #34d399);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+  width: 3px;
+}
+
+.col-resizer:hover,
+.col-resizer.resizing {
+  background: rgba(52, 211, 153, 0.18);
+}
+
+body.table-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.table-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Coluna Banco / Cliente compacta e ajustável */
+.demands-table td.table-cell-client {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-cell-client code {
+  max-width: 100%;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Container do Layout: tag de status SEMPRE embaixo do número */
+.table-layout-cell-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 3px !important;
 }
 
 .demands-table th.sortable {
@@ -1180,11 +1280,14 @@ body {
 }
 
 .demands-table td {
-  padding: 12px 14px;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   white-space: nowrap;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
 }
 
 .demands-table td:nth-child(2) {
@@ -1204,12 +1307,32 @@ body {
 }
 
 .table-cell-title {
-  max-width: 320px;
-  white-space: nowrap;
+  display: block;
+  max-width: 100%;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.table-cell-labels {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-top: 3px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.table-cell-labels .badge {
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table-cell-sub {
@@ -1582,11 +1705,33 @@ body {
 .drawer-demand-title {
   font-size: 19px;
   font-weight: 700;
-  color: #f8fafc;
+  color: #34d399;
   text-align: center;
   margin: 0;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.drawer-header-layout-title {
+  color: #34d399 !important;
+  text-decoration: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  word-break: break-word;
+}
+
+.drawer-header-layout-title:hover {
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7 !important;
+  text-shadow: 0 0 12px rgba(52, 211, 153, 0.4);
 }
 
 /* Camada 2: Botões de Ação Fixos Abaixo do Título */
@@ -2420,6 +2565,51 @@ body {
   height: 22px;
   display: inline-flex;
   align-items: center;
+}
+
+/* Dropdown de Etiquetas no Estilo dos Filtros */
+.drawer-labels-dropdown-btn {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 0 12px !important;
+  font-size: 12.5px !important;
+  transition: all 0.18s ease;
+}
+
+.drawer-labels-dropdown-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.drawer-labels-dropdown-btn.active {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.drawer-labels-panel {
+  background: #111827 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: var(--radius-md) !important;
+  animation: filterDropdownIn 0.16s ease-out forwards;
+}
+
+.drawer-active-labels-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.drawer-label-active-pill {
+  transition: all 0.14s ease;
+  user-select: none;
+}
+
+.drawer-label-active-pill:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 /* Anexos Pequenos Abaixo da Descrição */
@@ -3386,6 +3576,34 @@ body {
   gap: 8px;
   min-width: 0;
   overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.layout-field-content.clickable {
+  cursor: pointer;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-sm);
+}
+
+.layout-field-content.clickable:hover {
+  background: rgba(16, 185, 129, 0.16);
+}
+
+.layout-field-content.clickable:hover .layout-field-title {
+  color: #6ee7b7;
+  text-decoration: underline;
+}
+
+.layout-field-open-indicator {
+  color: #34d399;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+
+.layout-field-content.clickable:hover .layout-field-open-indicator {
+  transform: translate(1px, -1px);
+  color: #6ee7b7;
 }
 
 .layout-field-icon {

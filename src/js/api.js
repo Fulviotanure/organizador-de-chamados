@@ -171,17 +171,17 @@ class ConciliadorAPI {
     return await response.json();
   }
 
-  async fetchRecentLayouts(limit = 300) {
+  async fetchRecentLayouts(limit = 4000) {
     if (!this.token) return [];
     try {
-      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts?limit=${limit}`, {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts?page=1&limit=${limit}`, {
         method: 'GET'
       });
       if (!response.ok) return [];
       const json = await response.json();
-      return json.data || [];
+      return json.data || (Array.isArray(json) ? json : []);
     } catch (e) {
-      console.warn('Erro ao buscar layouts recentes:', e);
+      console.warn('Erro ao buscar catálogo completo de layouts:', e);
       return [];
     }
   }

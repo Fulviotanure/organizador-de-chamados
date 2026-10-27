@@ -41,6 +41,10 @@ class AppStore {
     // Auto-refresh interval (in minutes, 0 = disabled)
     this.autoRefreshMinutes = 3;
 
+    // Resizable table columns widths & persistent layout cache
+    this.tableColumnWidths = {};
+    this.layoutCache = {};
+
     // Static master definitions
     this.products = this.getProducts();
     this.ticketTypes = this.getTicketTypes();
@@ -62,6 +66,8 @@ class AppStore {
         const storedDemands = await window.electronAPI.loadStorage('cachedDemands', []);
         const storedLastSync = await window.electronAPI.loadStorage('lastSync', null);
         const storedAutoRefresh = await window.electronAPI.loadStorage('autoRefreshMinutes', 3);
+        const storedColWidths = await window.electronAPI.loadStorage('tableColumnWidths', {});
+        const storedLayoutCache = await window.electronAPI.loadStorage('layoutCache', {});
 
         // Fallback redundante com localStorage para máxima resiliência entre reinicializações
         let localIgnored = {};
@@ -82,6 +88,8 @@ class AppStore {
         this.ignoredTickets = { ...(localIgnored || {}), ...(storedIgnored || {}) };
         this.ignoredTicketsCache = { ...(localIgnoredCache || {}), ...(storedIgnoredCache || {}) };
         this.demands = storedDemands || [];
+        this.tableColumnWidths = storedColWidths || {};
+        this.layoutCache = storedLayoutCache || {};
 
         // Re-injetar qualquer chamado ignorado salvo no cache que não esteja em this.demands
         if (this.ignoredTicketsCache && typeof this.ignoredTicketsCache === 'object') {
