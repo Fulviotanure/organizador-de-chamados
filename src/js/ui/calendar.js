@@ -158,6 +158,27 @@ function selectDrawerDeliveryCalendarDate(dayStr) {
   if (popover) popover.style.display = 'none';
 }
 
+function positionCalendarPopover(popover, group) {
+  if (!popover || !group) return;
+  const scrollContainer = group.closest('.modal-form-col, .drawer-body') || document.documentElement;
+  const groupRect = group.getBoundingClientRect();
+  const containerRect = scrollContainer.getBoundingClientRect
+    ? scrollContainer.getBoundingClientRect()
+    : { top: 0, bottom: window.innerHeight };
+
+  const spaceBelow = containerRect.bottom - groupRect.bottom;
+  const spaceAbove = groupRect.top - containerRect.top;
+
+  // Se estiver no modal de novo chamado ou não houver espaço suficiente abaixo (~340px), abre para cima
+  if (group.closest('#createTicketModalOverlay') || (spaceBelow < 340 && spaceAbove > spaceBelow)) {
+    popover.style.bottom = 'calc(100% + 8px)';
+    popover.style.top = 'auto';
+  } else {
+    popover.style.top = 'calc(100% + 8px)';
+    popover.style.bottom = 'auto';
+  }
+}
+
 function setupDrawerDeliveryCalendar() {
   const input = document.getElementById('drawerEditDeliveryDueDate');
   const btnToggle = document.getElementById('btnToggleDrawerDeliveryCal');
@@ -174,6 +195,7 @@ function setupDrawerDeliveryCalendar() {
     if (shouldShow) {
       document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
       renderDrawerDeveloperCalendar();
+      positionCalendarPopover(popover, group);
       popover.style.display = 'flex';
     } else {
       popover.style.display = 'none';
@@ -314,6 +336,7 @@ function setupDrawerClientCalendar() {
     if (shouldShow) {
       document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
       renderDrawerCommonCalendar();
+      positionCalendarPopover(popover, group);
       popover.style.display = 'flex';
     } else {
       popover.style.display = 'none';
@@ -645,13 +668,15 @@ function updateDevSelectForCurrentType() {
 function renderDeveloperCalendar(devId) {
   currentCalDevId = devId;
   const container = document.getElementById('calDualMonthsContainer');
-  const headerNameEl = document.getElementById('calDevNameHeader');
+  const headerEl = document.getElementById('calAgendaHeader');
 
   const devs = window.appStore.getKnownDevelopers();
   const dev = devs.find(d => d.id === devId);
 
-  if (headerNameEl) {
-    headerNameEl.innerHTML = dev ? `Agenda de <strong>${dev.name.split(' ')[0] || dev.name}</strong>: chamados em aberto com entrega em cada dia.` : 'Agenda Geral de Entregas (Selecione um desenvolvedor para ver carga de trabalho)';
+  if (headerEl) {
+    headerEl.innerHTML = dev
+      ? `Agenda de <strong id="calDevNameHeader">${escapeHtml(dev.name.split(' ')[0] || dev.name)}</strong>: chamados em aberto com entrega em cada dia.`
+      : 'Agenda Geral de Entregas (Selecione um desenvolvedor para ver carga de trabalho)';
   }
 
   if (!container) return;
@@ -874,43 +899,154 @@ function selectCalendarDate(dayStr) {
   }
 }
 
-function renderLabelsPicker() {
-  const container = document.getElementById('ticketLabelsPicker');
-  if (!container) return;
+let newTicketLabelsSearchQuery = '';
+let newTicketLabelsInitialized = false;
 
-  const labels = window.appStore.getAvailableLabels();
-  if (!labels || labels.length === 0) {
-    container.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">Nenhuma etiqueta encontrada</span>';
-    return;
+function initNewTicketLabelsListeners() {
+  if (newTicketLabelsInitialized) return;
+  newTicketLabelsInitialized = true;
+
+  const btn = document.getElementById('btnNewTicketLabels');
+  const panel = document.getElementById('panelNewTicketLabels');
+  const searchInput = document.getElementById('searchNewTicketLabels');
+  const clearBtn = document.getElementById('actionNewTicketLabelsClear');
+
+  if (btn && panel) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = panel.style.display !== 'none';
+      document.querySelectorAll('.filter-dropdown-panel').forEach(p => {
+        if (p !== panel) p.style.display = 'none';
+      });
+      panel.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible && searchInput) {
+        setTimeout(() => searchInput.focus(), 60);
+      }
+    });
+
+    panel.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && !btn.contains(e.target)) {
+        panel.style.display = 'none';
+      }
+    });
   }
 
-  container.innerHTML = labels.map(l => {
-    const isSelected = newTicketSelectedLabels.has(l.id);
-    const color = l.color || '#6366f1';
-    const activeStyle = isSelected
-      ? `background: ${color}28; border-color: ${color}; color: ${color};`
-      : `border-color: rgba(255,255,255,0.1);`;
-
-    return `
-      <div class="label-picker-pill ${isSelected ? 'active' : ''}" data-label-id="${l.id}" style="${activeStyle}">
-        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: ${color}; margin-right: 5px;"></span>
-        <span>${escapeHtml(l.name)}</span>
-        ${isSelected ? '<span style="margin-left: 5px; font-weight: 800;">✓</span>' : ''}
-      </div>
-    `;
-  }).join('');
-
-  container.querySelectorAll('.label-picker-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const id = pill.dataset.labelId;
-      if (newTicketSelectedLabels.has(id)) {
-        newTicketSelectedLabels.delete(id);
-      } else {
-        newTicketSelectedLabels.add(id);
-      }
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      newTicketLabelsSearchQuery = e.target.value || '';
       renderLabelsPicker();
     });
-  });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      newTicketSelectedLabels.clear();
+      renderLabelsPicker();
+    });
+  }
+}
+
+function renderLabelsPicker() {
+  initNewTicketLabelsListeners();
+
+  const listEl = document.getElementById('listNewTicketLabels');
+  const btnText = document.getElementById('btnNewTicketLabelsText');
+  const badgeEl = document.getElementById('btnNewTicketLabelsBadge');
+  const countText = document.getElementById('newTicketLabelsCountText');
+  const previewBox = document.getElementById('newTicketActiveLabelsPreview');
+  const btn = document.getElementById('btnNewTicketLabels');
+
+  if (!listEl) return;
+
+  const allLabels = window.appStore ? window.appStore.getAvailableLabels() : [];
+  const q = newTicketLabelsSearchQuery.trim().toLowerCase();
+  const filtered = q ? allLabels.filter(l => l.name.toLowerCase().includes(q)) : allLabels;
+
+  listEl.innerHTML = '';
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div style="padding: 12px; text-align: center; font-size: 11.5px; color: var(--text-muted);">Nenhuma etiqueta encontrada</div>';
+  } else {
+    filtered.forEach(l => {
+      const isSelected = newTicketSelectedLabels.has(l.id);
+      const color = l.color || '#6366f1';
+      const row = document.createElement('label');
+      row.className = `filter-option-row ${isSelected ? 'selected' : ''}`;
+      row.innerHTML = `
+        <input type="checkbox" value="${escapeHtml(l.id)}" ${isSelected ? 'checked' : ''}>
+        <span class="filter-option-color-dot" style="background-color: ${escapeHtml(color)}"></span>
+        <span class="filter-option-text">${escapeHtml(l.name)}</span>
+      `;
+      row.querySelector('input').addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+          newTicketSelectedLabels.add(l.id);
+        } else {
+          newTicketSelectedLabels.delete(l.id);
+        }
+        renderLabelsPicker();
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  const selectedCount = newTicketSelectedLabels.size;
+  const selectedObjs = allLabels.filter(l => newTicketSelectedLabels.has(l.id));
+
+  if (countText) {
+    countText.textContent = `${selectedCount} selecionada${selectedCount === 1 ? '' : 's'}`;
+  }
+
+  if (selectedCount === 0) {
+    if (btnText) btnText.textContent = 'Nenhuma etiqueta';
+    if (badgeEl) badgeEl.style.display = 'none';
+    if (btn) btn.classList.remove('active');
+  } else if (selectedCount <= 2) {
+    if (btnText) btnText.textContent = selectedObjs.map(l => l.name).join(', ');
+    if (badgeEl) {
+      badgeEl.textContent = String(selectedCount);
+      badgeEl.style.display = 'inline-flex';
+    }
+    if (btn) btn.classList.add('active');
+  } else {
+    if (btnText) btnText.textContent = `${selectedCount} etiquetas selecionadas`;
+    if (badgeEl) {
+      badgeEl.textContent = String(selectedCount);
+      badgeEl.style.display = 'inline-flex';
+    }
+    if (btn) btn.classList.add('active');
+  }
+
+  if (previewBox) {
+    if (selectedCount === 0) {
+      previewBox.innerHTML = '<span style="font-size: 11px; color: var(--text-muted); font-style: italic;">Nenhuma etiqueta atribuída</span>';
+    } else {
+      previewBox.innerHTML = selectedObjs.map(l => {
+        const color = l.color || '#6366f1';
+        return `
+          <span class="drawer-label-active-pill" data-label-id="${l.id}" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: ${color}22; color: ${color}; border: 1px solid ${color}66; cursor: pointer;" title="Clique para remover">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${color};"></span>
+            <span>${escapeHtml(l.name)}</span>
+            <span style="font-size: 9px; opacity: 0.7; margin-left: 2px;">✕</span>
+          </span>
+        `;
+      }).join('');
+
+      previewBox.querySelectorAll('.drawer-label-active-pill').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = pill.dataset.labelId;
+          newTicketSelectedLabels.delete(id);
+          renderLabelsPicker();
+        });
+      });
+    }
+  }
 }
 
 function setupDropzone() {
@@ -1054,6 +1190,7 @@ function setupFloatingCalendar() {
       if (clientPopover) clientPopover.style.display = 'none';
       const devId = document.getElementById('newTicketAssignedTo')?.value;
       renderDeveloperCalendar(devId);
+      positionCalendarPopover(popover, group);
       popover.style.display = 'flex';
     } else {
       popover.style.display = 'none';
@@ -1237,6 +1374,7 @@ function setupClientCalendar() {
     if (shouldShow) {
       if (deliveryPopover) deliveryPopover.style.display = 'none';
       renderCommonCalendar();
+      positionCalendarPopover(popover, group);
       popover.style.display = 'flex';
     } else {
       popover.style.display = 'none';
@@ -1399,6 +1537,21 @@ function openCreateTicketModal() {
   // Filter developers based on initially selected type/subject
   updateDevSelectForCurrentType();
 
+  // Reset labels & attachments for the new ticket modal
+  newTicketSelectedLabels.clear();
+  newTicketLabelsSearchQuery = '';
+  const searchLabelsEl = document.getElementById('searchNewTicketLabels');
+  if (searchLabelsEl) searchLabelsEl.value = '';
+  const panelLabelsEl = document.getElementById('panelNewTicketLabels');
+  if (panelLabelsEl) panelLabelsEl.style.display = 'none';
+  renderLabelsPicker();
+
+  newTicketSelectedFiles = [];
+  renderSelectedFilesList();
+
+  const errBox = document.getElementById('createTicketError');
+  if (errBox) errBox.style.display = 'none';
+
   // Reset calendar month and date selection
   const now = new Date();
   calCurrentYear = now.getFullYear();
@@ -1424,6 +1577,8 @@ function closeCreateTicketModal() {
   if (popover) popover.style.display = 'none';
   const clientPopover = document.getElementById('calClientPopover');
   if (clientPopover) clientPopover.style.display = 'none';
+  const panelLabelsEl = document.getElementById('panelNewTicketLabels');
+  if (panelLabelsEl) panelLabelsEl.style.display = 'none';
 }
 
 let layoutSearchDebounce = null;

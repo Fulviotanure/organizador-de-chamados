@@ -116,7 +116,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.40</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.41</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -971,10 +971,6 @@
             </div>
           </div>
 
-          <div class="catalog-link-hint">
-            <span>⚙️</span> Faltou um tipo ou uma etiqueta? Cadastre no Catálogo de Chamados
-          </div>
-
           <!-- 7. RESPONSÁVEL & 8. PRIORIDADE -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
@@ -1082,14 +1078,36 @@
           </div>
 
           <!-- Labels / Etiquetas Selector -->
-          <div class="form-group">
-            <label class="form-label" style="display: flex; justify-content: space-between;">
-              <span>Etiquetas da Demanda</span>
-              <span style="font-size: 10px; color: var(--text-muted);">Clique para selecionar</span>
+          <div class="form-group" id="ticketLabelsPicker">
+            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span>🏷️ Etiquetas da Demanda</span>
+              <span style="font-size: 11px; color: var(--text-muted);" id="newTicketLabelsCountText">0 selecionadas</span>
             </label>
-            <div class="labels-picker-container" id="ticketLabelsPicker">
-              <!-- Dynamically populated label pills -->
+            <div class="filter-dropdown drawer-labels-dropdown" id="dropdownNewTicketLabels" style="position: relative; width: 100%;">
+              <button type="button" class="filter-dropdown-btn drawer-labels-dropdown-btn" id="btnNewTicketLabels" title="Selecionar etiquetas da demanda" style="width: 100%; height: 38px; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span class="filter-btn-prefix">🏷️</span>
+                  <span class="filter-btn-text" id="btnNewTicketLabelsText">Nenhuma etiqueta</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                  <span class="filter-btn-badge" id="btnNewTicketLabelsBadge" style="display: none;">0</span>
+                  <span class="filter-btn-arrow">▾</span>
+                </div>
+              </button>
+              <div class="filter-dropdown-panel drawer-labels-panel" id="panelNewTicketLabels" style="display: none; width: 100%; position: absolute; bottom: calc(100% + 6px); top: auto; left: 0; z-index: 1050; box-shadow: 0 -10px 28px rgba(0,0,0,0.65);">
+                <div class="filter-panel-header">
+                  <span class="filter-panel-title">Etiquetas da Demanda</span>
+                  <div class="filter-panel-actions">
+                    <button type="button" class="filter-action-link" id="actionNewTicketLabelsClear">Limpar</button>
+                  </div>
+                </div>
+                <div class="filter-panel-search">
+                  <input type="text" class="filter-search-input" id="searchNewTicketLabels" placeholder="🔍 Pesquisar etiqueta..." autocomplete="off">
+                </div>
+                <div class="filter-panel-list" id="listNewTicketLabels" style="max-height: 200px; overflow-y: auto;"></div>
+              </div>
             </div>
+            <div class="drawer-active-labels-container" id="newTicketActiveLabelsPreview" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px;"></div>
           </div>
 
           <div id="createTicketError" style="display: none; padding: 10px 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: var(--radius-sm); color: #fca5a5; font-size: 12px;"></div>
