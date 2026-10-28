@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Notification, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, dialog, safeStorage, session } = require('electron');
 
 // Garante instância única imediatamente no topo, antes de acessar userData ou inicializar serviços
 const gotTheLock = app.requestSingleInstanceLock();
@@ -294,6 +294,20 @@ ipcMain.handle('open-buffer-temp', async (event, { fileName, buffer }) => {
     return { success: true, path: tempFilePath };
   } catch (err) {
     console.error('Error opening temp file:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Save downloaded attachment directly to Downloads folder (overwrites without prompting)
+ipcMain.handle('save-to-downloads', async (event, { fileName, buffer }) => {
+  try {
+    const downloadsDir = app.getPath('downloads');
+    const safeName = (fileName || 'anexo').replace(/[/\\?%*:|"<>]/g, '_');
+    const targetPath = path.join(downloadsDir, safeName);
+    fs.writeFileSync(targetPath, Buffer.from(buffer));
+    return { success: true, path: targetPath, fileName: safeName };
+  } catch (err) {
+    console.error('Error saving to downloads:', err);
     return { success: false, error: err.message };
   }
 });
@@ -911,6 +925,16 @@ app.on('before-quit', () => {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Downloads do Chromium direcionados automaticamente para a pasta Downloads sem perguntar
+  if (session && session.defaultSession) {
+    session.defaultSession.on('will-download', (event, item) => {
+      const downloadsDir = app.getPath('downloads');
+      const filename = item.getFilename();
+      const safeName = (filename || 'anexo').replace(/[/\\?%*:|"<>]/g, '_');
+      item.setSavePath(path.join(downloadsDir, safeName));
+    });
+  }
 
   // Check for updates 5 seconds after startup if in production package
   if (app.isPackaged && autoUpdater) {

@@ -189,13 +189,115 @@ async function getOrFetchAttachmentBlobUrl(ticketId, attachmentId) {
   }
 }
 
-async function downloadAttachmentFile(ticketId, attId, fileName) {
+// Renomeia o anexo antes do download conforme o layout e tipo de arquivo:
+// Exemplo: Layout 13 -> 13-doc-1.pdf, 13-doc-2.pdf, 13-img-1.jpg, 13-img-2.jpg
+function getFormattedAttachmentName(ticket, att, customList = null) {
+  const t = ticket || selectedTicket;
+
+  // 1. Obter prefixo do código do layout
+  const layoutInfo = (typeof getTicketLayoutInfo === 'function' && t) ? getTicketLayoutInfo(t) : null;
+  let layoutPrefix = null;
+
+  if (layoutInfo && layoutInfo.code != null) {
+    layoutPrefix = String(layoutInfo.code).trim();
+  } else if (t?.layout?.code != null) {
+    layoutPrefix = String(t.layout.code).trim();
+  } else if (t?.layoutCode != null) {
+    layoutPrefix = String(t.layoutCode).trim();
+  } else if (t?.layout?.name) {
+    const numMatch = String(t.layout.name).match(/\b(\d{2,5})\b/);
+    if (numMatch) layoutPrefix = numMatch[1];
+  }
+
+  if (layoutPrefix) {
+    layoutPrefix = layoutPrefix.replace(/^layout\s*[-–—:]?\s*/i, '').trim();
+  }
+
+  // Fallback caso não haja layout associado: número do chamado ou 'anexo'
+  if (!layoutPrefix) {
+    layoutPrefix = t?.number ? `${t.number}` : 'anexo';
+  }
+
+  // 2. Extrair extensão do arquivo
+  const rawName = (typeof att === 'string')
+    ? att
+    : (att?.fileName || att?.filename || att?.originalName || att?.name || '');
+  const extMatch = rawName.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = extMatch ? extMatch[1].toLowerCase() : 'dat';
+
+  // 3. Categoria: img vs doc
+  const imageExts = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tiff']);
+  const isImg = imageExts.has(ext) ||
+    (att && typeof att === 'object' && (
+      att.category === 'image' ||
+      (att.mimeType && att.mimeType.startsWith('image/')) ||
+      (att.mimetype && att.mimetype.startsWith('image/'))
+    ));
+  const categoryTag = isImg ? 'img' : 'doc';
+
+  // 4. Determinar numeração sequencial (1, 2, 3...)
+  let index = 1;
+  const attList = customList || t?.attachments || [];
+
+  if (Array.isArray(attList) && attList.length > 0) {
+    let countInCat = 0;
+    let found = false;
+    for (const item of attList) {
+      const itemRawName = item?.fileName || item?.filename || item?.originalName || item?.name || '';
+      const itemExtMatch = itemRawName.match(/\.([a-zA-Z0-9]+)$/);
+      const itemExt = itemExtMatch ? itemExtMatch[1].toLowerCase() : '';
+      const itemIsImg = imageExts.has(itemExt) ||
+        (item?.category === 'image') ||
+        (item?.mimeType && item.mimeType.startsWith('image/')) ||
+        (item?.mimetype && item.mimetype.startsWith('image/'));
+
+      const itemCat = itemIsImg ? 'img' : 'doc';
+      if (itemCat === categoryTag) {
+        countInCat++;
+        if (att && typeof att === 'object' && att.id && item.id && String(att.id) === String(item.id)) {
+          index = countInCat;
+          found = true;
+          break;
+        } else if (rawName && itemRawName === rawName) {
+          index = countInCat;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found && countInCat > 0) {
+      index = countInCat + 1;
+    }
+  }
+
+  return `${layoutPrefix}-${categoryTag}-${index}.${ext}`;
+}
+
+async function downloadAttachmentFile(ticketId, attId, fileName, customTicket = null, customList = null) {
   try {
+    const ticket = customTicket || selectedTicket || (ticketId ? window.appStore?.demands?.find(d => d.id === ticketId) : null);
+    const list = customList || ticket?.attachments || [];
+    const targetFileName = getFormattedAttachmentName(ticket, { id: attId, fileName }, list);
+
     const blob = await window.conciliadorAPI.fetchAttachmentBlob(ticketId, attId);
+
+    // Salvar diretamente na pasta Downloads do Windows no Electron (sem diálogo de confirmação ou substituição)
+    if (window.electronAPI && window.electronAPI.saveToDownloads) {
+      const buffer = await blob.arrayBuffer();
+      const res = await window.electronAPI.saveToDownloads(targetFileName, buffer);
+      if (res && res.success) {
+        if (!customList && window.electronAPI.showNotification) {
+          window.electronAPI.showNotification('Download Concluído', `Arquivo ${targetFileName} salvo na pasta Downloads.`);
+        }
+        return res;
+      }
+    }
+
+    // Fallback para navegador web
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName || 'anexo';
+    a.download = targetFileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -206,11 +308,13 @@ async function downloadAttachmentFile(ticketId, attId, fileName) {
 }
 
 async function openAttachmentFile(ticketId, attId, fileName) {
-  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const ticket = selectedTicket || (ticketId ? window.appStore?.demands?.find(d => d.id === ticketId) : null);
+  const targetFileName = getFormattedAttachmentName(ticket, { id: attId, fileName });
+  const ext = (targetFileName.split('.').pop() || '').toLowerCase();
   if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) {
     const blobUrl = await getOrFetchAttachmentBlobUrl(ticketId, attId);
     if (blobUrl) {
-      openImageLightbox(blobUrl, fileName, ticketId, attId);
+      openImageLightbox(blobUrl, targetFileName, ticketId, attId);
       return;
     }
   }
@@ -219,13 +323,19 @@ async function openAttachmentFile(ticketId, attId, fileName) {
     // Use native desktop application if running in Electron
     if (window.electronAPI && window.electronAPI.openBufferTemp) {
       const buffer = await blob.arrayBuffer();
-      const res = await window.electronAPI.openBufferTemp(fileName, buffer);
+      const res = await window.electronAPI.openBufferTemp(targetFileName, buffer);
+      if (res && res.success) return;
+    }
+    // Fallback directly to downloads
+    if (window.electronAPI && window.electronAPI.saveToDownloads) {
+      const buffer = await blob.arrayBuffer();
+      const res = await window.electronAPI.saveToDownloads(targetFileName, buffer);
       if (res && res.success) return;
     }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName || 'anexo';
+    a.download = targetFileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -304,13 +414,34 @@ function updateLightboxView() {
   }
 
   if (btnDownload) {
-    btnDownload.onclick = () => {
-      const a = document.createElement('a');
-      a.href = current.blobUrl;
-      a.download = current.fileName || 'imagem.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    btnDownload.onclick = async () => {
+      if (current.ticketId && current.attId) {
+        await downloadAttachmentFile(current.ticketId, current.attId, current.fileName);
+      } else if (current.blobUrl) {
+        const targetFileName = getFormattedAttachmentName(selectedTicket, { fileName: current.fileName });
+        try {
+          const resp = await fetch(current.blobUrl);
+          const blob = await resp.blob();
+          if (window.electronAPI && window.electronAPI.saveToDownloads) {
+            const buffer = await blob.arrayBuffer();
+            const res = await window.electronAPI.saveToDownloads(targetFileName, buffer);
+            if (res && res.success) {
+              if (window.electronAPI.showNotification) {
+                window.electronAPI.showNotification('Download Concluído', `Imagem ${targetFileName} salva na pasta Downloads.`);
+              }
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Fallback lightbox download error:', e);
+        }
+        const a = document.createElement('a');
+        a.href = current.blobUrl;
+        a.download = targetFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     };
   }
 }
@@ -1842,13 +1973,18 @@ function renderDrawerAttachments(attachments) {
           btnDownloadAll.disabled = true;
           const oldText = btnDownloadAll.innerHTML;
           btnDownloadAll.innerHTML = '<span>⏳</span> <span>Baixando...</span>';
+          let countDownloaded = 0;
           for (const att of attachments) {
             const fName = att.fileName || att.filename || att.originalName || att.name || 'anexo';
-            await downloadAttachmentFile(ticketId, att.id, fName);
-            await new Promise(r => setTimeout(r, 400));
+            await downloadAttachmentFile(ticketId, att.id, fName, selectedTicket, attachments);
+            countDownloaded++;
+            await new Promise(r => setTimeout(r, 120));
           }
           btnDownloadAll.disabled = false;
           btnDownloadAll.innerHTML = oldText;
+          if (window.electronAPI && window.electronAPI.showNotification) {
+            window.electronAPI.showNotification('Downloads Concluídos', `${countDownloaded} arquivo(s) salvos na pasta Downloads.`);
+          }
         };
       }
     }
@@ -2259,7 +2395,7 @@ async function handleFinalizeTicket(targetTicket = null) {
   }
 }
 
-// Ação de Fluxo: Devolver para o Desenvolvedor (Status: in_progress)
+// Ação de Fluxo: Devolver para o Desenvolvedor (Status: queued / Na Fila)
 async function handleReturnTicketToDev(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
   if (!ticket) return;
@@ -2269,7 +2405,7 @@ async function handleReturnTicketToDev(targetTicket = null) {
     icon: '↩️',
     title: 'Devolver para o Desenvolvedor',
     subtitle: `Responsável atual: ${devName} | #${ticket.number || ticket.movideskTicketId || ticket.id.slice(0, 8)}`,
-    bannerText: 'O status do chamado voltará para "Em Desenvolvimento" para que o desenvolvedor realize as correções necessárias.',
+    bannerText: 'O status do chamado voltará para "Na Fila" para que o desenvolvedor realize as correções necessárias.',
     suggestions: [
       'Inconsistência encontrada durante os testes de homologação',
       'Necessário ajustar regras de layout e campos obrigatórios',
@@ -2279,7 +2415,7 @@ async function handleReturnTicketToDev(targetTicket = null) {
       'Ajustar mapeamento de colunas'
     ],
     placeholder: 'Descreva os erros encontrados ou o que precisa ser corrigido pelo desenvolvedor...',
-    confirmText: 'Devolver p/ Desenvolvedor',
+    confirmText: 'Devolver para a Fila',
     confirmClass: 'btn-confirm-return',
     defaultComment: true,
     requireReason: true
@@ -2291,12 +2427,12 @@ async function handleReturnTicketToDev(targetTicket = null) {
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
-    statusText.textContent = 'Devolvendo demanda para o desenvolvedor...';
+    statusText.textContent = 'Devolvendo demanda para a fila do desenvolvedor...';
   }
 
   try {
-    // 1. Alterar status na API para in_progress
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
+    // 1. Alterar status na API para queued (Na Fila)
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'queued', reason);
 
     // 2. Adicionar comentário na linha do tempo se marcado (apenas a mensagem direta)
     if (result.addComment && reason) {
@@ -2308,13 +2444,13 @@ async function handleReturnTicketToDev(targetTicket = null) {
     }
 
     // 3. Atualizar localmente
-    ticket.status = 'in_progress';
+    ticket.status = 'queued';
     const statusSelect = document.getElementById('drawerEditStatus');
-    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'in_progress';
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'queued';
 
     const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
-      window.appStore.demands[idx].status = 'in_progress';
+      window.appStore.demands[idx].status = 'queued';
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
@@ -2327,14 +2463,14 @@ async function handleReturnTicketToDev(targetTicket = null) {
 
       if (statusText) {
         statusText.style.color = '#10b981';
-        statusText.textContent = '↩️ Demanda devolvida para o desenvolvedor!';
+        statusText.textContent = '↩️ Demanda devolvida para a fila!';
         setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
       }
       await refreshDrawerActivity(ticket.id);
     }
 
     renderDemands();
-    showAppAlert('Demanda devolvida para o desenvolvedor com sucesso!', 'Em Desenvolvimento', 'info');
+    showAppAlert('Demanda devolvida para a fila com sucesso!', 'Na Fila', 'info');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao devolver chamado: ' + err.message, 'Erro', 'error');
@@ -2703,8 +2839,8 @@ function getWorkflowButtonsHtml(status, isQuick = false) {
         <button type="button" class="btn-quick-workflow btn-quick-finalize" data-action="finalize" title="Finalizar e concluir chamado">
           <span>✅</span> Finalizar
         </button>
-        <button type="button" class="btn-quick-workflow btn-quick-return" data-action="return-dev" title="Devolver para o desenvolvedor">
-          <span>↩️</span> Devolver p/ Dev
+        <button type="button" class="btn-quick-workflow btn-quick-return" data-action="return-dev" title="Devolver para a fila do desenvolvedor">
+          <span>↩️</span> Devolver p/ Fila
         </button>
       `;
     }
@@ -2751,8 +2887,8 @@ function getWorkflowButtonsHtml(status, isQuick = false) {
       <button type="button" class="btn-bottom-action btn-bottom-finalize" data-action="finalize" title="Finalizar e homologar chamado">
         <span>✅</span> <span>Finalizar Chamado</span>
       </button>
-      <button type="button" class="btn-bottom-action btn-bottom-return" data-action="return-dev" title="Devolver chamado para o desenvolvedor com justificativa">
-        <span>↩️</span> <span>Devolver para o Dev</span>
+      <button type="button" class="btn-bottom-action btn-bottom-return" data-action="return-dev" title="Devolver chamado para a fila do desenvolvedor com justificativa">
+        <span>↩️</span> <span>Devolver para a Fila</span>
       </button>
     `;
   }

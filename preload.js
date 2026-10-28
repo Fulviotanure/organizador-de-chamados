@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open temp attachment file with default system app
   openBufferTemp: (fileName, buffer) => ipcRenderer.invoke('open-buffer-temp', { fileName, buffer }),
 
+  // Save directly to Downloads folder without prompting
+  saveToDownloads: (fileName, buffer) => ipcRenderer.invoke('save-to-downloads', { fileName, buffer }),
+
   // AutoDrive Integration
   launchAutoDrive: (data) => ipcRenderer.invoke('launch-autodrive', data),
   getDriveStatus: () => ipcRenderer.invoke('drive-get-status'),
