@@ -6,7 +6,7 @@
   <title>Chamados Conciliador Contábil</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" type="image/x-icon" href="assets/icon.ico">
   <link rel="icon" type="image/png" href="assets/logo-icon.png">
   <link rel="stylesheet" href="css/style.css">
@@ -116,7 +116,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.39</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.40</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -140,7 +140,9 @@
           <!-- Search Input -->
           <div class="search-container">
             <span class="search-icon">🔍</span>
-            <input type="text" class="search-input" id="inputSearch" placeholder="Buscar por nº, título, Movidesk, banco de dados ou responsável... (Ctrl+F)">
+            <input type="text" class="search-input" id="inputSearch" placeholder="Buscar por nº, título, Movidesk, banco de dados ou responsável...">
+            <kbd class="search-kbd-hint" id="searchKbdHint">Ctrl+K</kbd>
+            <button type="button" class="search-clear-btn" id="btnClearSearch" title="Limpar busca (Esc)">✕</button>
           </div>
 
           <!-- Controls -->
@@ -474,10 +476,6 @@
             <span>📦</span> Arquivar
           </button>
         </div>
-
-        <!-- Botões de compatibilidade com scripts existentes -->
-        <button id="btnOpenWeb" style="display: none;"></button>
-        <button id="btnOpenMovidesk" style="display: none;"></button>
       </div>
 
       <!-- 3. DEPOIS OS BOTÕES DE ABAS DO CHAMADO -->
@@ -1162,8 +1160,14 @@
   <div class="modal-overlay" id="filterModalOverlay">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title" id="filterModalTitle">Novo Filtro Fixo</div>
-        <button class="icon-btn-ghost" id="btnCloseFilterModal">✕</button>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; font-size: 16px;">🎯</div>
+          <div>
+            <div class="modal-title" id="filterModalTitle">Novo Filtro Fixo</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Atalho personalizado na barra lateral</div>
+          </div>
+        </div>
+        <button class="icon-btn-ghost" id="btnCloseFilterModal" title="Fechar (Esc)">✕</button>
       </div>
 
       <div class="modal-body">
@@ -1295,12 +1299,12 @@
   <!-- AutoDrive Integration Modal -->
   <div class="modal-overlay" id="modalAutoDrive" style="display: none;">
     <div class="modal-card autodrive-card-wide">
-      <div class="modal-header" style="background: linear-gradient(135deg, rgba(31, 111, 235, 0.18) 0%, transparent 100%);">
+      <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(31, 111, 235, 0.25); border: 1px solid rgba(56, 139, 253, 0.4); display: flex; align-items: center; justify-content: center; font-size: 18px;">🚀</div>
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; font-size: 18px;">🚀</div>
           <div>
             <div style="display: flex; align-items: center; gap: 10px;">
-              <span class="modal-title" style="font-size: 16px; font-weight: 700; color: #f0f6fc;">AutoDrive • Google Drive Layouts</span>
+              <span class="modal-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">AutoDrive • Google Drive Layouts</span>
               <div id="autoDriveAccountStatus" class="autodrive-status-pill">
                 <span id="autoDriveStatusDot">🟢</span>
                 <span id="autoDriveAccountEmail">Verificando Google Drive...</span>
@@ -1315,30 +1319,30 @@
       <div class="modal-body" id="autoDriveModalBody" style="gap: 14px; max-height: 80vh; overflow-y: auto;">
         
         <!-- Live Progress Box (Shown during upload) -->
-        <div id="autoDriveProgressBox" style="display: none; background: rgba(13, 17, 23, 0.95); border: 1px solid #388bfd; border-radius: 8px; padding: 16px;">
+        <div id="autoDriveProgressBox" style="display: none; background: var(--bg-sidebar); border: 1px solid rgba(56, 189, 248, 0.45); border-radius: var(--radius-md); padding: 16px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-weight: 700; font-size: 13px; color: #58a6ff; display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 700; font-size: 13px; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
               <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
               <span id="autoDriveProgressTitle">Processando sincronização com o Google Drive...</span>
             </span>
             <span id="autoDriveProgressStepText" style="font-size: 11px; color: var(--text-muted);">Aguarde...</span>
           </div>
-          <div style="font-size: 12px; color: #c9d1d9; margin-top: 6px; font-family: Consolas, monospace;" id="autoDriveProgressMsg">
+          <div style="font-size: 12px; color: var(--text-primary); margin-top: 6px; font-family: var(--font-mono);" id="autoDriveProgressMsg">
             Iniciando autenticação...
           </div>
         </div>
 
         <!-- Success Result Box (Shown after completion) -->
-        <div id="autoDriveSuccessBox" style="display: none; background: rgba(35, 134, 54, 0.15); border: 2px solid #2ea043; border-radius: 8px; padding: 18px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+        <div id="autoDriveSuccessBox" style="display: none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: var(--radius-md); padding: 18px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
           <div style="display: flex; align-items: flex-start; gap: 14px;">
             <div style="font-size: 28px; line-height: 1;">✅</div>
             <div style="flex: 1;">
-              <div style="font-weight: 700; font-size: 15px; color: #3fb950;">Layout sincronizado com sucesso no Google Drive!</div>
-              <div style="font-size: 12px; color: #e6edf3; margin-top: 6px;" id="autoDriveSuccessSummary">
+              <div style="font-weight: 700; font-size: 15px; color: #34d399;">Layout sincronizado com sucesso no Google Drive!</div>
+              <div style="font-size: 12px; color: var(--text-primary); margin-top: 6px;" id="autoDriveSuccessSummary">
                 Pastas e arquivos padronizados com sucesso.
               </div>
               <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center;">
-                <button type="button" class="btn-primary" id="btnOpenDriveFolderLink" style="height: 36px; font-size: 12px; padding: 0 16px; gap: 8px; background: linear-gradient(135deg, #238636 0%, #196c2e 100%); border-color: #2ea043; font-weight: 700; box-shadow: 0 0 14px rgba(35, 134, 54, 0.45);">
+                <button type="button" class="btn-primary" id="btnOpenDriveFolderLink" style="height: 36px; font-size: 12px; padding: 0 16px; gap: 8px; font-weight: 700;">
                   <span>🌐</span> <span>Abrir Pasta no Google Drive</span>
                 </button>
                 <button type="button" class="btn-secondary" id="btnCopyDriveFolderLink" style="height: 36px; font-size: 12px; padding: 0 14px; gap: 6px;" title="Copiar link da pasta no Google Drive">
@@ -1358,26 +1362,26 @@
         <!-- Entrada Rápida Padrão -->
         <div class="form-group" style="margin-bottom: 2px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <label class="form-label" style="font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e;">Texto Padrão (Entrada Rápida AutoDrive)</label>
+            <label class="form-label" style="font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Texto Padrão (Entrada Rápida AutoDrive)</label>
             <button type="button" id="btnCopyAutoDriveQuick" class="btn-external-link" style="height: 24px; font-size: 11px; padding: 0 10px; gap: 4px;" title="Copiar texto padrão">
               <span>📋</span> <span id="copyQuickBtnText">Copiar</span>
             </button>
           </div>
-          <input type="text" class="form-input" id="autoDriveQuickText" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #38bdf8; background: #0d1117; border-color: #30363d;" placeholder="10328 - SICOOB - COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
+          <input type="text" class="form-input" id="autoDriveQuickText" style="font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: #38bdf8; background: var(--bg-sidebar); border-color: var(--border-light);" placeholder="10328 - SICOOB - COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
         </div>
 
         <!-- Campos Desmembrados Grid (Sem Tipo e Sem Banco de Dados) -->
         <div style="display: grid; grid-template-columns: 140px 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">NÚMERO DO LAYOUT</label>
-            <input type="text" class="form-input" id="autoDriveNumeroLayout" style="font-family: Consolas, monospace; font-size: 12px; font-weight: 700;" placeholder="10328">
+            <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">NÚMERO DO LAYOUT</label>
+            <input type="text" class="form-input" id="autoDriveNumeroLayout" style="font-family: var(--font-mono); font-size: 12px; font-weight: 700;" placeholder="10328">
           </div>
           <div class="form-group">
-            <label class="form-label" id="labelAutoDriveEntidade" style="font-size: 11px; color: #8b949e;">BANCO OU SISTEMA</label>
+            <label class="form-label" id="labelAutoDriveEntidade" style="font-size: 11px; color: var(--text-secondary);">BANCO OU SISTEMA</label>
             <input type="text" class="form-input" id="autoDriveEntidade" style="font-size: 12px; font-weight: 600;" placeholder="SICOOB">
           </div>
           <div class="form-group">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">CATEGORIA NO DRIVE</label>
+            <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">CATEGORIA NO DRIVE</label>
             <select class="form-select" id="autoDriveCategoria" style="font-size: 12px; font-weight: 600;">
               <option value="BANCOS">🏦 BANCOS</option>
               <option value="SISTEMAS">💻 SISTEMAS DIVERSOS</option>
@@ -1391,26 +1395,26 @@
 
         <div style="display: grid; grid-template-columns: 1fr 220px; gap: 12px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">NOME DO DOCUMENTO</label>
+            <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">NOME DO DOCUMENTO</label>
             <input type="text" class="form-input" id="autoDriveDocumento" style="font-size: 12px;" placeholder="COMPROVANTES DE EFETIVAÇÃO DE RECEBIMENTO PIX">
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between;">
+            <label class="form-label" style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between;">
               <span>🔑 SENHA DO ARQUIVO / PDF</span>
               <span id="btnToggleAutoDrivePassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
             </label>
-            <input type="password" class="form-input" id="autoDriveSenha" style="font-family: Consolas, monospace; font-size: 12px;" placeholder="Senha (se houver)">
+            <input type="password" class="form-input" id="autoDriveSenha" style="font-family: var(--font-mono); font-size: 12px;" placeholder="Senha (se houver)">
           </div>
         </div>
 
         <!-- Painel Interativo de Verificação e Confirmação Pré-Envio -->
-        <div id="autoDriveApprovalBox" style="display: none; background: #0d1117; border: 2px solid #388bfd; border-radius: 8px; padding: 16px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);">
+        <div id="autoDriveApprovalBox" style="display: none; background: var(--bg-sidebar); border: 1px solid rgba(56, 189, 248, 0.45); border-radius: var(--radius-md); padding: 16px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-            <div style="font-weight: 700; font-size: 13px; color: #f0f6fc; display: flex; align-items: center; gap: 8px;">
+            <div style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 16px;">🔍</span>
               <span>Resultado da Verificação Prévia no Google Drive</span>
             </div>
-            <span style="font-size: 11px; font-weight: 700; background: rgba(56, 139, 253, 0.2); color: #58a6ff; border-radius: 4px; padding: 2px 8px;">Aguardando sua Aprovação</span>
+            <span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.16); color: #38bdf8; border-radius: 4px; padding: 2px 8px;">Aguardando sua Aprovação</span>
           </div>
 
           <div id="autoDriveApprovalDetails" style="display: flex; flex-direction: column; gap: 8px; font-size: 12px;">
@@ -1418,14 +1422,14 @@
           </div>
 
           <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-            <div style="font-size: 12px; font-weight: 600; color: #e6edf3;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
               Deseja aprovar e executar a criação das pastas e o envio dos arquivos agora?
             </div>
             <div style="display: flex; gap: 8px;">
               <button type="button" class="btn-secondary" id="btnCancelApprovalStep" style="height: 32px; font-size: 12px; padding: 0 12px;">
                 ✏️ Voltar e Ajustar
               </button>
-              <button type="button" class="btn-primary" id="btnConfirmAndUploadNow" style="height: 32px; font-size: 12px; padding: 0 16px; background: linear-gradient(135deg, #238636 0%, #196c2e 100%); border-color: #2ea043; font-weight: 700; gap: 6px; box-shadow: 0 0 12px rgba(35, 134, 54, 0.4);">
+              <button type="button" class="btn-primary" id="btnConfirmAndUploadNow" style="height: 32px; font-size: 12px; padding: 0 16px; font-weight: 700; gap: 6px;">
                 <span>✅</span> <span>Aprovar & Criar no Google Drive</span>
               </button>
             </div>
@@ -1436,8 +1440,8 @@
         <div class="autodrive-section-box" id="autoDriveImagesSection">
           <div style="display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 12px; font-weight: 700; color: #f0f6fc; text-transform: uppercase;">🖼️ Imagens da Demanda</span>
-              <span id="autoDriveImagesCountBadge" style="background: rgba(56, 139, 253, 0.2); color: #58a6ff; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">0 imagens</span>
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase;">🖼️ Imagens da Demanda</span>
+              <span id="autoDriveImagesCountBadge" style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">0 imagens</span>
             </div>
             <div style="display: flex; gap: 6px;">
               <input type="file" id="inputAddAutoDriveImage" accept="image/*" multiple style="display: none;">
@@ -1447,7 +1451,7 @@
             </div>
           </div>
 
-          <div style="font-size: 11px; color: #8b949e; line-height: 1.4;">
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
             As imagens anexadas estão visíveis abaixo. <strong>Apague qualquer imagem que não seja o mapeamento</strong> (como logos, assinaturas de e-mail ou telas secundárias) clicando em <strong>🗑️ Apagar</strong> para enviar apenas o print do mapeamento oficial.
           </div>
 
@@ -1468,7 +1472,7 @@
         <div class="autodrive-section-box" id="autoDrivePdfSection">
           <div style="display: flex; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 12px; font-weight: 700; color: #f0f6fc; text-transform: uppercase;">📕 Manual do Layout (PDF)</span>
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase;">📕 Manual do Layout (PDF)</span>
               <span id="autoDrivePdfStatusBadge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700;">Nenhum</span>
             </div>
             <div>
@@ -1488,7 +1492,7 @@
         <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 4px;">
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
             <input type="checkbox" id="chkAutoDriveSaveMirror" checked>
-            <span>Salvar cópia no Espelho Local (<span id="autoDriveMirrorNoticePath" style="font-family: Consolas, monospace; font-size: 11px;">..\autodrive\espelho_local</span>)</span>
+            <span>Salvar cópia no Espelho Local (<span id="autoDriveMirrorNoticePath" style="font-family: var(--font-mono); font-size: 11px;">..\autodrive\espelho_local</span>)</span>
           </label>
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
             <input type="checkbox" id="chkAutoDriveMinimizeApp">
@@ -1498,34 +1502,32 @@
 
       </div>
 
-      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface);">
+      <div class="modal-footer" style="display: flex; align-items: center; justify-content: space-between;">
         <button type="button" class="btn-secondary" id="btnCancelAutoDriveModal">
           Cancelar
         </button>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <button type="button" class="btn-secondary" id="btnLaunchExternalPython" style="font-size: 11px; gap: 6px; color: #8b949e;" title="Abrir no aplicativo AutoDrive externo (Python)">
+          <button type="button" class="btn-secondary" id="btnLaunchExternalPython" style="font-size: 11px; gap: 6px;" title="Abrir no aplicativo AutoDrive externo (Python)">
             <span>🐍</span> <span>Abrir no AutoDrive Externo</span>
           </button>
-          <button type="button" class="btn-primary" id="btnLaunchAutoDriveNow" style="background: linear-gradient(135deg, #1f6feb 0%, #1158c7 100%); border-color: #388bfd; font-weight: 700; padding: 0 20px; gap: 8px; box-shadow: 0 0 15px rgba(31, 111, 235, 0.4);">
+          <button type="button" class="btn-primary" id="btnLaunchAutoDriveNow" style="font-weight: 700; padding: 0 20px; gap: 8px;">
             <span id="autoDriveBtnIcon">🔍</span> <span id="autoDriveBtnText">Verificar no Google Drive</span>
           </button>
         </div>
       </div>
     </div>
   </div>
-    </div>
-  </div>
 
   <!-- Modal de Configurações e Informações do Usuário (Engrenagem ⚙️) -->
   <div class="modal-overlay" id="modalUserSettings" style="display: none; z-index: 9999;">
     <div class="modal-card user-settings-card">
-      <div class="modal-header" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, transparent 100%);">
+      <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; padding: 5px;">
+          <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; padding: 5px;">
             <img src="assets/logo-icon.png" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;">
           </div>
           <div>
-            <div class="modal-title" style="font-size: 16px; font-weight: 700; color: #f0f6fc;">Configurações & Usuário</div>
+            <div class="modal-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">Configurações & Usuário</div>
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Reconhecimento do perfil, verificação de senha salva e conexões</div>
           </div>
         </div>
@@ -1540,7 +1542,7 @@
           <div class="user-recognition-info">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="user-recognition-name" id="settingsUserName">Reconhecendo usuário...</span>
-              <span class="badge" id="settingsUserRoleBadge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 11px;">Identificando...</span>
+              <span class="badge" id="settingsUserRoleBadge" style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px;">Identificando...</span>
             </div>
             <div class="user-recognition-email" id="settingsUserEmail">identificando@email.com</div>
             <div class="user-recognition-status" id="settingsUserAuthStatus">
@@ -1582,11 +1584,11 @@
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 11px; color: #8b949e;">E-MAIL DE ACESSO</label>
+              <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">E-MAIL DE ACESSO</label>
               <input type="email" class="form-input" id="settingsInputEmail" placeholder="seu.email@conciliadorcontabil.com.br" style="font-size: 12px;">
             </div>
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between;">
+              <label class="form-label" style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between;">
                 <span>SENHA DO USUÁRIO</span>
                 <span id="btnToggleShowSettingsPassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
               </label>
@@ -1622,12 +1624,12 @@
           </div>
 
           <!-- Opções Rápidas de Conexão com Google Drive -->
-          <div style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
-            <div style="font-size: 11px; font-weight: 600; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+          <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.22); border-radius: 8px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 600; color: #34d399; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
               <span>⚡</span> CONEXÃO RÁPIDA COM O GOOGLE DRIVE
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <button type="button" class="btn-primary" id="btnOAuthLoginDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px; background: #2563eb;">
+              <button type="button" class="btn-primary" id="btnOAuthLoginDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px;">
                 <span>🌐</span> Conectar com Conta Google (Login)
               </button>
               <button type="button" class="btn-secondary" id="btnSyncAutoDrive" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 6px;" title="Importar credenciais do AutoDrive instalado neste computador">
@@ -1642,12 +1644,12 @@
           <!-- Campos de Email e Senha do Google Drive -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 11px; color: #8b949e;">E-MAIL GOOGLE DRIVE</label>
+              <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">E-MAIL GOOGLE DRIVE</label>
               <input type="email" class="form-input" id="settingsDriveInputEmail" placeholder="seu.email@gmail.com" style="font-size: 12px;">
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" style="font-size: 11px; color: #8b949e; display: flex; justify-content: space-between; align-items: center;">
+              <label class="form-label" style="font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center;">
                 <span>SENHA / TOKEN DO DRIVE</span>
                 <span id="btnToggleShowDrivePassword" style="cursor: pointer; color: #38bdf8; font-size: 11px;">👁️ Ver</span>
               </label>
@@ -1659,9 +1661,9 @@
 
           <!-- Pasta de Backup / Espelho Local -->
           <div class="form-group" style="margin-bottom: 12px;">
-            <label class="form-label" style="font-size: 11px; color: #8b949e;">PASTA DO ESPELHO LOCAL (BACKUP NO PC)</label>
+            <label class="form-label" style="font-size: 11px; color: var(--text-secondary);">PASTA DO ESPELHO LOCAL (BACKUP NO PC)</label>
             <div style="display: flex; gap: 8px;">
-              <input type="text" class="form-input" id="settingsLocalMirrorPath" placeholder="Ex: C:\MeusBackups\Espelho_Local" style="font-family: Consolas, monospace; font-size: 11px; color: #38bdf8; background: #0d1117;" value="">
+              <input type="text" class="form-input" id="settingsLocalMirrorPath" placeholder="Ex: C:\MeusBackups\Espelho_Local" style="font-family: var(--font-mono); font-size: 11px; color: #38bdf8; background: var(--bg-sidebar);" value="">
               <button type="button" class="btn-secondary" id="btnSelectSettingsMirrorFolder" style="height: 32px; font-size: 11px; padding: 0 12px; gap: 4px; white-space: nowrap;" title="Escolher pasta no computador">
                 <span>📂</span> Alterar
               </button>
@@ -1727,10 +1729,12 @@
   <!-- Login Overlay (Shown if not authenticated) -->
   <div class="login-overlay" id="loginOverlay" style="display: none;">
     <div class="login-card">
-      <div class="login-logo">CC</div>
+      <div class="login-logo">
+        <img src="assets/logo-icon.png" alt="Logo Conciliador Contábil">
+      </div>
       <div class="login-header">
-        <div class="login-title">Conciliador Contábil</div>
-        <div class="login-subtitle">Entre com suas credenciais do Importer Ultra para conectar suas demandas</div>
+        <div class="login-title">Central de Chamados</div>
+        <div class="login-subtitle">Entre com suas credenciais do Importer Ultra para sincronizar suas demandas</div>
       </div>
 
       <div class="form-group">
@@ -1889,6 +1893,8 @@
         </div>
       </div>
     </div>
+  </div>
+
   <!-- Notificação Flutuante Estilo Discord (Atualização Pronta sem Bloquear a Tela) -->
   <div id="discordUpdateToast" class="discord-update-toast" style="display: none;">
     <div class="discord-toast-icon-wrapper">
@@ -1912,6 +1918,13 @@
   <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/ui/icons.js"></script>
+  <script src="js/ui/dialogs.js"></script>
+  <script src="js/ui/layouts-browser.js"></script>
+  <script src="js/ui/table-kanban.js"></script>
+  <script src="js/ui/drawer.js"></script>
+  <script src="js/ui/calendar.js"></script>
+  <script src="js/ui/autodrive-modal.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

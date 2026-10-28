@@ -31,10 +31,9 @@ class AppStore {
     // Fixed filters definition
     this.fixedFilters = [];
 
-    // Local enhancements (favorites, notes, tags, ignored tickets)
+    // Local enhancements (favorites, notes, ignored tickets)
     this.localNotes = {};
     this.favorites = {};
-    this.localTags = {};
     this.ignoredTickets = {};
     this.ignoredTicketsCache = {};
 
@@ -60,7 +59,6 @@ class AppStore {
         const storedFilters = await window.electronAPI.loadStorage('fixedFilters', null);
         const storedNotes = await window.electronAPI.loadStorage('localNotes', {});
         const storedFavorites = await window.electronAPI.loadStorage('favorites', {});
-        const storedTags = await window.electronAPI.loadStorage('localTags', {});
         const storedIgnored = await window.electronAPI.loadStorage('ignoredTickets', {});
         const storedIgnoredCache = await window.electronAPI.loadStorage('ignoredTicketsCache', {});
         const storedDemands = await window.electronAPI.loadStorage('cachedDemands', []);
@@ -84,7 +82,6 @@ class AppStore {
         this.savedCredentials = storedCreds;
         this.localNotes = storedNotes || {};
         this.favorites = storedFavorites || {};
-        this.localTags = storedTags || {};
         this.ignoredTickets = { ...(localIgnored || {}), ...(storedIgnored || {}) };
         this.ignoredTicketsCache = { ...(localIgnoredCache || {}), ...(storedIgnoredCache || {}) };
         this.demands = storedDemands || [];
@@ -371,8 +368,8 @@ class AppStore {
       {
         id: 'due_critical',
         name: 'Prazos Críticos',
-        icon: '📅',
-        color: '#ec4899',
+        icon: '🔥',
+        color: '#fb923c',
         isSystem: true,
         criteria: {
           deadline: 'urgent' // overdue or today
@@ -858,6 +855,170 @@ class AppStore {
     }
   }
 
+  // Shared Fixed Filter Criteria evaluation (used by both getFilteredDemands and countForFilter)
+  matchesFixedCriteria(ticket, criteria = {}, now = new Date(), todayStr = now.toISOString().slice(0, 10)) {
+    // 1. Check Ignored logic:
+    const isTicketIgnored = this.isIgnored(ticket.id);
+    if (criteria.ignoredOnly) {
+      if (!isTicketIgnored) return false;
+    } else {
+      // By default, ignore list hides tickets from all standard filters!
+      if (isTicketIgnored) return false;
+    }
+
+    // 2. Fixed Filter: Favorites only
+    if (criteria.favoritesOnly && !this.isFavorite(ticket.id)) {
+      return false;
+    }
+
+    // 2b. Fixed Filter: Closed Today only
+    if (criteria.closedToday && !this.isTicketClosedToday(ticket)) {
+      return false;
+    }
+
+    // 3. Fixed Filter: My Demands
+    if (criteria.isMyDemands && this.currentUser) {
+      const isAssigned = ticket.assignedToId === this.currentUser.id ||
+                         ticket.assignedTo?.id === this.currentUser.id ||
+                         ticket.assignedTo?.name?.toLowerCase().includes(this.currentUser.name?.toLowerCase());
+      const isRequested = ticket.requestedById === this.currentUser.id ||
+                          ticket.requestedBy?.id === this.currentUser.id;
+      if (!isAssigned && !isRequested) return false;
+    }
+
+    // 4. Fixed Filter: Status criteria
+    if (criteria.status && criteria.status.length > 0) {
+      const ticketStatus = (ticket.status || '').toLowerCase();
+      const matchesStatus = criteria.status.some(s => ticketStatus.includes(s.toLowerCase()));
+      if (!matchesStatus) return false;
+    }
+
+    // 5. Fixed Filter: Type criteria
+    if (criteria.type && criteria.type.length > 0) {
+      const typeName = (ticket.ticketType?.name || '').toLowerCase();
+      const isUrgentTitle = (ticket.title || '').toLowerCase().includes('urgente');
+      const matchesType = criteria.type.some(t => typeName.includes(t.toLowerCase())) ||
+                          (criteria.isUrgent && isUrgentTitle);
+      if (!matchesType) return false;
+    }
+
+    // 6. Fixed Filter: Developer criteria
+    if (criteria.developerId) {
+      if (criteria.developerId === '__NONE__' || criteria.developerId === 'none') {
+        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+        const isUnassigned = !devName || devName === 'Não atribuído';
+        if (!isUnassigned) return false;
+      } else if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
+        return false;
+      }
+    }
+    if (criteria.developerName) {
+      const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+      const isUnassigned = !devName || devName === 'Não atribuído';
+      if (criteria.developerName === '__NONE__' || criteria.developerName === 'none') {
+        if (!isUnassigned) return false;
+      } else {
+        if (isUnassigned || devName.toLowerCase() !== criteria.developerName.toLowerCase()) return false;
+      }
+    }
+    if (criteria.unassignedOnly) {
+      const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+      const isUnassigned = !devName || devName === 'Não atribuído';
+      if (!isUnassigned) return false;
+    }
+    if (criteria.developers && Array.isArray(criteria.developers) && criteria.developers.length > 0) {
+      const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
+      const isUnassigned = !devName || devName === 'Não atribuído';
+      const matchesDev = criteria.developers.some(dev => {
+        if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') return isUnassigned;
+        if (isUnassigned) return false;
+        return devName.toLowerCase() === dev.toLowerCase();
+      });
+      if (!matchesDev) return false;
+    }
+
+    // 6b. Fixed Filter: Reviewer criteria
+    if (criteria.reviewerId) {
+      if (criteria.reviewerId === '__NONE__' || criteria.reviewerId === 'none') {
+        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+        if (!hasNoRev) return false;
+      } else if (ticket.reviewerId !== criteria.reviewerId && ticket.reviewer?.id !== criteria.reviewerId) {
+        return false;
+      }
+    }
+    if (criteria.reviewerName) {
+      const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+      const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+      if (criteria.reviewerName === '__NONE__' || criteria.reviewerName === 'none') {
+        if (!hasNoRev) return false;
+      } else {
+        if (hasNoRev || revName.toLowerCase() !== criteria.reviewerName.toLowerCase()) return false;
+      }
+    }
+    if (criteria.unassignedReviewerOnly) {
+      const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
+      const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
+      if (!hasNoRev) return false;
+    }
+    if (criteria.isMyReview && this.currentUser) {
+      const revName = ticket.reviewer?.name || ticket.reviewerName || '';
+      const isMyReview = ticket.reviewerId === this.currentUser.id ||
+                         ticket.reviewer?.id === this.currentUser.id ||
+                         revName.toLowerCase().includes(this.currentUser.name?.toLowerCase());
+      if (!isMyReview) return false;
+    }
+
+    // 7. Fixed Filter: Database / Client criteria
+    if (criteria.database) {
+      const db = (ticket.clientDatabase || '').toLowerCase();
+      if (!db.includes(criteria.database.toLowerCase())) return false;
+    }
+
+    // 8. Fixed Filter: Deadline / Prazos
+    if (criteria.deadline) {
+      const dueStr = ticket.deliveryDueDate || ticket.clientDueDate;
+
+      if (criteria.deadline === 'urgent') {
+        // overdue or today
+        if (!dueStr) return false;
+        const dueDate = new Date(dueStr);
+        const isOverdue = dueDate < now && dueStr.slice(0, 10) !== todayStr;
+        const isToday = dueStr.slice(0, 10) === todayStr;
+        if (!isOverdue && !isToday) return false;
+      } else if (criteria.deadline === 'today') {
+        if (!dueStr || dueStr.slice(0, 10) !== todayStr) return false;
+      } else if (criteria.deadline === 'none') {
+        if (dueStr) return false;
+      }
+    }
+
+    // 8b. Fixed Filter: Label criteria
+    if (criteria.noLabelsOnly) {
+      const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+      if (!hasNoLabels) return false;
+    }
+    if (criteria.label) {
+      if (criteria.label === '__NONE__' || criteria.label === 'none' || criteria.label === 'no_labels') {
+        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+        if (!hasNoLabels) return false;
+      } else {
+        if (!this.ticketHasLabel(ticket, criteria.label)) return false;
+      }
+    }
+    if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
+      const matchesAny = criteria.labels.some(l => {
+        if (l === '__NONE__' || l === 'none' || l === 'no_labels') {
+          return !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
+        }
+        return this.ticketHasLabel(ticket, l);
+      });
+      if (!matchesAny) return false;
+    }
+
+    return true;
+  }
+
   // Filtering Engine
   getFilteredDemands() {
     const activePreset = this.fixedFilters.find(f => f.id === this.activeFilterId) || this.fixedFilters[0];
@@ -873,17 +1034,12 @@ class AppStore {
 
     // 1. Filter
     const filtered = this.demands.filter(ticket => {
-      // Check Ignored logic:
-      const isTicketIgnored = this.isIgnored(ticket.id);
-      if (criteria.ignoredOnly) {
-        if (!isTicketIgnored) return false;
-      } else {
-        // By default, ignore list hides tickets from all standard filters!
-        if (isTicketIgnored) return false;
+      // Fixed Filter Criteria (including Ignored, Favorites, ClosedToday, MyDemands, Status, Type, Dev, Reviewer, DB, Deadline, Label)
+      if (!this.matchesFixedCriteria(ticket, criteria, now, todayStr)) {
+        return false;
       }
 
-      // 1. Text search across number, title, movidesk, database, developer, layout
-
+      // Text search across number, title, movidesk, database, developer, layout
       if (query) {
         const numStr = String(ticket.number || '');
         const moviStr = String(ticket.movideskTicketId || '');
@@ -902,156 +1058,6 @@ class AppStore {
                         devStr.includes(query) ||
                         typeStr.includes(query);
         if (!matches) return false;
-      }
-
-      // 2. Fixed Filter: Favorites only
-      if (criteria.favoritesOnly && !this.isFavorite(ticket.id)) {
-        return false;
-      }
-
-      // 2b. Fixed Filter: Closed Today only
-      if (criteria.closedToday && !this.isTicketClosedToday(ticket)) {
-        return false;
-      }
-
-      // 3. Fixed Filter: My Demands
-      if (criteria.isMyDemands && this.currentUser) {
-        const isAssigned = ticket.assignedToId === this.currentUser.id || 
-                           ticket.assignedTo?.id === this.currentUser.id ||
-                           ticket.assignedTo?.name?.toLowerCase().includes(this.currentUser.name?.toLowerCase());
-        const isRequested = ticket.requestedById === this.currentUser.id ||
-                            ticket.requestedBy?.id === this.currentUser.id;
-        if (!isAssigned && !isRequested) return false;
-      }
-
-      // 4. Fixed Filter: Status criteria
-      if (criteria.status && criteria.status.length > 0) {
-        const ticketStatus = (ticket.status || '').toLowerCase();
-        const matchesStatus = criteria.status.some(s => ticketStatus.includes(s.toLowerCase()));
-        if (!matchesStatus) return false;
-      }
-
-      // 5. Fixed Filter: Type criteria
-      if (criteria.type && criteria.type.length > 0) {
-        const typeName = (ticket.ticketType?.name || '').toLowerCase();
-        const isUrgentTitle = (ticket.title || '').toLowerCase().includes('urgente');
-        const matchesType = criteria.type.some(t => typeName.includes(t.toLowerCase())) || 
-                            (criteria.isUrgent && isUrgentTitle);
-        if (!matchesType) return false;
-      }
-
-      // 6. Fixed Filter: Developer criteria
-      if (criteria.developerId) {
-        if (criteria.developerId === '__NONE__' || criteria.developerId === 'none') {
-          const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-          const isUnassigned = !devName || devName === 'Não atribuído';
-          if (!isUnassigned) return false;
-        } else if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
-          return false;
-        }
-      }
-      if (criteria.developerName) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        if (criteria.developerName === '__NONE__' || criteria.developerName === 'none') {
-          if (!isUnassigned) return false;
-        } else {
-          if (isUnassigned || devName.toLowerCase() !== criteria.developerName.toLowerCase()) return false;
-        }
-      }
-      if (criteria.unassignedOnly) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        if (!isUnassigned) return false;
-      }
-      if (criteria.developers && Array.isArray(criteria.developers) && criteria.developers.length > 0) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        const matchesDev = criteria.developers.some(dev => {
-          if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') return isUnassigned;
-          if (isUnassigned) return false;
-          return devName.toLowerCase() === dev.toLowerCase();
-        });
-        if (!matchesDev) return false;
-      }
-
-      // 6b. Fixed Filter: Reviewer criteria
-      if (criteria.reviewerId) {
-        if (criteria.reviewerId === '__NONE__' || criteria.reviewerId === 'none') {
-          const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-          const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-          if (!hasNoRev) return false;
-        } else if (ticket.reviewerId !== criteria.reviewerId && ticket.reviewer?.id !== criteria.reviewerId) {
-          return false;
-        }
-      }
-      if (criteria.reviewerName) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-        if (criteria.reviewerName === '__NONE__' || criteria.reviewerName === 'none') {
-          if (!hasNoRev) return false;
-        } else {
-          if (hasNoRev || revName.toLowerCase() !== criteria.reviewerName.toLowerCase()) return false;
-        }
-      }
-      if (criteria.unassignedReviewerOnly) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-        if (!hasNoRev) return false;
-      }
-      if (criteria.isMyReview && this.currentUser) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || '';
-        const isMyReview = ticket.reviewerId === this.currentUser.id ||
-                           ticket.reviewer?.id === this.currentUser.id ||
-                           revName.toLowerCase().includes(this.currentUser.name?.toLowerCase());
-        if (!isMyReview) return false;
-      }
-
-      // 7. Fixed Filter: Database / Client criteria
-      if (criteria.database) {
-        const db = (ticket.clientDatabase || '').toLowerCase();
-        if (!db.includes(criteria.database.toLowerCase())) return false;
-      }
-
-      // 8. Fixed Filter: Deadline / Prazos
-      if (criteria.deadline) {
-        const dueStr = ticket.deliveryDueDate || ticket.clientDueDate;
-        
-        if (criteria.deadline === 'urgent') {
-          // overdue or today
-          if (!dueStr) return false;
-          const dueDate = new Date(dueStr);
-          const isOverdue = dueDate < now && dueStr.slice(0, 10) !== todayStr;
-          const isToday = dueStr.slice(0, 10) === todayStr;
-          if (!isOverdue && !isToday) return false;
-        } else if (criteria.deadline === 'today') {
-          if (!dueStr || dueStr.slice(0, 10) !== todayStr) return false;
-        } else if (criteria.deadline === 'none') {
-          if (dueStr) return false;
-        }
-      }
-
-      // 8b. Fixed Filter: Label criteria
-      if (criteria.noLabelsOnly) {
-        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-        if (!hasNoLabels) return false;
-      }
-      if (criteria.label) {
-        if (criteria.label === '__NONE__' || criteria.label === 'none' || criteria.label === 'no_labels') {
-          const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-          if (!hasNoLabels) return false;
-        } else {
-          if (!this.ticketHasLabel(ticket, criteria.label)) return false;
-        }
-      }
-      if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
-        const matchesAny = criteria.labels.some(l => {
-          if (l === '__NONE__' || l === 'none' || l === 'no_labels') {
-            return !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-          }
-          return this.ticketHasLabel(ticket, l);
-        });
-        if (!matchesAny) return false;
       }
 
       // 9. Quick Dropdown Filters (supports multi-selection arrays or legacy strings)
@@ -1205,151 +1211,15 @@ class AppStore {
   // Count items for any given fixed filter
   countForFilter(filter) {
     const criteria = filter.criteria || {};
-    return this.demands.filter(ticket => {
-      const isTicketIgnored = this.isIgnored(ticket.id);
-      if (criteria.ignoredOnly) {
-        if (!isTicketIgnored) return false;
-      } else {
-        if (isTicketIgnored) return false;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    let count = 0;
+    for (let i = 0; i < this.demands.length; i++) {
+      if (this.matchesFixedCriteria(this.demands[i], criteria, now, todayStr)) {
+        count++;
       }
-
-      if (criteria.favoritesOnly && !this.isFavorite(ticket.id)) return false;
-
-      if (criteria.closedToday && !this.isTicketClosedToday(ticket)) return false;
-
-
-      if (criteria.isMyDemands && this.currentUser) {
-        const isAssigned = ticket.assignedToId === this.currentUser.id || 
-                           ticket.assignedTo?.id === this.currentUser.id ||
-                           ticket.assignedTo?.name?.toLowerCase().includes(this.currentUser.name?.toLowerCase());
-        const isRequested = ticket.requestedById === this.currentUser.id ||
-                            ticket.requestedBy?.id === this.currentUser.id;
-        if (!isAssigned && !isRequested) return false;
-      }
-
-      if (criteria.status && criteria.status.length > 0) {
-        const ticketStatus = (ticket.status || '').toLowerCase();
-        if (!criteria.status.some(s => ticketStatus.includes(s.toLowerCase()))) return false;
-      }
-
-      if (criteria.type && criteria.type.length > 0) {
-        const typeName = (ticket.ticketType?.name || '').toLowerCase();
-        const isUrgent = (ticket.title || '').toLowerCase().includes('urgente');
-        if (!criteria.type.some(t => typeName.includes(t.toLowerCase())) && !(criteria.isUrgent && isUrgent)) {
-          return false;
-        }
-      }
-
-      if (criteria.developerId) {
-        if (criteria.developerId === '__NONE__' || criteria.developerId === 'none') {
-          const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-          const isUnassigned = !devName || devName === 'Não atribuído';
-          if (!isUnassigned) return false;
-        } else if (ticket.assignedToId !== criteria.developerId && ticket.assignedTo?.id !== criteria.developerId) {
-          return false;
-        }
-      }
-
-      if (criteria.developerName) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        if (criteria.developerName === '__NONE__' || criteria.developerName === 'none') {
-          if (!isUnassigned) return false;
-        } else {
-          if (isUnassigned || devName.toLowerCase() !== criteria.developerName.toLowerCase()) return false;
-        }
-      }
-
-      if (criteria.unassignedOnly) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        if (!isUnassigned) return false;
-      }
-
-      if (criteria.developers && Array.isArray(criteria.developers) && criteria.developers.length > 0) {
-        const devName = ticket.assignedTo?.name ? ticket.assignedTo.name.trim() : '';
-        const isUnassigned = !devName || devName === 'Não atribuído';
-        const matchesDev = criteria.developers.some(dev => {
-          if (dev === '__NONE__' || dev === 'none' || dev === 'unassigned') return isUnassigned;
-          if (isUnassigned) return false;
-          return devName.toLowerCase() === dev.toLowerCase();
-        });
-        if (!matchesDev) return false;
-      }
-
-      // Reviewer criteria in countForFilter
-      if (criteria.reviewerId) {
-        if (criteria.reviewerId === '__NONE__' || criteria.reviewerId === 'none') {
-          const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-          const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-          if (!hasNoRev) return false;
-        } else if (ticket.reviewerId !== criteria.reviewerId && ticket.reviewer?.id !== criteria.reviewerId) {
-          return false;
-        }
-      }
-      if (criteria.reviewerName) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-        if (criteria.reviewerName === '__NONE__' || criteria.reviewerName === 'none') {
-          if (!hasNoRev) return false;
-        } else {
-          if (hasNoRev || revName.toLowerCase() !== criteria.reviewerName.toLowerCase()) return false;
-        }
-      }
-      if (criteria.unassignedReviewerOnly) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || (typeof ticket.reviewer === 'string' ? ticket.reviewer : '');
-        const hasNoRev = !revName || revName === '-' || revName === 'Não atribuído';
-        if (!hasNoRev) return false;
-      }
-      if (criteria.isMyReview && this.currentUser) {
-        const revName = ticket.reviewer?.name || ticket.reviewerName || '';
-        const isMyReview = ticket.reviewerId === this.currentUser.id ||
-                           ticket.reviewer?.id === this.currentUser.id ||
-                           revName.toLowerCase().includes(this.currentUser.name?.toLowerCase());
-        if (!isMyReview) return false;
-      }
-
-      if (criteria.database) {
-        const db = (ticket.clientDatabase || '').toLowerCase();
-        if (!db.includes(criteria.database.toLowerCase())) return false;
-      }
-
-      if (criteria.deadline === 'urgent') {
-        const now = new Date();
-        const todayStr = now.toISOString().slice(0, 10);
-        const dueStr = ticket.deliveryDueDate || ticket.clientDueDate;
-        if (!dueStr) return false;
-        const dueDate = new Date(dueStr);
-        const isOverdue = dueDate < now && dueStr.slice(0, 10) !== todayStr;
-        const isToday = dueStr.slice(0, 10) === todayStr;
-        if (!isOverdue && !isToday) return false;
-      }
-
-      if (criteria.noLabelsOnly) {
-        const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-        if (!hasNoLabels) return false;
-      }
-
-      if (criteria.label) {
-        if (criteria.label === '__NONE__' || criteria.label === 'none' || criteria.label === 'no_labels') {
-          const hasNoLabels = !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-          if (!hasNoLabels) return false;
-        } else {
-          if (!this.ticketHasLabel(ticket, criteria.label)) return false;
-        }
-      }
-      if (criteria.labels && Array.isArray(criteria.labels) && criteria.labels.length > 0) {
-        const matchesAny = criteria.labels.some(l => {
-          if (l === '__NONE__' || l === 'none' || l === 'no_labels') {
-            return !ticket.labels || !Array.isArray(ticket.labels) || ticket.labels.length === 0;
-          }
-          return this.ticketHasLabel(ticket, l);
-        });
-        if (!matchesAny) return false;
-      }
-
-      return true;
-    }).length;
+    }
+    return count;
   }
 }
 

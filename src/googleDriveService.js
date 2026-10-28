@@ -58,13 +58,43 @@ const CATEGORIAS = {
   }
 };
 
+// Carrega variáveis opcionais de arquivo .env local caso não estejam no ambiente do sistema
+function loadLocalEnvVars() {
+  const envVars = {};
+  const envPaths = [
+    path.join(__dirname, '..', '.env'),
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'OrganizadorChamados', '.env') : null
+  ].filter(Boolean);
+
+  for (const p of envPaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const lines = fs.readFileSync(p, 'utf-8').split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx > 0) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+            if (key && !(key in envVars)) envVars[key] = val;
+          }
+        }
+      } catch (e) {}
+    }
+  }
+  return envVars;
+}
+
+const LOCAL_ENV = loadLocalEnvVars();
+
 const DEFAULT_CREDENTIALS = {
-  client_id: process.env.GOOGLE_DRIVE_CLIENT_ID || "",
-  client_secret: process.env.GOOGLE_DRIVE_CLIENT_SECRET || "",
+  client_id: process.env.GOOGLE_DRIVE_CLIENT_ID || LOCAL_ENV.GOOGLE_DRIVE_CLIENT_ID || "",
+  client_secret: process.env.GOOGLE_DRIVE_CLIENT_SECRET || LOCAL_ENV.GOOGLE_DRIVE_CLIENT_SECRET || "",
   token_uri: "https://oauth2.googleapis.com/token"
 };
 
-const DEFAULT_REFRESH_TOKEN = process.env.GOOGLE_DRIVE_REFRESH_TOKEN || "";
+const DEFAULT_REFRESH_TOKEN = process.env.GOOGLE_DRIVE_REFRESH_TOKEN || LOCAL_ENV.GOOGLE_DRIVE_REFRESH_TOKEN || "";
 
 class GoogleDriveService {
   constructor(options = {}) {
@@ -75,6 +105,7 @@ class GoogleDriveService {
     this.customMirrorDir = options.customMirrorDir || null;
     this.configuredEmail = options.configuredEmail || null;
     this.configuredPassword = options.configuredPassword || null;
+    this.decryptFn = typeof options.decryptFn === 'function' ? options.decryptFn : (v => v);
   }
 
   setDriveConfig({ email, password, mirrorPath } = {}) {
@@ -98,9 +129,10 @@ class GoogleDriveService {
       const storageFile = path.join(this.userDataPath, 'storage.json');
       if (fs.existsSync(storageFile)) {
         const data = JSON.parse(fs.readFileSync(storageFile, 'utf-8'));
+        const rawPwd = this.decryptFn(data.googleDrivePassword);
         return {
           email: data.googleDriveEmail || '',
-          password: data.googleDrivePassword || '',
+          password: typeof rawPwd === 'string' ? rawPwd : '',
           mirrorPath: data.googleDriveMirrorPath || ''
         };
       }

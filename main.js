@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Notification, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification, dialog, safeStorage } = require('electron');
 
 // Garante instância única imediatamente no topo, antes de acessar userData ou inicializar serviços
 const gotTheLock = app.requestSingleInstanceLock();
@@ -23,7 +23,117 @@ let mainWindow;
 // Define user settings file in userData directory
 const getUserDataFile = (filename) => path.join(app.getPath('userData'), filename);
 
+// Sensitive storage keys protected via OS-level DPAPI (Electron safeStorage)
+const SENSITIVE_STORAGE_KEYS = new Set(['token', 'savedCredentials', 'googleDrivePassword']);
+
+function encryptSensitiveValue(value) {
+  if (value === null || value === undefined || value === '') return value;
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const jsonStr = JSON.stringify(value);
+      const encryptedBuf = safeStorage.encryptString(jsonStr);
+      return {
+        __dpapi_encrypted: true,
+        payload: encryptedBuf.toString('base64')
+      };
+    }
+  } catch (err) {
+    console.warn('safeStorage encryption fallback:', err.message);
+  }
+  return value;
+}
+
+function decryptSensitiveValue(storedValue) {
+  if (!storedValue || typeof storedValue !== 'object' || !storedValue.__dpapi_encrypted) {
+    return storedValue;
+  }
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable() && storedValue.payload) {
+      const buf = Buffer.from(storedValue.payload, 'base64');
+      const decryptedJson = safeStorage.decryptString(buf);
+      return JSON.parse(decryptedJson);
+    }
+  } catch (err) {
+    console.warn('safeStorage decryption failed:', err.message);
+  }
+  return null;
+}
+
+// In-memory cache + debounced async disk writer for storage.json
+let storageMemoryCache = null;
+let storageFlushTimer = null;
+let storageDirty = false;
+let storageWriteInProgress = false;
+
+function getStorageCache() {
+  if (storageMemoryCache !== null) {
+    return storageMemoryCache;
+  }
+  try {
+    const filePath = getUserDataFile('storage.json');
+    if (fs.existsSync(filePath)) {
+      storageMemoryCache = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } else {
+      storageMemoryCache = {};
+    }
+  } catch (err) {
+    console.error('Error loading storage.json:', err);
+    storageMemoryCache = {};
+  }
+  return storageMemoryCache;
+}
+
+function flushStorageSync() {
+  if (storageFlushTimer) {
+    clearTimeout(storageFlushTimer);
+    storageFlushTimer = null;
+  }
+  if (!storageDirty || storageMemoryCache === null) return { success: true };
+  try {
+    const filePath = getUserDataFile('storage.json');
+    fs.writeFileSync(filePath, JSON.stringify(storageMemoryCache, null, 2), 'utf-8');
+    storageDirty = false;
+    return { success: true };
+  } catch (err) {
+    console.error('Error flushing storage.json synchronously:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+function scheduleStorageFlush(immediate = false) {
+  storageDirty = true;
+  if (immediate) {
+    return flushStorageSync();
+  }
+  if (storageFlushTimer) {
+    clearTimeout(storageFlushTimer);
+  }
+  storageFlushTimer = setTimeout(async () => {
+    storageFlushTimer = null;
+    if (!storageDirty || storageMemoryCache === null || storageWriteInProgress) return;
+    storageWriteInProgress = true;
+    try {
+      const filePath = getUserDataFile('storage.json');
+      const snapshot = JSON.stringify(storageMemoryCache, null, 2);
+      storageDirty = false;
+      await fs.promises.writeFile(filePath, snapshot, 'utf-8');
+    } catch (err) {
+      storageDirty = true;
+      console.error('Error in async write to storage.json:', err);
+    } finally {
+      storageWriteInProgress = false;
+      if (storageDirty) {
+        scheduleStorageFlush(false);
+      }
+    }
+  }, 250);
+  return { success: true };
+}
+
 function loadJsonFile(filename, defaultValue = {}) {
+  if (filename === 'storage.json') {
+    return getStorageCache();
+  }
   try {
     const filePath = getUserDataFile(filename);
     if (fs.existsSync(filePath)) {
@@ -35,7 +145,11 @@ function loadJsonFile(filename, defaultValue = {}) {
   return defaultValue;
 }
 
-function saveJsonFile(filename, data) {
+function saveJsonFile(filename, data, immediate = false) {
+  if (filename === 'storage.json') {
+    storageMemoryCache = data;
+    return scheduleStorageFlush(immediate);
+  }
   try {
     const filePath = getUserDataFile(filename);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -96,6 +210,7 @@ ipcMain.handle('window-maximize', () => {
 });
 
 ipcMain.handle('window-close', () => {
+  flushStorageSync();
   if (mainWindow) {
     try {
       mainWindow.destroy();
@@ -117,20 +232,42 @@ ipcMain.handle('open-external', async (event, url) => {
   return false;
 });
 
-// Storage handlers (persisted to appData)
+// Storage handlers (persisted to appData with in-memory cache + DPAPI encryption for sensitive keys)
 ipcMain.handle('storage-load', (event, key, defaultValue) => {
-  const store = loadJsonFile('storage.json', {});
-  return store[key] !== undefined ? store[key] : defaultValue;
+  const store = getStorageCache();
+  if (store[key] === undefined) return defaultValue;
+  if (SENSITIVE_STORAGE_KEYS.has(key)) {
+    const rawVal = store[key];
+    const decrypted = decryptSensitiveValue(rawVal);
+    // Transparent migration: if legacy value was stored unencrypted and safeStorage is now available, encrypt it in background
+    if (rawVal && (!rawVal.__dpapi_encrypted) && safeStorage && safeStorage.isEncryptionAvailable()) {
+      store[key] = encryptSensitiveValue(rawVal);
+      scheduleStorageFlush(false);
+    }
+    return decrypted !== null && decrypted !== undefined ? decrypted : defaultValue;
+  }
+  return store[key];
 });
 
 ipcMain.handle('storage-save', (event, key, value) => {
-  const store = loadJsonFile('storage.json', {});
+  const store = getStorageCache();
+  if (SENSITIVE_STORAGE_KEYS.has(key)) {
+    store[key] = value === null || value === undefined ? value : encryptSensitiveValue(value);
+    return scheduleStorageFlush(true);
+  }
   store[key] = value;
-  return saveJsonFile('storage.json', store);
+  return scheduleStorageFlush(false);
 });
 
 ipcMain.handle('storage-get-all', () => {
-  return loadJsonFile('storage.json', {});
+  const store = getStorageCache();
+  const result = { ...store };
+  for (const key of SENSITIVE_STORAGE_KEYS) {
+    if (result[key] !== undefined) {
+      result[key] = decryptSensitiveValue(result[key]);
+    }
+  }
+  return result;
 });
 
 // Native notifications
@@ -168,7 +305,8 @@ const driveService = new GoogleDriveService({
   userDataPath: app.getPath('userData'),
   customMirrorDir: initialStorage.googleDriveMirrorPath || null,
   configuredEmail: initialStorage.googleDriveEmail || null,
-  configuredPassword: initialStorage.googleDrivePassword || null
+  configuredPassword: decryptSensitiveValue(initialStorage.googleDrivePassword) || null,
+  decryptFn: decryptSensitiveValue
 });
 
 function getDefaultMirrorPath() {
@@ -180,7 +318,7 @@ ipcMain.handle('drive-get-config', () => {
   const store = loadJsonFile('storage.json', {});
   return {
     email: store.googleDriveEmail || '',
-    password: store.googleDrivePassword || '',
+    password: decryptSensitiveValue(store.googleDrivePassword) || '',
     mirrorPath: store.googleDriveMirrorPath || getDefaultMirrorPath()
   };
 });
@@ -742,6 +880,7 @@ ipcMain.handle('updater-check', async () => {
 });
 
 ipcMain.handle('updater-restart-install', () => {
+  flushStorageSync();
   if (autoUpdater) {
     try {
       setImmediate(() => {
@@ -766,6 +905,10 @@ app.on('second-instance', () => {
   }
 });
 
+app.on('before-quit', () => {
+  flushStorageSync();
+});
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -787,5 +930,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  flushStorageSync();
   app.exit(0);
 });
