@@ -322,6 +322,14 @@ function prepareRichContentWithImagePlaceholders(rawHtml, rawContent, ticketId) 
     }
   );
 
+  // Destacar citações e menções (@Nome ou @Nome Sobrenome) com badge visual moderno
+  contentHtml = contentHtml.replace(
+    /(^|[\s>(])@([a-zA-Z0-9_\u00C0-\u017F]+(?:\s+[a-zA-Z0-9_\u00C0-\u017F]+)?)(?=[<.,\s!?:;)]|$)/g,
+    (m, lead, name) => {
+      return `${lead}<span class="comment-mention-tag">@${name}</span>`;
+    }
+  );
+
   return contentHtml;
 }
 
@@ -2332,7 +2340,6 @@ function setupDrawerDescriptionImagePaste() {
     descView.addEventListener('paste', handleImagePasteIntoDesc);
   }
 }
-window.setupDrawerDescriptionImagePaste = setupDrawerDescriptionImagePaste;
 
 function renderDrawerAttachments(attachments) {
   const list = document.getElementById('drawerAttachmentsList');
@@ -2690,6 +2697,237 @@ function handleCommentPaste(e) {
     renderTimelinePendingAttachments();
     showToast(`📸 ${filesToAdd.length} print/imagem colado! Clique em 'Salvar Interação' para publicar.`);
   }
+}
+
+// ============================================================================
+// Sistema de Citar/Mencionar Pessoas (@mentions) no Atendimento
+// ============================================================================
+
+function getTeamMembersForMentions() {
+  const map = new Map();
+
+  // 1. Integrantes de window.appStore.getKnownDevelopers()
+  if (window.appStore && typeof window.appStore.getKnownDevelopers === 'function') {
+    try {
+      window.appStore.getKnownDevelopers().forEach(dev => {
+        if (dev && dev.name) {
+          const key = dev.name.toLowerCase().trim();
+          map.set(key, {
+            id: dev.id,
+            name: dev.name.trim(),
+            role: dev.role || 'Desenvolvedor'
+          });
+        }
+      });
+    } catch (e) {}
+  }
+
+  // 2. Participantes do chamado ativo (solicitante, validador, desenvolvedor)
+  if (selectedTicket) {
+    if (selectedTicket.requestedBy?.name) {
+      const key = selectedTicket.requestedBy.name.toLowerCase().trim();
+      map.set(key, {
+        id: selectedTicket.requestedBy.id,
+        name: selectedTicket.requestedBy.name.trim(),
+        role: 'Solicitante'
+      });
+    }
+    if (selectedTicket.assignedTo?.name) {
+      const key = selectedTicket.assignedTo.name.toLowerCase().trim();
+      map.set(key, {
+        id: selectedTicket.assignedTo.id,
+        name: selectedTicket.assignedTo.name.trim(),
+        role: 'Desenvolvedor'
+      });
+    }
+    if (selectedTicket.reviewer?.name) {
+      const key = selectedTicket.reviewer.name.toLowerCase().trim();
+      map.set(key, {
+        id: selectedTicket.reviewer.id,
+        name: selectedTicket.reviewer.name.trim(),
+        role: 'Validador'
+      });
+    }
+  }
+
+  // 3. Autores de comentários do atendimento atual
+  if (Array.isArray(drawerCurrentComments)) {
+    drawerCurrentComments.forEach(c => {
+      if (c.user?.name) {
+        const key = c.user.name.toLowerCase().trim();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: c.user.id,
+            name: c.user.name.trim(),
+            role: c.user.role || 'Equipe'
+          });
+        }
+      }
+    });
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+let activeMentionIndex = 0;
+let currentMentionQuery = '';
+let currentMentionFiltered = [];
+
+function initCommentMentionsSystem() {
+  const textarea = document.getElementById('drawerNewCommentText');
+  const dropdown = document.getElementById('commentMentionsDropdown');
+  const btnMention = document.querySelector('[data-tag="mention"]');
+  if (!textarea || !dropdown) return;
+
+  if (textarea.dataset.mentionsBound === 'true') return;
+  textarea.dataset.mentionsBound = 'true';
+
+  const hideDropdown = () => {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+    currentMentionFiltered = [];
+    activeMentionIndex = 0;
+  };
+
+  const insertMention = (member) => {
+    if (!member) return;
+    const textBeforeCursor = textarea.value.slice(0, textarea.selectionStart);
+    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_\u00C0-\u017F]*)$/);
+    if (!match) return;
+
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+    const beforeAt = textarea.value.slice(0, atIndex);
+    const afterCursor = textarea.value.slice(textarea.selectionStart);
+
+    const insertedText = `@${member.name} `;
+    textarea.value = beforeAt + insertedText + afterCursor;
+
+    const newCursorPos = beforeAt.length + insertedText.length;
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+    textarea.focus();
+    hideDropdown();
+
+    if (window.appTabs && selectedTicket) {
+      const session = window.appTabs.ticketSessions.get(selectedTicket.id);
+      if (session) session.commentDraft = textarea.value;
+      window.appTabs.checkDirty(selectedTicket.id);
+    }
+  };
+
+  const renderDropdown = (members) => {
+    currentMentionFiltered = members;
+    if (members.length === 0) {
+      dropdown.innerHTML = '<div class="comment-mention-empty">Nenhum membro encontrado com este nome</div>';
+      dropdown.style.display = 'flex';
+      return;
+    }
+
+    if (activeMentionIndex >= members.length) activeMentionIndex = 0;
+    if (activeMentionIndex < 0) activeMentionIndex = members.length - 1;
+
+    dropdown.innerHTML = members.map((m, idx) => {
+      const initials = m.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+      const isActive = idx === activeMentionIndex;
+      return `
+        <div class="comment-mention-item ${isActive ? 'active' : ''}" data-index="${idx}">
+          <div class="comment-mention-avatar">${initials}</div>
+          <div class="comment-mention-info">
+            <span class="comment-mention-name">${escapeHtml(m.name)}</span>
+            <span class="comment-mention-role">${escapeHtml(m.role || 'Equipe')}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    dropdown.querySelectorAll('.comment-mention-item').forEach(item => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const idx = parseInt(item.dataset.index, 10);
+        if (!isNaN(idx) && members[idx]) {
+          insertMention(members[idx]);
+        }
+      });
+    });
+
+    dropdown.style.display = 'flex';
+
+    // Auto-scroll to keep active item in view
+    const activeEl = dropdown.querySelector('.comment-mention-item.active');
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  const checkMentions = () => {
+    const textBeforeCursor = textarea.value.slice(0, textarea.selectionStart);
+    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_\u00C0-\u017F]*)$/);
+    if (!match) {
+      hideDropdown();
+      return;
+    }
+
+    currentMentionQuery = (match[1] || '').toLowerCase().trim();
+    const allMembers = getTeamMembersForMentions();
+    const filtered = allMembers.filter(m => {
+      if (!currentMentionQuery) return true;
+      return m.name.toLowerCase().includes(currentMentionQuery);
+    });
+
+    renderDropdown(filtered);
+  };
+
+  textarea.addEventListener('input', checkMentions);
+  textarea.addEventListener('click', checkMentions);
+
+  textarea.addEventListener('keydown', (e) => {
+    if (dropdown.style.display === 'flex' && currentMentionFiltered.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeMentionIndex = (activeMentionIndex + 1) % currentMentionFiltered.length;
+        renderDropdown(currentMentionFiltered);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeMentionIndex = (activeMentionIndex - 1 + currentMentionFiltered.length) % currentMentionFiltered.length;
+        renderDropdown(currentMentionFiltered);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(currentMentionFiltered[activeMentionIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideDropdown();
+        return;
+      }
+    }
+  });
+
+  // Botão @ da barra de ferramentas
+  if (btnMention) {
+    btnMention.addEventListener('click', (e) => {
+      e.preventDefault();
+      textarea.focus();
+      const pos = textarea.selectionStart;
+      const val = textarea.value;
+      const needsSpace = pos > 0 && !/\s/.test(val[pos - 1]);
+      const prefix = needsSpace ? ' @' : '@';
+      textarea.value = val.slice(0, pos) + prefix + val.slice(textarea.selectionEnd);
+      const newPos = pos + prefix.length;
+      textarea.setSelectionRange(newPos, newPos);
+      checkMentions();
+    });
+  }
+
+  // Fechar dropdown ao clicar fora
+  document.addEventListener('mousedown', (e) => {
+    if (!dropdown.contains(e.target) && e.target !== textarea && e.target !== btnMention) {
+      hideDropdown();
+    }
+  });
 }
 
 async function submitComment() {
@@ -3391,19 +3629,21 @@ async function handleSendToReviewTicket(targetTicket = null) {
   }
 }
 
-// Ação de Fluxo: Retomar Desenvolvimento (Status: in_progress)
+// Ação de Fluxo: Retomar Desenvolvimento (Status: in_progress) ou Reabrir Chamado Concluído (Status: queued / Fila)
 async function handleResumeTicket(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
   if (!ticket) return;
 
   const isClosed = ticket.status === 'closed' || ticket.status === 'done';
   const isPaused = ticket.status === 'paused';
+  const targetStatus = isClosed ? 'queued' : 'in_progress';
+
   const result = await promptJustification({
     icon: isClosed ? '🔄' : '▶️',
     title: isClosed ? 'Reabrir Chamado' : 'Retomar Desenvolvimento',
     subtitle: `Demanda #${ticket.number || ticket.id.slice(0, 8)} - ${ticket.title}`,
     bannerText: isClosed
-      ? 'O chamado será reaberto e voltará para o status "Em Desenvolvimento".'
+      ? 'O chamado será reaberto e voltará para o status "Fila".'
       : (isPaused 
         ? 'O chamado sairá da pausa e voltará para "Em Desenvolvimento".' 
         : 'O chamado sairá de espera e voltará para desenvolvimento ativo ("Em Progresso").'),
@@ -3430,16 +3670,16 @@ async function handleResumeTicket(targetTicket = null) {
 
   if (!result.confirmed) return;
 
-  const defaultReason = isClosed ? 'Chamado reaberto para novos ajustes' : 'Desenvolvimento retomado';
+  const defaultReason = isClosed ? 'Chamado reaberto para a fila' : 'Desenvolvimento retomado';
   const reason = result.reason || defaultReason;
   const statusText = document.getElementById('drawerSaveStatusText');
   if (statusText && ticket === selectedTicket) {
     statusText.style.color = 'var(--accent-primary)';
-    statusText.textContent = isClosed ? 'Reabrindo chamado...' : 'Retomando demanda...';
+    statusText.textContent = isClosed ? 'Reabrindo chamado para a fila...' : 'Retomando demanda...';
   }
 
   try {
-    await window.conciliadorAPI.changeTicketStatus(ticket.id, 'in_progress', reason);
+    await window.conciliadorAPI.changeTicketStatus(ticket.id, targetStatus, reason);
 
     if (result.addComment && reason) {
       try {
@@ -3449,13 +3689,19 @@ async function handleResumeTicket(targetTicket = null) {
       }
     }
 
-    ticket.status = 'in_progress';
+    ticket.status = targetStatus;
+    if (isClosed) {
+      ticket.closedAt = null;
+    }
     const statusSelect = document.getElementById('drawerEditStatus');
-    if (statusSelect && ticket === selectedTicket) statusSelect.value = 'in_progress';
+    if (statusSelect && ticket === selectedTicket) statusSelect.value = targetStatus;
 
     const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
-      window.appStore.demands[idx].status = 'in_progress';
+      window.appStore.demands[idx].status = targetStatus;
+      if (isClosed) {
+        window.appStore.demands[idx].closedAt = null;
+      }
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
@@ -3468,7 +3714,7 @@ async function handleResumeTicket(targetTicket = null) {
 
       if (statusText) {
         statusText.style.color = '#2dd4bf';
-        statusText.textContent = isClosed ? '🔄 Chamado reaberto com sucesso!' : '▶️ Demanda retomada com sucesso!';
+        statusText.textContent = isClosed ? '🔄 Chamado reaberto para a Fila!' : '▶️ Demanda retomada com sucesso!';
         setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
       }
       await refreshDrawerActivity(ticket.id);
@@ -3478,7 +3724,7 @@ async function handleResumeTicket(targetTicket = null) {
     if (typeof window.triggerActionResync === 'function') {
       window.triggerActionResync(ticket.id);
     }
-    showAppAlert(isClosed ? 'Chamado reaberto para desenvolvimento!' : 'Demanda retomada para desenvolvimento!', isClosed ? 'Chamado Reaberto' : 'Em Desenvolvimento', 'success');
+    showAppAlert(isClosed ? 'Chamado reaberto e enviado para a Fila!' : 'Demanda retomada para desenvolvimento!', isClosed ? 'Chamado Reaberto' : 'Em Desenvolvimento', 'success');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao processar chamado: ' + err.message, 'Erro', 'error');
@@ -4091,5 +4337,15 @@ window.renderDrawerActivityStream = renderDrawerActivityStream;
 window.renderDrawerAttachments = renderDrawerAttachments;
 window.renderDrawerHeaderMetaAndTitle = renderDrawerHeaderMetaAndTitle;
 window.setupDrawerDescriptionImagePaste = setupDrawerDescriptionImagePaste;
+window.initCommentMentionsSystem = initCommentMentionsSystem;
+window.getTeamMembersForMentions = getTeamMembersForMentions;
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initCommentMentionsSystem());
+  } else {
+    initCommentMentionsSystem();
+  }
+}
 
 

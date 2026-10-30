@@ -567,12 +567,18 @@ function setupEventListeners() {
         case 'ol': replacement = selected ? selected.split('\n').map((l, i) => `${i + 1}. ${l}`).join('\n') : '1. item'; break;
         case 'quote': replacement = selected ? selected.split('\n').map(l => `> ${l}`).join('\n') : '> citação'; break;
         case 'code': replacement = selected.includes('\n') ? `\`\`\`\n${selected}\n\`\`\`` : `\`${selected || 'código'}\``; break;
+        case 'mention': return; // Gerenciado por initCommentMentionsSystem
         default: replacement = selected; break;
       }
       textarea.setRangeText(replacement, start, end, 'select');
       textarea.focus();
     });
   });
+
+  // Inicializar sistema de menções @ no campo de comentários
+  if (typeof initCommentMentionsSystem === 'function') {
+    initCommentMentionsSystem();
+  }
 
   // Button to attach image/print to comment
   document.getElementById('btnCommentAttachImage')?.addEventListener('click', () => {

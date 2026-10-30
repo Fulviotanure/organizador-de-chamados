@@ -3722,6 +3722,108 @@ body.table-col-resizing * {
   cursor: wait;
 }
 
+/* Mention System (@mentions) */
+.comment-mentions-dropdown {
+  position: absolute;
+  bottom: calc(100% - 40px);
+  left: 14px;
+  width: 290px;
+  max-height: 230px;
+  overflow-y: auto;
+  background: #0b1120;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 16px rgba(56, 189, 248, 0.18);
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  animation: mentionFadeIn 0.15s ease-out;
+}
+
+@keyframes mentionFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.comment-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-left: 3px solid transparent;
+}
+
+.comment-mention-item:hover,
+.comment-mention-item.active {
+  background: rgba(56, 189, 248, 0.14);
+  border-left-color: #38bdf8;
+}
+
+.comment-mention-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.comment-mention-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.comment-mention-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.comment-mention-role {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.comment-mention-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Mention Pill inside speech bubbles */
+.comment-mention-tag {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 600;
+  font-size: 12px;
+  margin: 0 2px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.comment-mention-tag:hover {
+  background: rgba(56, 189, 248, 0.28);
+  color: #7dd3fc;
+}
+
 .comment-input-box {
   background: var(--bg-card);
   border: 1px solid var(--border-color);

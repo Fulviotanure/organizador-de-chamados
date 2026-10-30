@@ -327,6 +327,21 @@ try {
     const styleCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
     assert.ok(styleCss.includes('.comment-inline-img'), '.comment-inline-img style rule must exist');
     assert.ok(styleCss.includes('zoom-in'), 'cursor zoom-in for comment images must exist');
+
+    // Test 17: Reopen ticket goes to 'queued' (Fila) and clears closedAt
+    console.log('Integration Test 17: Reopening a closed ticket sends it to queued (Fila)');
+    assert.ok(drawerJs.includes("targetStatus = isClosed ? 'queued' : 'in_progress'"), 'Reopen must route closed tickets to queued');
+    assert.ok(drawerJs.includes('O chamado será reaberto e voltará para o status "Fila"'), 'Banner text must indicate Fila status on reopen');
+
+    // Test 18: @mentions system in comment input and timeline rendering
+    console.log('Integration Test 18: Mention system (@mentions) in comment box and timeline');
+    assert.ok(indexHtml.includes('id="commentMentionsDropdown"'), 'Mentions dropdown element must exist in index.html');
+    assert.ok(indexHtml.includes('data-tag="mention"'), 'Toolbar must include @ mention button');
+    assert.ok(drawerJs.includes('initCommentMentionsSystem'), 'initCommentMentionsSystem must exist in drawer.js');
+    assert.ok(drawerJs.includes('getTeamMembersForMentions'), 'getTeamMembersForMentions must exist in drawer.js');
+    assert.ok(drawerJs.includes('comment-mention-tag'), 'comment-mention-tag must exist in drawer.js');
+    assert.ok(styleCss.includes('.comment-mentions-dropdown'), '.comment-mentions-dropdown style must exist');
+    assert.ok(styleCss.includes('.comment-mention-tag'), '.comment-mention-tag style must exist');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

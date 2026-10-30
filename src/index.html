@@ -642,7 +642,7 @@
               </div>
 
               <!-- Quick Reply Box (Interações e Diálogo) -->
-              <div class="comment-input-box" id="drawerCommentInputBox" style="margin-top: 10px;">
+              <div class="comment-input-box" id="drawerCommentInputBox" style="margin-top: 10px; position: relative;">
                 <div class="comment-editor-toolbar" id="commentEditorToolbar">
                   <div class="comment-toolbar-group">
                     <button type="button" class="comment-tool-btn" data-tag="b" title="Negrito (Ctrl+B)"><b>B</b></button>
@@ -653,6 +653,7 @@
                     <button type="button" class="comment-tool-btn" data-tag="ol" title="Lista numerada">1. Lista</button>
                     <button type="button" class="comment-tool-btn" data-tag="quote" title="Citação">❝</button>
                     <button type="button" class="comment-tool-btn" data-tag="code" title="Código">&lt;/&gt;</button>
+                    <button type="button" class="comment-tool-btn" data-tag="mention" title="Citar/Mencionar pessoa (@)" style="font-weight: 700; color: #38bdf8;">@</button>
                   </div>
                   <div class="comment-toolbar-attach-wrap">
                     <button type="button" class="comment-toolbar-attach-btn" id="btnCommentAttachImage" title="Anexar imagem ou print nesta mensagem (ou cole com Ctrl+V)">
@@ -662,7 +663,10 @@
                   </div>
                 </div>
 
-                <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V..."></textarea>
+                <!-- Dropdown de menções (@) -->
+                <div id="commentMentionsDropdown" class="comment-mentions-dropdown" style="display: none;"></div>
+
+                <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V... (use @ para citar alguém)"></textarea>
                 
                 <!-- Imagens/prints colados ou selecionados para a mensagem -->
                 <div id="drawerCommentPendingAttachments" class="comment-pending-attachments" style="display: none;"></div>
