@@ -923,18 +923,18 @@
                 <span class="drawer-prop-card-title">⚡ Ações do Chamado</span>
                 <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
               </div>
-              <div class="drawer-workflow-card-body" style="display: flex; flex-direction: column; gap: 8px;">
-                <!-- Botões de Fluxo do Chamado (Reabrir Chamado, Iniciar, Finalizar, etc.) -->
-                <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer" style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
-                  <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
-                </div>
+              <div class="drawer-workflow-card-body">
+                <div class="drawer-workflow-actions-row" id="drawerWorkflowActionsRow">
+                  <!-- Botões de Fluxo do Chamado (Reabrir Chamado, Iniciar, Finalizar, etc.) -->
+                  <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer">
+                    <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
+                  </div>
 
-                <!-- Botões de Edição da Demanda -->
-                <div class="drawer-edit-actions-row" style="display: flex; gap: 8px; width: 100%;">
-                  <button type="button" class="btn-secondary" id="btnDrawerCancelEdit" style="display: none; height: 38px; padding: 0 14px; font-weight: 500; flex: 1;">
+                  <!-- Botões de Edição da Demanda -->
+                  <button type="button" class="btn-secondary" id="btnDrawerCancelEdit" style="display: none; height: 38px; padding: 0 14px; font-weight: 500;">
                     Cancelar
                   </button>
-                  <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom" style="flex: 2; height: 38px; justify-content: center; width: 100%;">
+                  <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
                     <span>✏️</span> Editar Demanda
                   </button>
                 </div>

@@ -3177,37 +3177,48 @@ body.table-col-resizing * {
   padding: 6px 10px;
 }
 
-/* Card de Ações do Chamado (Reabrir, Iniciar, Finalizar, Editar) - Logo após Chamados com este Layout */
+/* Card de Ações do Chamado (Reabrir, Iniciar, Finalizar, Editar) - Lado a Lado */
 .drawer-workflow-card {
   gap: 10px;
 }
 
-.drawer-workflow-card .drawer-bottom-workflow-actions {
+.drawer-workflow-actions-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   width: 100%;
+}
+
+.drawer-workflow-card .drawer-bottom-workflow-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
 }
 
 .drawer-workflow-card .btn-bottom-action {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 130px;
   justify-content: center;
   height: 38px;
-  font-size: 13px;
+  font-size: 12.5px;
   box-sizing: border-box;
 }
 
-.drawer-workflow-card .drawer-edit-actions-row {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-
 .drawer-workflow-card .btn-save-drawer {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 130px;
   height: 38px;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12.5px;
+  box-sizing: border-box;
+}
+
+.drawer-workflow-card #btnDrawerCancelEdit {
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 14px;
 }
 
 /* Solicitante no Rodapé */
