@@ -723,10 +723,12 @@ class TabManager {
     }
 
     const cleanEditor = descEditor.replace(/<p><br><\/p>/gi, '').replace(/<[^>]*>/g, '').trim();
+    const hasImg = descEditor.includes('<img');
 
     const isDirty = (
       title.trim().length > 0 ||
       cleanEditor.length > 0 ||
+      hasImg ||
       descText.length > 0 ||
       Boolean(layoutId) ||
       movidesk.trim().length > 0 ||

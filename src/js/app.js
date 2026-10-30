@@ -244,6 +244,34 @@ async function syncDemands() {
   }
 }
 
+// Dispara sincronização imediata e uma segunda sincronização após 1.8s para confirmar atualizações do backend
+function triggerActionResync(ticketId = null) {
+  // 1. Sincronização imediata
+  if (typeof syncDemands === 'function') {
+    syncDemands();
+  }
+  if (ticketId && typeof refreshDrawerActivity === 'function') {
+    refreshDrawerActivity(ticketId);
+  }
+
+  // 2. Segunda sincronização após 1.8 segundos para garantir atualização final da API
+  setTimeout(async () => {
+    if (typeof syncDemands === 'function') {
+      await syncDemands();
+    }
+    if (ticketId && typeof refreshDrawerActivity === 'function') {
+      await refreshDrawerActivity(ticketId);
+    }
+    // Se o chamado ainda estiver aberto, re-renderizar botões de fluxo e cabeçalho
+    const active = typeof getActiveTicket === 'function' ? getActiveTicket() : (selectedTicket || window.selectedTicket);
+    if (ticketId && active && String(active.id) === String(ticketId)) {
+      if (typeof renderDrawerWorkflowButtons === 'function') renderDrawerWorkflowButtons(active);
+      if (typeof renderDrawerHeaderMetaAndTitle === 'function') renderDrawerHeaderMetaAndTitle(active);
+    }
+  }, 1800);
+}
+window.triggerActionResync = triggerActionResync;
+
 
 // Setup Event Listeners
 function setupEventListeners() {
@@ -432,9 +460,34 @@ function setupEventListeners() {
   setupDrawerClientCalendar();
   setupDrawerLayoutAutocomplete();
   setupDrawerDropzone();
+  if (typeof setupDrawerDescriptionImagePaste === 'function') {
+    setupDrawerDescriptionImagePaste();
+  } else if (typeof window.setupDrawerDescriptionImagePaste === 'function') {
+    window.setupDrawerDescriptionImagePaste();
+  }
 
-  // Drawer Save Action
-  document.getElementById('btnDrawerSaveTicketBottom')?.addEventListener('click', saveDrawerTicketChanges);
+  // Drawer Copy Demand Link
+  document.getElementById('btnDrawerCopyLink')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.copyDrawerTicketLink === 'function') {
+      window.copyDrawerTicketLink();
+    }
+  });
+
+  // Drawer Save / Edit Actions
+  document.getElementById('btnDrawerSaveTicketBottom')?.addEventListener('click', () => {
+    if (typeof window.handleDrawerSaveOrEditClick === 'function') {
+      window.handleDrawerSaveOrEditClick();
+    } else {
+      saveDrawerTicketChanges();
+    }
+  });
+  document.getElementById('btnDrawerCancelEdit')?.addEventListener('click', () => {
+    if (typeof window.handleDrawerCancelEdit === 'function') {
+      window.handleDrawerCancelEdit();
+    }
+  });
 
   // Reviewer / Validador Actions
   document.getElementById('btnAssignReviewerMe')?.addEventListener('click', () => {
@@ -495,8 +548,31 @@ function setupEventListeners() {
     }
   });
 
-  // Paste image directly on comment textarea
-  commentTextarea?.addEventListener('paste', handleCommentPaste);
+  // Comment Editor Toolbar buttons (B, I, S, lists, quote, code)
+  document.querySelectorAll('#commentEditorToolbar .comment-tool-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tag = btn.dataset.tag;
+      const textarea = document.getElementById('drawerNewCommentText');
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = textarea.value.substring(start, end);
+      let replacement = '';
+      switch (tag) {
+        case 'b': replacement = `**${selected || 'texto em negrito'}**`; break;
+        case 'i': replacement = `*${selected || 'texto em itálico'}*`; break;
+        case 's': replacement = `~~${selected || 'texto tachado'}~~`; break;
+        case 'ul': replacement = selected ? selected.split('\n').map(l => `• ${l}`).join('\n') : '• item'; break;
+        case 'ol': replacement = selected ? selected.split('\n').map((l, i) => `${i + 1}. ${l}`).join('\n') : '1. item'; break;
+        case 'quote': replacement = selected ? selected.split('\n').map(l => `> ${l}`).join('\n') : '> citação'; break;
+        case 'code': replacement = selected.includes('\n') ? `\`\`\`\n${selected}\n\`\`\`` : `\`${selected || 'código'}\``; break;
+        default: replacement = selected; break;
+      }
+      textarea.setRangeText(replacement, start, end, 'select');
+      textarea.focus();
+    });
+  });
 
   // Button to attach image/print to comment
   document.getElementById('btnCommentAttachImage')?.addEventListener('click', () => {
@@ -533,11 +609,15 @@ function setupEventListeners() {
     });
   }
 
-  // Global paste handler when comment tab is open
+  // Global paste handler when comment box is focused or active
   window.addEventListener('paste', (e) => {
     const drawer = document.getElementById('demandDrawer');
     if (!drawer || !drawer.classList.contains('open') || !selectedTicket) return;
-    if (drawerActiveTab !== 'comments') return;
+    
+    // Se o evento foi disparado dentro do box de comentários ou do textarea
+    const commentBox = document.getElementById('drawerCommentInputBox');
+    const isInsideCommentBox = commentBox && commentBox.contains(e.target);
+    if (!isInsideCommentBox && drawerActiveTab !== 'comments') return;
 
     // Check if an image or file is in clipboard
     const items = Array.from(e.clipboardData?.items || []);

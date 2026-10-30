@@ -568,11 +568,19 @@ function setupDrawerDropzone() {
     }
   }
 
-  // Permite colar imagens/prints diretamente com Ctrl+V na aba Anexos
+  // Permite colar imagens/prints diretamente com Ctrl+V na demanda aberta
   window.addEventListener('paste', async (e) => {
     const drawer = document.getElementById('demandDrawer');
     if (!drawer || !drawer.classList.contains('open') || !selectedTicket) return;
-    if (drawerActiveTab !== 'attachments') return;
+    
+    // Se o usuário está digitando ativamente em um campo de texto, não intercepta
+    const target = e.target;
+    if (target) {
+      if (target.id === 'drawerNewCommentText') return; // Envio no chat
+      if (target.id === 'drawerEditDescEditor' || target.id === 'drawerDescription') return; // Edição da descrição
+      if (target.id === 'drawerLocalNotes') return; // Anotações
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    }
 
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
@@ -1089,23 +1097,34 @@ function setupDropzone() {
     }
   });
 
-  // Global paste handler when create ticket modal is open
+  // Global paste handler when create ticket modal or workspace tab is open
   window.addEventListener('paste', (e) => {
     const modal = document.getElementById('createTicketModalOverlay');
-    if (!modal || !modal.classList.contains('open')) return;
+    const isCreateTab = document.body.classList.contains('create-ticket-workspace-active') ||
+                        (window.appTabs && window.appTabs.activeTabId === 'new-ticket');
+    const isModalOpen = modal && modal.classList.contains('open');
+    if (!isModalOpen && !isCreateTab) return;
+
+    // Se o evento foi disparado diretamente no editor, o listener do editor já cuidará da inserção
+    const editor = document.getElementById('newTicketDescriptionEditor');
+    if (e.target && editor && (e.target === editor || editor.contains(e.target))) {
+      return;
+    }
 
     const clipboardItems = e.clipboardData ? e.clipboardData.items : [];
     const pastedFiles = [];
+    let pastedImageFile = null;
 
     for (let i = 0; i < clipboardItems.length; i++) {
       const item = clipboardItems[i];
       if (item.kind === 'file') {
         const file = item.getAsFile();
         if (file) {
-          if (file.type.startsWith('image/') && (!file.name || file.name === 'image.png')) {
+          if (file.type.startsWith('image/')) {
             const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
             const newFile = new File([file], `screenshot-${timeTag}.png`, { type: file.type });
             pastedFiles.push(newFile);
+            if (!pastedImageFile) pastedImageFile = newFile;
           } else {
             pastedFiles.push(file);
           }
@@ -1116,6 +1135,26 @@ function setupDropzone() {
     if (pastedFiles.length > 0) {
       e.preventDefault();
       addFilesToTicket(pastedFiles);
+
+      // Insere também aberta diretamente no editor de descrição detalhada
+      if (pastedImageFile && editor) {
+        const reader = new FileReader();
+        reader.onload = (loadEv) => {
+          const dataUrl = loadEv.target?.result;
+          if (dataUrl) {
+            const hiddenTextarea = document.getElementById('newTicketDescription');
+            const imgHtml = `<p><img src="${dataUrl}" alt="Print colado" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+            editor.focus();
+            document.execCommand('insertHTML', false, imgHtml);
+            if (hiddenTextarea) {
+              hiddenTextarea.value = editor.innerHTML;
+            }
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+            showToast('📸 Imagem colada e aberta na descrição!', 'success', 2500);
+          }
+        };
+        reader.readAsDataURL(pastedImageFile);
+      }
     }
   });
 }
@@ -1126,6 +1165,44 @@ function setupRichTextEditor() {
   const hiddenTextarea = document.getElementById('newTicketDescription');
 
   if (!editor || !toolbar) return;
+
+  // Permite colar imagens diretamente com Ctrl+V dentro do próprio editor de descrição
+  if (!editor.dataset.pasteBound) {
+    editor.dataset.pasteBound = 'true';
+    editor.addEventListener('paste', (e) => {
+      const clipboardItems = e.clipboardData ? Array.from(e.clipboardData.items || []) : [];
+      const imageItem = clipboardItems.find(it => it.kind === 'file' && it.type.startsWith('image/'));
+
+      if (imageItem) {
+        const file = imageItem.getAsFile();
+        if (file) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+          const newFile = new File([file], `screenshot-${timeTag}.png`, { type: file.type });
+          // Adiciona também aos arquivos anexados
+          addFilesToTicket([newFile]);
+
+          const reader = new FileReader();
+          reader.onload = (loadEv) => {
+            const dataUrl = loadEv.target?.result;
+            if (dataUrl) {
+              editor.focus();
+              const imgHtml = `<p><img src="${dataUrl}" alt="Print colado" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+              document.execCommand('insertHTML', false, imgHtml);
+              if (hiddenTextarea) {
+                hiddenTextarea.value = editor.innerHTML;
+              }
+              editor.dispatchEvent(new Event('input', { bubbles: true }));
+              showToast('📸 Imagem colada e aberta na descrição!', 'success', 2500);
+            }
+          };
+          reader.readAsDataURL(newFile);
+        }
+      }
+    });
+  }
 
   toolbar.querySelectorAll('.toolbar-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1779,7 +1856,8 @@ async function submitCreateTicket() {
   const descriptionHtml = descEditor ? descEditor.innerHTML.trim() : '';
   const descriptionText = descEditor ? descEditor.innerText.trim() : '';
   const fallbackDesc = document.getElementById('newTicketDescription')?.value.trim() || '';
-  const description = descriptionText ? descriptionHtml : fallbackDesc;
+  const hasContent = !!(descriptionText || descriptionHtml.includes('<img'));
+  const description = hasContent ? descriptionHtml : fallbackDesc;
 
   const errBox = document.getElementById('createTicketError');
   const btnSubmit = document.getElementById('btnSubmitCreateTicket');

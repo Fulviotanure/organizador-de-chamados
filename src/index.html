@@ -457,7 +457,17 @@
         <!-- Área Central com Número, Badges e Título Centralizado -->
         <div class="drawer-title-center-box">
           <div class="drawer-demand-header-meta">
-            <span class="drawer-demand-number" id="drawerDemandNumber">#---</span>
+            <div class="drawer-demand-number-wrap">
+              <span class="drawer-demand-number" id="drawerDemandNumber">#---</span>
+              <button type="button" class="btn-drawer-copy-link" id="btnDrawerCopyLink" title="Copiar link da demanda" aria-label="Copiar link da demanda">
+                <span class="copy-link-icon" id="drawerCopyLinkIcon">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                </span>
+              </button>
+            </div>
             <div class="drawer-demand-badges" id="drawerBadges">
               <!-- Badges geradas via JS -->
             </div>
@@ -466,52 +476,10 @@
         </div>
       </div>
 
-      <!-- 2. BOTÕES DE LINKS EXTERNOS E FERRAMENTAS ABAIXO DO TÍTULO -->
-      <div class="drawer-actions-fixed-bar">
-        <div class="drawer-actions-fixed-group main-actions">
-          <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
-            <span>🎫</span> <span>Abrir no Movidesk</span>
-          </button>
-          <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra" style="display: none;">
-            <span>🌐</span> <span>Abrir no Importer</span>
-          </button>
-          <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
-            <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
-          </button>
-          <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
-            <span>🚀</span> <span>Google Drive / AutoDrive</span>
-          </button>
-        </div>
-
-        <div class="drawer-actions-fixed-separator"></div>
-
-        <div class="drawer-actions-fixed-group util-actions">
-          <button type="button" class="quick-action-btn" id="btnToggleDrawerFavorite" title="Favoritar este chamado">
-            <span>⭐</span> Favorito
-          </button>
-          <button type="button" class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
-            <span>🚫</span> Ignorar Chamado
-          </button>
-          <button type="button" class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
-            <span>📦</span> Arquivar
-          </button>
-        </div>
-      </div>
-
-      <!-- 3. DEPOIS OS BOTÕES DE ABAS DO CHAMADO -->
-      <div class="drawer-tabs">
-        <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails">
-          <span>📄</span> Ficha & Edição
-        </button>
-        <button class="drawer-tab" data-tab="comments" id="drawerTabBtnComments">
-          <span>💬</span> Diálogo & Linha do Tempo <span class="tab-badge" id="drawerStreamCountBadge">0</span>
-        </button>
-        <button class="drawer-tab" data-tab="attachments" id="drawerTabBtnAttachments">
-          <span>📎</span> Anexos <span class="tab-badge" id="drawerAttachmentsCountBadge">0</span>
-        </button>
-        <button class="drawer-tab" data-tab="notes" id="drawerTabBtnNotes">
-          <span>📝</span> Minhas Anotações
-        </button>
+      <!-- Abas secundárias extintas (Visualização Unificada Full-Screen) -->
+      <div class="drawer-tabs" style="display: none !important;">
+        <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails" style="display: none;"></button>
+        <button class="drawer-tab" data-tab="notes" id="drawerTabBtnNotes" style="display: none;"></button>
       </div>
 
     </div>
@@ -522,382 +490,472 @@
       <!-- TAB 1: DETAILS & EDIT -->
       <div class="drawer-tab-pane active" id="drawerPaneDetails">
 
-        <!-- 1. LINHA SUPERIOR: METADE TÍTULO E METADE LISTA FLUTUANTE DE ETIQUETAS -->
-        <div class="drawer-title-labels-row">
-          <div class="drawer-col-title">
-            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span>Título da Demanda</span>
-              <span style="font-size: 11px; color: var(--text-muted);">Editável</span>
-            </label>
-            <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14px; font-weight: 600; height: 38px;">
-          </div>
-
-          <div class="drawer-col-labels">
-            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span>🏷️ Etiquetas da Demanda</span>
-              <span style="font-size: 11px; color: var(--text-muted);" id="drawerLabelsCountText">0 selecionadas</span>
-            </label>
-            <div class="filter-dropdown drawer-labels-dropdown" id="dropdownDrawerLabels" style="position: relative; width: 100%;">
-              <button type="button" class="filter-dropdown-btn drawer-labels-dropdown-btn" id="btnDrawerLabels" title="Selecionar etiquetas da demanda" style="width: 100%; height: 38px; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  <span class="filter-btn-prefix">🏷️</span>
-                  <span class="filter-btn-text" id="btnDrawerLabelsText">Nenhuma etiqueta</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                  <span class="filter-btn-badge" id="btnDrawerLabelsBadge" style="display: none;">0</span>
-                  <span class="filter-btn-arrow">▾</span>
-                </div>
-              </button>
-              <div class="filter-dropdown-panel drawer-labels-panel" id="panelDrawerLabels" style="display: none; width: 100%; max-width: 380px; position: absolute; top: calc(100% + 4px); right: 0; z-index: 1050; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                <div class="filter-panel-header">
-                  <span class="filter-panel-title">Etiquetas</span>
-                  <div class="filter-panel-actions">
-                    <button type="button" class="filter-action-link" id="actionDrawerLabelsClear">Limpar</button>
-                  </div>
-                </div>
-                <div class="filter-panel-search">
-                  <input type="text" class="filter-search-input" id="searchDrawerLabels" placeholder="🔍 Pesquisar etiqueta..." autocomplete="off">
-                </div>
-                <div class="filter-panel-list" id="listDrawerLabels" style="max-height: 220px; overflow-y: auto;"></div>
-              </div>
-            </div>
-            <!-- Badges ativas exibidas logo abaixo para confirmação visual rápida -->
-            <div class="drawer-active-labels-container" id="drawerActiveLabelsPreview" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px;"></div>
-          </div>
+        <!-- 1. TÍTULO DA DEMANDA (Largura total - Etiquetas movidas para o card Informações) -->
+        <div class="drawer-title-full-row" style="margin-bottom: 14px;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span>Título da Demanda</span>
+            <span style="font-size: 11px; color: var(--text-muted);" id="drawerTitleHintText">Editável</span>
+          </label>
+          <input type="text" class="form-input" id="drawerEditTitle" placeholder="Título da demanda..." style="font-size: 14px; font-weight: 600; height: 38px; width: 100%;">
         </div>
 
-        <!-- 2. DESCRIÇÃO COMPLETA DO CHAMADO -->
-        <div class="form-group" style="margin-top: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span class="form-label" style="margin-bottom: 0;">Descrição Completa do Chamado</span>
-            <button type="button" class="btn-secondary" id="btnToggleEditDesc" style="padding: 4px 10px; font-size: 11.5px; gap: 5px;">
-              <span id="btnToggleEditDescIcon">✏️</span> <span id="btnToggleEditDescText">Editar Descrição</span>
-            </button>
-          </div>
-
-          <!-- Description View Mode -->
-          <div class="description-box" id="drawerDescription">Carregando descrição...</div>
-
-          <!-- Description Edit Mode (Hidden initially) -->
-          <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; margin-top: 6px;">
-            <div class="rich-editor-toolbar" id="drawerDescToolbar">
-              <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
-              <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
-              <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
-              <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
-              <span class="toolbar-separator"></span>
-              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3"><b>H3</b></button>
-              <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList">• Lista</button>
-              <button type="button" class="toolbar-btn" data-cmd="insertOrderedList">1. Lista</button>
-              <span class="toolbar-separator"></span>
-              <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre">&lt;/&gt; Código</button>
-              <button type="button" class="toolbar-btn" data-cmd="removeFormat">🧹 Limpar</button>
-            </div>
-            <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px;"></div>
-            <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--border-color);">
-              <button type="button" class="btn-secondary" id="btnCancelEditDesc" style="font-size: 12px;">Cancelar</button>
-              <button type="button" class="btn-primary" id="btnSaveDescOnly" style="font-size: 12px; gap: 6px;"><span>💾</span> Salvar Descrição</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. ANEXOS PEQUENOS COM BOTÃO DE BAIXAR DE FÁCIL ACESSO (Logo abaixo da Descrição) -->
-        <div class="drawer-inline-attachments-container" id="drawerInlineAttachmentsContainer">
-          <div class="drawer-inline-attachments-header">
-            <div class="inline-attachments-title">
-              <span>📎 Anexos da Demanda</span>
-              <span class="inline-attachments-counter" id="drawerInlineAttachmentsBadge">0</span>
-            </div>
-            <div class="inline-attachments-header-actions">
-              <button type="button" class="btn-inline-download-all" id="btnInlineDownloadAllAttachments" style="display: none;" title="Baixar todos os anexos desta demanda">
-                <span>⚡</span> <span>Baixar Todos</span>
-              </button>
-            </div>
-          </div>
+        <!-- 2. SPLIT LAYOUT EM DUAS COLUNAS: ESQUERDA (DESCRIÇÃO, ANEXOS COM DROPZONE & DIÁLOGO/LINHA DO TEMPO) E DIREITA (CARD INFORMAÇÕES & CHAMADOS) -->
+        <div class="drawer-details-split-layout">
           
-          <div id="drawerInlineAttachmentsEmpty" class="drawer-inline-attachments-empty">
-            <span>Nenhum anexo nesta demanda.</span>
-          </div>
+          <!-- COLUNA ESQUERDA: Descrição Rica, Anexos da Demanda com Dropzone & Diálogo/Linha do Tempo -->
+          <div class="drawer-split-main-col">
+            <!-- 1. DESCRIÇÃO COMPLETA (Card alinhado perfeitamente com o Card de Informações) -->
+            <div class="drawer-prop-card drawer-desc-card">
+              <div class="drawer-prop-card-header">
+                <span class="drawer-prop-card-title">📝 Descrição</span>
+                <span style="font-size: 11px; color: var(--text-muted);" id="drawerDescModeHint">Visualização rica</span>
+              </div>
 
-          <div class="drawer-inline-attachments-grid" id="drawerInlineAttachmentsList">
-            <!-- Renderizado dinamicamente com botões de baixar de fácil acesso -->
-          </div>
-        </div>
+              <!-- Quadro de Descrição com Rich Text Toolbar igual à tela de abertura -->
+              <div class="rich-editor-wrapper drawer-rich-editor-wrapper" id="drawerDescWrapper">
+                <div class="rich-editor-toolbar" id="drawerDescToolbar" style="opacity: 0.55; pointer-events: none; transition: opacity 0.2s ease;">
+                  <button type="button" class="toolbar-btn" data-cmd="bold" title="Negrito (Ctrl+B)"><b>B</b></button>
+                  <button type="button" class="toolbar-btn" data-cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></button>
+                  <button type="button" class="toolbar-btn" data-cmd="underline" title="Sublinhado (Ctrl+U)"><u>U</u></button>
+                  <button type="button" class="toolbar-btn" data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+                  <span class="toolbar-separator"></span>
+                  <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="h3" title="Título de seção"><b>H3</b></button>
+                  <button type="button" class="toolbar-btn" data-cmd="insertUnorderedList" title="Lista com marcadores">• Lista</button>
+                  <button type="button" class="toolbar-btn" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
+                  <span class="toolbar-separator"></span>
+                  <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre" title="Bloco de código / SQL">&lt;/&gt; Código</button>
+                  <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="blockquote" title="Citação">❝ Citação</button>
+                  <button type="button" class="toolbar-btn" data-cmd="removeFormat" title="Limpar formatação">🧹 Limpar</button>
+                </div>
+                
+                <!-- Modo Leitura / Visualização Formatada -->
+                <div class="rich-editor-content description-box" id="drawerDescription" contenteditable="false" style="min-height: 180px; max-height: 380px; overflow-y: auto; background: transparent; border: none;">
+                  Carregando descrição...
+                </div>
 
-        <!-- 4. OUTROS CAMPOS ABAIXO (Propriedades Técnicas e Vínculos) -->
-        <div class="drawer-properties-cards" style="margin-top: 14px;">
-          <!-- Card 1: Situação, Atribuição & Prazos -->
-          <div class="drawer-prop-card">
-            <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">📌 Situação, Atribuição & Prazos</span>
-              <div class="drawer-prop-card-quick-actions" id="drawerQuickWorkflowActionsContainer">
-                <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
+                <!-- Modo Edição com Rich Editor (Visível ao clicar em Editar Demanda) -->
+                <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; border: none; background: transparent;">
+                  <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px; max-height: 380px; overflow-y: auto;"></div>
+                </div>
               </div>
             </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Situação do Chamado</label>
-              <select class="form-select" id="drawerEditStatus">
-                <option value="triage">Triagem</option>
-                <option value="queued">Na Fila (Aberto)</option>
-                <option value="in_progress">Em Progresso</option>
-                <option value="review">Em Revisão</option>
-                <option value="waiting_requester">Aguardando Resposta do N2</option>
-                <option value="paused">Pausado</option>
-                <option value="done">Concluído</option>
-              </select>
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Responsável (Desenvolvedor)</label>
-              <select class="form-select" id="drawerEditAssignedTo">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Prioridade</label>
-              <select class="form-select priority-select" id="drawerEditPriority">
-                <option value="medium">● Normal</option>
-                <option value="high">● Alta</option>
-                <option value="urgent">● Urgente</option>
-                <option value="low">● Baixa</option>
-              </select>
-            </div>
-            <div class="drawer-field-row">
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 5px;">
-                <label class="drawer-field-label" style="margin-bottom: 0;">Validador</label>
-                <div class="reviewer-badge-actions">
-                  <button type="button" class="btn-reviewer-pill btn-reviewer-me" id="btnAssignReviewerMe" title="Atribuir este chamado a mim como validador">
-                    <span>👤</span> Atribuir a Mim
-                  </button>
-                  <button type="button" class="btn-reviewer-pill btn-reviewer-clear" id="btnClearDrawerReviewer" title="Remover validador e deixar em branco">
-                    <span>✕</span> Deixar em Branco
+
+            <!-- 2. ANEXOS DA DEMANDA COM CAMPO PARA ADIÇÃO DE NOVOS ANEXOS (DROPZONE + LISTA) -->
+            <div class="drawer-inline-attachments-container" id="drawerInlineAttachmentsContainer" style="margin-top: 14px;">
+              <div class="drawer-inline-attachments-header">
+                <div class="inline-attachments-title">
+                  <span>📎 Anexos da Demanda</span>
+                  <span class="inline-attachments-counter" id="drawerInlineAttachmentsBadge">0</span>
+                </div>
+                <div class="inline-attachments-header-actions">
+                  <button type="button" class="btn-inline-download-all" id="btnInlineDownloadAllAttachments" style="display: none;" title="Baixar todos os anexos desta demanda">
+                    <span>⚡</span> <span>Baixar Todos</span>
                   </button>
                 </div>
               </div>
-              <select class="form-select" id="drawerEditReviewer">
-                <option value="">Sem validador (Em branco)</option>
-                <!-- Dynamically populated -->
-              </select>
+
+              <!-- Campo Dropzone para Adição de Novos Anexos à Demanda -->
+              <div class="file-dropzone drawer-attachments-dropzone" id="drawerDropzone" style="padding: 14px 18px; margin-bottom: 12px; cursor: pointer;">
+                <div class="dropzone-icon" style="font-size: 22px;">📎</div>
+                <div class="dropzone-text" style="font-size: 12.5px;">
+                  <strong>Clique para selecionar</strong> ou arraste arquivos para anexar a este chamado
+                </div>
+                <div class="dropzone-sub" style="font-size: 11px;">Suporta PDF, XLSX, CSV, PNG, JPG, ZIP, CNAB e colagem direta de prints com Ctrl+V</div>
+                <input type="file" id="drawerFileInput" multiple style="display: none;" accept="image/*,.pdf,.xlsx,.xls,.csv,.txt,.zip,.rar,.cnab,.ret,.rem">
+              </div>
+              <div id="drawerUploadStatus" style="font-size: 12px; font-weight: 500; display: none; padding: 6px 10px; border-radius: 4px; margin-bottom: 10px;"></div>
+
+              <!-- Lista de Anexos Existentes da Demanda -->
+              <div id="drawerInlineAttachmentsEmpty" class="drawer-inline-attachments-empty">
+                <span>Nenhum anexo nesta demanda.</span>
+              </div>
+
+              <div class="drawer-inline-attachments-grid" id="drawerInlineAttachmentsList">
+                <!-- Renderizado dinamicamente com botões de baixar e ver de fácil acesso -->
+              </div>
+
+              <!-- IDs ocultos para compatibilidade com rotinas legadas -->
+              <div id="drawerAttachmentsList" style="display: none;"></div>
+              <div id="drawerAttachmentsEmpty" style="display: none;"></div>
+              <span id="drawerAttachmentsCountBadge" style="display: none;">0</span>
             </div>
 
-            <!-- Prazos de Entrega e do Cliente lado a lado -->
-            <div class="drawer-dates-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <!-- Prazo de Entrega com Calendário de Disponibilidade -->
-              <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerDeliveryDateGroup">
-                <label class="drawer-field-label">
-                  <span>Prazo de Entrega</span>
-                  <span id="drawerDeliveryBadge" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
-                </label>
-                <div class="date-input-wrapper">
-                  <input type="text" class="form-input" id="drawerEditDeliveryDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #38bdf8; cursor: pointer;">
-                  <button type="button" class="btn-input-calendar" id="btnToggleDrawerDeliveryCal" title="Abrir calendário de disponibilidade">📅</button>
-                </div>
-                <!-- Floating Popover Delivery -->
-                <div class="cal-floating-popover" id="calDrawerDeliveryPopover" style="display: none; left: 0; right: auto;">
-                  <div class="cal-popover-header">
-                    <div class="cal-top-header" id="calDrawerAgendaHeader">Agenda de Entrega</div>
-                    <button type="button" class="btn-close-popover" id="btnCloseDrawerDeliveryCal">✕</button>
-                  </div>
-                  <div class="cal-dual-months" id="calDrawerDualMonthsContainer"></div>
-                  <div class="cal-popover-footer">
-                    <div class="cal-selected-pill" id="calDrawerDeliverySelectedDateText">Nenhuma data</div>
-                    <button type="button" id="btnClearDrawerDeliveryDate" class="btn-clear-date">Limpar</button>
-                  </div>
+            <!-- 3. DIÁLOGO & LINHA DO TEMPO (Posicionado diretamente embaixo dos Anexos) -->
+            <div class="drawer-main-stream-section" id="drawerMainStreamSection" style="margin-top: 14px;">
+              <div class="drawer-main-stream-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="form-label" style="margin-bottom: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; color: var(--text-primary);">
+                  Atendimento
+                </span>
+                <span class="tab-badge" id="drawerStreamCountBadge">0</span>
+              </div>
+
+              <!-- Filter Bar (Pills matching screenshot) -->
+              <div class="stream-filter-bar">
+                <button type="button" class="stream-filter-btn active" data-filter="all" id="btnStreamFilterAll">
+                  Tudo <span class="stream-filter-count" id="streamCountAll">0</span>
+                </button>
+                <button type="button" class="stream-filter-btn" data-filter="comments" id="btnStreamFilterComments">
+                  Conversa <span class="stream-filter-count" id="streamCountComments">0</span>
+                </button>
+                <button type="button" class="stream-filter-btn" data-filter="events" id="btnStreamFilterEvents">
+                  Alterações <span class="stream-filter-count" id="streamCountEvents">0</span>
+                </button>
+              </div>
+
+              <!-- Unified Activity Stream (Messages + System Events) -->
+              <div class="comments-container stream-container" id="drawerStreamList" style="max-height: 480px;">
+                <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">
+                  Carregando atendimento e histórico...
                 </div>
               </div>
 
-              <!-- Prazo do Cliente com Calendário Comum -->
-              <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerClientDateGroup">
-                <label class="drawer-field-label">
-                  <span>Prazo do Cliente</span>
-                  <span style="font-size: 10px; color: #34d399; font-weight: 600;">Calendário comum</span>
-                </label>
-                <div class="date-input-wrapper">
-                  <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
-                  <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #34d399;">📅</button>
-                </div>
-                <!-- Common Calendar Popover Client -->
-                <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none; right: 0; left: auto;">
-                  <div class="cal-popover-header">
-                    <div class="cal-top-header" style="font-size: 13px;">📅 <strong>Calendário</strong> (Prazo do Cliente)</div>
-                    <button type="button" class="btn-close-popover" id="btnCloseDrawerClientCal">✕</button>
+              <!-- Quick Reply Box (Interações e Diálogo) -->
+              <div class="comment-input-box" id="drawerCommentInputBox" style="margin-top: 10px;">
+                <div class="comment-editor-toolbar" id="commentEditorToolbar">
+                  <div class="comment-toolbar-group">
+                    <button type="button" class="comment-tool-btn" data-tag="b" title="Negrito (Ctrl+B)"><b>B</b></button>
+                    <button type="button" class="comment-tool-btn" data-tag="i" title="Itálico (Ctrl+I)"><i>I</i></button>
+                    <button type="button" class="comment-tool-btn" data-tag="s" title="Tachado"><s>S</s></button>
+                    <span class="toolbar-separator"></span>
+                    <button type="button" class="comment-tool-btn" data-tag="ul" title="Lista com marcadores">• Lista</button>
+                    <button type="button" class="comment-tool-btn" data-tag="ol" title="Lista numerada">1. Lista</button>
+                    <button type="button" class="comment-tool-btn" data-tag="quote" title="Citação">❝</button>
+                    <button type="button" class="comment-tool-btn" data-tag="code" title="Código">&lt;/&gt;</button>
                   </div>
-                  <div class="cal-common-body" id="calDrawerClientMonthContainer"></div>
-                  <div class="cal-popover-footer">
-                    <button type="button" id="btnDrawerClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
-                    <button type="button" id="btnClearDrawerClientDate" class="btn-clear-date">Limpar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 2: Layout, Produto, Banco & Movidesk -->
-          <div class="drawer-prop-card">
-            <div class="drawer-prop-card-header">
-              <span class="drawer-prop-card-title">📐 Layout, Banco & Movidesk</span>
-            </div>
-            <div class="drawer-field-row" style="position: relative;">
-              <label class="drawer-field-label">Layout Associado</label>
-              <input type="hidden" id="drawerEditLayoutId">
-              <div class="layout-field-wrapper" id="drawerLayoutFieldWrapper">
-                <!-- Estado Selecionado: DENTRO do campo -->
-                <div id="drawerSelectedLayoutBox" class="layout-field-selected" style="display: none;">
-                  <div class="layout-field-content clickable" id="drawerSelectedLayoutContent" title="Clique para abrir no Importer Ultra ↗">
-                    <span class="layout-field-title" id="drawerSelectedLayoutLabel"></span>
-                    <span class="layout-field-sub" id="drawerSelectedLayoutSub"></span>
-                    <span class="badge-layout-status" id="drawerSelectedLayoutStatus" style="display: none;"></span>
-                    <span class="layout-field-open-indicator" style="font-size: 11px; opacity: 0.8; margin-left: 2px;">↗</span>
-                  </div>
-                  <div class="layout-field-actions">
-                    <button type="button" class="btn-layout-inline-approve" id="btnDrawerApproveLayout" title="Aprovar Layout diretamente no Importer Ultra" style="display: none;">
-                      <span>✅</span> Aprovar Layout
+                  <div class="comment-toolbar-attach-wrap">
+                    <button type="button" class="comment-toolbar-attach-btn" id="btnCommentAttachImage" title="Anexar imagem ou print nesta mensagem (ou cole com Ctrl+V)">
+                      <span>📎</span> <span>Anexar</span>
                     </button>
-                    <button type="button" class="btn-layout-inline-clear" id="btnDrawerClearLayoutField" title="Remover ou alterar layout">
-                      ✕
+                    <input type="file" id="inputCommentAttachFile" multiple accept="image/*" style="display: none;">
+                  </div>
+                </div>
+
+                <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V..."></textarea>
+                
+                <!-- Imagens/prints colados ou selecionados para a mensagem -->
+                <div id="drawerCommentPendingAttachments" class="comment-pending-attachments" style="display: none;"></div>
+
+                <div class="comment-input-actions-bar">
+                  <div class="comment-input-actions-left" style="display: inline-flex; align-items: center; gap: 8px;">
+                    <button class="btn-primary btn-save-interaction" id="btnSubmitComment">
+                      <span>✈️</span> Enviar
+                    </button>
+                    <span id="commentSendStatus" class="comment-send-status"></span>
+                  </div>
+                  <div class="comment-input-actions-right">
+                    <div class="drawer-comment-workflow-actions" id="drawerCommentWorkflowActionsContainer"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- COLUNA DIREITA: Card Único "Informações" + Chamados com o Layout + Metadados Empilhados -->
+          <div class="drawer-split-side-col">
+            <!-- Card Único: Informações -->
+            <div class="drawer-prop-card">
+              <div class="drawer-prop-card-header">
+                <span class="drawer-prop-card-title">📌 Informações</span>
+                <div class="drawer-prop-card-quick-actions" id="drawerQuickWorkflowActionsContainer">
+                  <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
+                </div>
+              </div>
+
+              <!-- 1. Layout Associado (Sozinho em cima) -->
+              <div class="drawer-field-row" style="position: relative;">
+                <label class="drawer-field-label">Layout Associado</label>
+                <input type="hidden" id="drawerEditLayoutId">
+                <div class="layout-field-wrapper" id="drawerLayoutFieldWrapper">
+                  <!-- Estado Selecionado: DENTRO do campo -->
+                  <div id="drawerSelectedLayoutBox" class="layout-field-selected" style="display: none;">
+                    <div class="layout-field-content clickable" id="drawerSelectedLayoutContent" title="Clique para abrir no Importer Ultra ↗">
+                      <span class="layout-field-title" id="drawerSelectedLayoutLabel"></span>
+                      <span class="layout-field-sub" id="drawerSelectedLayoutSub"></span>
+                      <span class="badge-layout-status" id="drawerSelectedLayoutStatus" style="display: none;"></span>
+                      <span class="layout-field-open-indicator" style="font-size: 11px; opacity: 0.8; margin-left: 2px;">↗</span>
+                    </div>
+                    <div class="layout-field-actions">
+                      <button type="button" class="btn-layout-inline-approve" id="btnDrawerApproveLayout" title="Aprovar Layout diretamente no Importer Ultra" style="display: none;">
+                        <span>✅</span> Aprovar Layout
+                      </button>
+                      <button type="button" class="btn-layout-inline-clear" id="btnDrawerClearLayoutField" title="Remover ou alterar layout">
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  <!-- Estado de Busca: DENTRO do campo quando não há layout selecionado -->
+                  <div id="drawerLayoutSearchBox" class="layout-field-search" style="display: none; position: relative;">
+                    <input type="text" class="form-input" id="drawerEditLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 5190)..." autocomplete="off" style="width: 100%;">
+                    <div id="drawerLayoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Tipo e Produto (Dividem a mesma linha) -->
+              <div class="drawer-fields-grid-2">
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Tipo de Chamado</label>
+                  <select class="form-select" id="drawerEditType">
+                    <!-- Dynamically populated -->
+                  </select>
+                </div>
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Produto</label>
+                  <select class="form-select" id="drawerEditProduct">
+                    <!-- Dynamically populated -->
+                  </select>
+                </div>
+              </div>
+
+              <!-- 3. Banco de Dados e Nº Ticket Movidesk (Dividem a mesma linha) -->
+              <div class="drawer-fields-grid-2">
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Banco de Dados do Cliente</label>
+                  <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
+                </div>
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Nº Ticket Movidesk</label>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" class="form-input" id="drawerEditMovidesk" placeholder="Ex: 12345" maxlength="40">
+                    <button type="button" class="btn-secondary" id="btnDrawerOpenMovideskAction" title="Abrir chamado no Movidesk" style="padding: 0 10px; height: 36px;">🎫</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. Etiquetas da Demanda (Depois de Banco de Dados e Nº Ticket Movidesk) -->
+              <div class="drawer-field-row">
+                <label class="drawer-field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>🏷️ Etiquetas da Demanda</span>
+                  <span style="font-size: 11px; color: var(--text-muted);" id="drawerLabelsCountText">0 selecionadas</span>
+                </label>
+                <div class="filter-dropdown drawer-labels-dropdown" id="dropdownDrawerLabels" style="position: relative; width: 100%;">
+                  <button type="button" class="filter-dropdown-btn drawer-labels-dropdown-btn" id="btnDrawerLabels" title="Selecionar etiquetas da demanda" style="width: 100%; height: 38px; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <span class="filter-btn-prefix">🏷️</span>
+                      <span class="filter-btn-text" id="btnDrawerLabelsText">Nenhuma etiqueta</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                      <span class="filter-btn-badge" id="btnDrawerLabelsBadge" style="display: none;">0</span>
+                      <span class="filter-btn-arrow">▾</span>
+                    </div>
+                  </button>
+                  <div class="filter-dropdown-panel drawer-labels-panel" id="panelDrawerLabels" style="display: none; width: 100%; position: absolute; top: calc(100% + 4px); right: 0; z-index: 1050; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                    <div class="filter-panel-header">
+                      <span class="filter-panel-title">Etiquetas</span>
+                      <div class="filter-panel-actions">
+                        <button type="button" class="filter-action-link" id="actionDrawerLabelsClear">Limpar</button>
+                      </div>
+                    </div>
+                    <div class="filter-panel-search">
+                      <input type="text" class="filter-search-input" id="searchDrawerLabels" placeholder="🔍 Pesquisar etiqueta..." autocomplete="off">
+                    </div>
+                    <div class="filter-panel-list" id="listDrawerLabels" style="max-height: 220px; overflow-y: auto;"></div>
+                  </div>
+                </div>
+                <!-- Badges ativas exibidas logo abaixo para confirmação visual rápida -->
+                <div class="drawer-active-labels-container" id="drawerActiveLabelsPreview" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px;"></div>
+              </div>
+
+              <!-- 5. Situação do Chamado e Prioridade (Embaixo das Etiquetas) -->
+              <div class="drawer-fields-grid-2">
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Situação do Chamado</label>
+                  <select class="form-select" id="drawerEditStatus">
+                    <option value="triage">Triagem</option>
+                    <option value="queued">Na Fila (Aberto)</option>
+                    <option value="in_progress">Em Progresso</option>
+                    <option value="review">Em Revisão</option>
+                    <option value="waiting_requester">Aguardando Resposta do N2</option>
+                    <option value="paused">Pausado</option>
+                    <option value="done">Concluído</option>
+                  </select>
+                </div>
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Prioridade</label>
+                  <select class="form-select priority-select" id="drawerEditPriority">
+                    <option value="medium">● Normal</option>
+                    <option value="high">● Alta</option>
+                    <option value="urgent">● Urgente</option>
+                    <option value="low">● Baixa</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 6. Responsável, Prazo de Entrega e Prazo do Cliente -->
+              <div class="drawer-fields-grid-3">
+                <div class="drawer-field-row">
+                  <label class="drawer-field-label">Responsável (Dev)</label>
+                  <select class="form-select" id="drawerEditAssignedTo">
+                    <!-- Dynamically populated -->
+                  </select>
+                </div>
+
+                <!-- Prazo de Entrega -->
+                <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerDeliveryDateGroup">
+                  <label class="drawer-field-label">
+                    <span>Prazo de Entrega</span>
+                    <span id="drawerDeliveryBadge" style="font-size: 10px; color: #38bdf8; font-weight: 600;"></span>
+                  </label>
+                  <div class="date-input-wrapper">
+                    <input type="text" class="form-input" id="drawerEditDeliveryDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #38bdf8; cursor: pointer;">
+                    <button type="button" class="btn-input-calendar" id="btnToggleDrawerDeliveryCal" title="Abrir calendário de disponibilidade">📅</button>
+                  </div>
+                  <!-- Floating Popover Delivery -->
+                  <div class="cal-floating-popover" id="calDrawerDeliveryPopover" style="display: none; left: 0; right: auto;">
+                    <div class="cal-popover-header">
+                      <div class="cal-top-header" id="calDrawerAgendaHeader">Agenda de Entrega</div>
+                      <button type="button" class="btn-close-popover" id="btnCloseDrawerDeliveryCal">✕</button>
+                    </div>
+                    <div class="cal-dual-months" id="calDrawerDualMonthsContainer"></div>
+                    <div class="cal-popover-footer">
+                      <div class="cal-selected-pill" id="calDrawerDeliverySelectedDateText">Nenhuma data</div>
+                      <button type="button" id="btnClearDrawerDeliveryDate" class="btn-clear-date">Limpar</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Prazo do Cliente -->
+                <div class="drawer-field-row" style="position: relative; margin-bottom: 0;" id="drawerClientDateGroup">
+                  <label class="drawer-field-label">
+                    <span>Prazo do Cliente</span>
+                    <span style="font-size: 10px; color: #34d399; font-weight: 600;">Comum</span>
+                  </label>
+                  <div class="date-input-wrapper">
+                    <input type="text" class="form-input" id="drawerEditClientDueDate" placeholder="dd/mm/aaaa" style="font-weight: 600; color: #e2e8f0; cursor: pointer;">
+                    <button type="button" class="btn-input-calendar" id="btnToggleDrawerClientCal" title="Abrir calendário comum" style="color: #34d399;">📅</button>
+                  </div>
+                  <!-- Common Calendar Popover Client -->
+                  <div class="cal-floating-popover cal-common-popover" id="calDrawerClientPopover" style="display: none; right: 0; left: auto;">
+                    <div class="cal-popover-header">
+                      <div class="cal-top-header" style="font-size: 13px;">📅 <strong>Calendário</strong> (Prazo do Cliente)</div>
+                      <button type="button" class="btn-close-popover" id="btnCloseDrawerClientCal">✕</button>
+                    </div>
+                    <div class="cal-common-body" id="calDrawerClientMonthContainer"></div>
+                    <div class="cal-popover-footer">
+                      <button type="button" id="btnDrawerClientCalToday" class="btn-cal-today-shortcut">Hoje</button>
+                      <button type="button" id="btnClearDrawerClientDate" class="btn-clear-date">Limpar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 7. Validador embaixo -->
+              <div class="drawer-field-row">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 5px;">
+                  <label class="drawer-field-label" style="margin-bottom: 0;">Validador</label>
+                  <div class="reviewer-badge-actions">
+                    <button type="button" class="btn-reviewer-pill btn-reviewer-me" id="btnAssignReviewerMe" title="Atribuir este chamado a mim como validador">
+                      <span>👤</span> Atribuir a Mim
+                    </button>
+                    <button type="button" class="btn-reviewer-pill btn-reviewer-clear" id="btnClearDrawerReviewer" title="Remover validador e deixar em branco">
+                      <span>✕</span> Deixar em Branco
                     </button>
                   </div>
                 </div>
-                <!-- Estado de Busca: DENTRO do campo quando não há layout selecionado -->
-                <div id="drawerLayoutSearchBox" class="layout-field-search" style="display: none; position: relative;">
-                  <input type="text" class="form-input" id="drawerEditLayoutSearch" placeholder="Digite nº ou nome do layout (ex: 5190)..." autocomplete="off" style="width: 100%;">
-                  <div id="drawerLayoutSearchResults" class="layout-autocomplete-dropdown" style="display: none;"></div>
+                <select class="form-select" id="drawerEditReviewer">
+                  <option value="">Sem validador (Em branco)</option>
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+
+              <!-- 8. Solicitante no rodapé do card Informações -->
+              <div class="drawer-field-row drawer-requester-row" style="margin-top: 6px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label class="drawer-field-label" style="margin-bottom: 0;">👤 Solicitante</label>
+                  <span id="drawerRequesterEmail" style="font-size: 11px; color: var(--text-muted); font-family: monospace;"></span>
+                </div>
+                <div class="drawer-requester-display" style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.06); padding: 7px 12px; border-radius: var(--radius-sm); font-size: 13px; color: #e2e8f0;">
+                  <span style="font-size: 14px; opacity: 0.85;">👤</span>
+                  <span id="drawerRequesterName" style="font-weight: 600;">-</span>
                 </div>
               </div>
             </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Tipo de Chamado</label>
-              <select class="form-select" id="drawerEditType">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Produto</label>
-              <select class="form-select" id="drawerEditProduct">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Banco de Dados do Cliente</label>
-              <input type="text" class="form-input" id="drawerEditDatabase" placeholder="Ex: cont_confour">
-            </div>
-            <div class="drawer-field-row">
-              <label class="drawer-field-label">Nº Ticket Movidesk</label>
-              <div style="display: flex; gap: 6px;">
-                <input type="text" class="form-input" id="drawerEditMovidesk" placeholder="Ex: 12345" maxlength="40">
-                <button type="button" class="btn-secondary" id="btnDrawerOpenMovideskAction" title="Abrir chamado no Movidesk" style="padding: 0 10px; height: 36px;">🎫</button>
+
+            <!-- Card 2: Chamados Abertos com o Mesmo Layout -->
+            <div class="drawer-prop-card drawer-same-layout-card" id="drawerSameLayoutCard" style="display: none;">
+              <div class="drawer-prop-card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="drawer-prop-card-title" id="drawerSameLayoutCardTitle" style="font-weight: 700; color: #e2e8f0;">📐 Chamados com este Layout</span>
+                </div>
+                <span class="badge" id="drawerSameLayoutCountBadge" style="font-size: 11px; padding: 2px 8px; font-weight: 600;">0 abertos</span>
+              </div>
+              <div id="drawerSameLayoutContent" class="drawer-same-layout-content">
+                <!-- Renderizado dinamicamente via renderSameLayoutTickets() -->
               </div>
             </div>
-          </div>
 
-          <!-- Card de Chamados Abertos com o Mesmo Layout -->
-          <div class="drawer-prop-card drawer-same-layout-card" id="drawerSameLayoutCard" style="grid-column: span 2; display: none;">
-            <div class="drawer-prop-card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 10px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="drawer-prop-card-title" id="drawerSameLayoutCardTitle" style="font-weight: 700; color: #e2e8f0;">📐 Chamados com este Layout</span>
+            <!-- Card 3: Ações Rápidas & Links Externos (Logo depois de Chamados Abertos) -->
+            <div class="drawer-prop-card drawer-side-actions-card" id="drawerSideActionsCard">
+              <div class="drawer-prop-card-header">
+                <span class="drawer-prop-card-title">⚡ Ações e Ferramentas</span>
               </div>
-              <span class="badge" id="drawerSameLayoutCountBadge" style="font-size: 11px; padding: 2px 8px; font-weight: 600;">0 abertos</span>
+              <div class="drawer-side-actions-content">
+                <div class="drawer-side-actions-primary">
+                  <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
+                    <span>🎫</span> <span>Abrir no Movidesk</span>
+                  </button>
+                  <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra" style="display: none;">
+                    <span>🌐</span> <span>Abrir no Importer</span>
+                  </button>
+                  <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
+                    <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
+                  </button>
+                  <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
+                    <span>🚀</span> <span>Google Drive / AutoDrive</span>
+                  </button>
+                </div>
+                <div class="drawer-side-actions-secondary">
+                  <button type="button" class="quick-action-btn" id="btnToggleDrawerFavorite" title="Favoritar este chamado">
+                    <span>⭐</span> <span>Favorito</span>
+                  </button>
+                  <button type="button" class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
+                    <span>🚫</span> <span>Ignorar</span>
+                  </button>
+                  <button type="button" class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
+                    <span>📦</span> <span>Arquivar</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div id="drawerSameLayoutContent" class="drawer-same-layout-content">
-              <!-- Renderizado dinamicamente via renderSameLayoutTickets() -->
-            </div>
-          </div>
 
-          <!-- Card 5: Metadados do Sistema -->
-          <div class="drawer-prop-card" style="grid-column: span 2; background: rgba(255,255,255,0.015);">
-            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);">
-              <div>👤 <strong>Solicitante:</strong> <span id="drawerMetaRequester">-</span></div>
-              <div>📅 <strong>Criado em:</strong> <span id="drawerMetaCreatedAt">-</span></div>
-              <div>🆔 <strong>ID do Chamado:</strong> <span id="drawerMetaId" style="font-family: monospace; font-size: 11px;">-</span></div>
+            <!-- Card 4: Metadados do Sistema -->
+            <div class="drawer-prop-card" style="background: rgba(255,255,255,0.015);">
+              <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted);">
+                <div>👤 <strong>Solicitante:</strong> <span id="drawerMetaRequester">-</span></div>
+                <div>📅 <strong>Criado em:</strong> <span id="drawerMetaCreatedAt">-</span></div>
+                <div>🆔 <strong>ID do Chamado:</strong> <span id="drawerMetaId" style="font-family: monospace; font-size: 11px;">-</span></div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 5. BOTÕES DE FLUXO (REABRIR, FINALIZAR, INICIAR, ETC) E SALVAR ALTERAÇÕES NO FIM DO CHAMADO -->
+        <!-- 5. BOTÕES DE FLUXO (REABRIR, FINALIZAR, INICIAR, ETC) E EDITAR / SALVAR ALTERAÇÕES -->
         <div class="drawer-bottom-actions-bar" id="drawerBottomActionsBar">
-          <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
+          <div class="drawer-bottom-left-info" style="display: flex; align-items: center; gap: 14px;">
+            <div class="drawer-bottom-requester-pill" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 5px 12px; border-radius: 6px;">
+              <span>👤 Solicitante:</span>
+              <strong id="drawerBottomRequesterName" style="color: #e2e8f0; font-weight: 600;">-</strong>
+            </div>
+            <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
+          </div>
           <div class="drawer-bottom-actions-right">
             <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer">
               <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, Devolver, etc. -->
             </div>
+            <button type="button" class="btn-secondary" id="btnDrawerCancelEdit" style="display: none; height: 38px; padding: 0 16px; font-weight: 500;">
+              Cancelar Edição
+            </button>
             <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
-              <span>💾</span> Salvar Alterações da Demanda
+              <span>✏️</span> Editar Demanda
             </button>
           </div>
         </div>
       </div>
 
-      <!-- TAB 2: UNIFIED DIALOGUE & TIMELINE (Linha do tempo integrada no diálogo) -->
-      <div class="drawer-tab-pane" id="drawerPaneComments" style="display: none;">
-        <!-- Filter Bar -->
-        <div class="stream-filter-bar">
-          <button type="button" class="stream-filter-btn active" data-filter="all" id="btnStreamFilterAll">
-            <span>💬</span> Tudo <span class="stream-filter-count" id="streamCountAll">0</span>
-          </button>
-          <button type="button" class="stream-filter-btn" data-filter="comments" id="btnStreamFilterComments">
-            <span>🗨️</span> Apenas Mensagens <span class="stream-filter-count" id="streamCountComments">0</span>
-          </button>
-          <button type="button" class="stream-filter-btn" data-filter="events" id="btnStreamFilterEvents">
-            <span>🕒</span> Linha do Tempo / Histórico <span class="stream-filter-count" id="streamCountEvents">0</span>
-          </button>
-        </div>
-
-        <!-- Unified Activity Stream (Messages + System Events) -->
-        <div class="comments-container stream-container" id="drawerStreamList">
-          <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">
-            Carregando diálogo e histórico...
-          </div>
-        </div>
-
-        <!-- Quick Reply Box (Interações e Diálogo) -->
-        <div class="comment-input-box" id="drawerCommentInputBox">
-          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Responder ou adicionar interação</span>
-            <span style="font-size: 11px; color: var(--text-muted);">Cole print com Ctrl+V ou Pressione Ctrl+Enter para enviar</span>
-          </label>
-          <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V..."></textarea>
-          
-          <!-- Imagens/prints colados ou selecionados para a mensagem -->
-          <div id="drawerCommentPendingAttachments" class="comment-pending-attachments" style="display: none;"></div>
-
-          <div class="comment-input-actions-bar">
-            <div class="comment-input-actions-left" style="display: inline-flex; align-items: center; gap: 8px;">
-              <button type="button" class="btn-secondary" id="btnCommentAttachImage" title="Anexar imagem ou print nesta mensagem (ou cole com Ctrl+V)" style="padding: 4px 10px; font-size: 11px; gap: 5px; height: 28px;">
-                <span>📷</span> Colar / Anexar Print
-              </button>
-              <input type="file" id="inputCommentAttachFile" multiple accept="image/*" style="display: none;">
-              <span id="commentSendStatus" class="comment-send-status"></span>
-            </div>
-            <div class="comment-input-actions-right">
-              <div class="drawer-comment-workflow-actions" id="drawerCommentWorkflowActionsContainer">
-                <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, etc. -->
-              </div>
-              <button class="btn-primary btn-save-interaction" id="btnSubmitComment">
-                <span>💬</span> Salvar Interação
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 3: ATTACHMENTS (Com Dropzone para envio direto) -->
-      <div class="drawer-tab-pane" id="drawerPaneAttachments" style="display: none;">
-        <!-- Upload Dropzone for demand -->
-        <div class="file-dropzone" id="drawerDropzone" style="padding: 18px 20px;">
-          <div class="dropzone-icon" style="font-size: 26px;">📎</div>
-          <div class="dropzone-text" style="font-size: 13px;">
-            <strong>Clique para selecionar</strong> ou arraste arquivos para anexar a este chamado
-          </div>
-          <div class="dropzone-sub" style="font-size: 11px;">Suporta PDF, XLSX, CSV, PNG, JPG, ZIP, CNAB e colagem com Ctrl+V</div>
-          <input type="file" id="drawerFileInput" multiple style="display: none;" accept="image/*,.pdf,.xlsx,.xls,.csv,.txt,.zip,.rar,.cnab,.ret,.rem">
-        </div>
-        <div id="drawerUploadStatus" style="font-size: 12px; font-weight: 500; display: none; padding: 4px 8px; border-radius: 4px;"></div>
-
-        <!-- Existing Attachments Grid -->
-        <div id="drawerAttachmentsEmpty" style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">
-          Nenhum anexo associado a este chamado.
-        </div>
-        <div id="drawerAttachmentsList" class="attachments-grid"></div>
-      </div>
+      <!-- TAB 2: Containers ocultos de retrocompatibilidade -->
+      <div class="drawer-tab-pane" id="drawerPaneComments" style="display: none;"></div>
+      <div class="drawer-tab-pane" id="drawerPaneAttachments" style="display: none;"></div>
 
       <!-- TAB 4: PRIVATE LOCAL NOTES -->
       <div class="drawer-tab-pane" id="drawerPaneNotes" style="display: none;">

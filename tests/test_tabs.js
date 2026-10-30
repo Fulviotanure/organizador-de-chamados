@@ -465,7 +465,15 @@ console.log('Test 5: Pinned tab close protection');
   assert.strictEqual(cleanClose, true, 'Clean tab closes directly');
   assert.strictEqual(promptShown, false, 'No confirm dialog for clean tab');
 
-  console.log('\n✅ All 26 TabManager unit tests passed successfully!');
+  // 27. Image in create ticket description marks tab dirty and preserves open img
+  console.log('Test 27: Image in create ticket description marks tab dirty');
+  appTabs.openCreateTicketTab(true);
+  getOrCreateEl('newTicketDescriptionEditor').innerHTML = '<p><img src="data:image/png;base64,abc12345" alt="Print colado" /></p>';
+  appTabs.checkCreateTicketDirty();
+  const createTabWithImg = appTabs.tabs.find(t => t.id === 'new-ticket');
+  assert.strictEqual(createTabWithImg.isDirty, true, 'Tab must be dirty when image is in description');
+
+  console.log('\n✅ All 27 TabManager unit tests passed successfully!');
 })().catch(err => {
   console.error('\n❌ Test failed:', err);
   process.exit(1);

@@ -82,6 +82,36 @@ function formatStatusLabel(st) {
   }
 }
 
+function renderStatusPill(st) {
+  const label = formatStatusLabel(st);
+  let s = String(typeof st === 'object' ? (st?.status || st?.name || label) : st || '').toLowerCase().trim();
+  let pillClass = 'pill-default';
+  let icon = '●';
+  if (s.includes('fila') || s.includes('queue') || s.includes('open') || s.includes('aberto')) {
+    pillClass = 'pill-queued';
+    icon = '📂';
+  } else if (s.includes('progresso') || s.includes('desenvolvimento') || s.includes('progress') || s.includes('andamento')) {
+    pillClass = 'pill-progress';
+    icon = '⚙';
+  } else if (s.includes('revis') || s.includes('review') || s.includes('valid')) {
+    pillClass = 'pill-review';
+    icon = '🔍';
+  } else if (s.includes('aguardando') || s.includes('waiting')) {
+    pillClass = 'pill-waiting';
+    icon = '⏳';
+  } else if (s.includes('paus') || s.includes('pause')) {
+    pillClass = 'pill-paused';
+    icon = '⏸';
+  } else if (s.includes('conclu') || s.includes('done') || s.includes('closed') || s.includes('finish')) {
+    pillClass = 'pill-done';
+    icon = '✔';
+  } else if (s.includes('triage')) {
+    pillClass = 'pill-triage';
+    icon = '📋';
+  }
+  return `<span class="stream-status-pill ${pillClass}"><span>${icon}</span> <span>${escapeHtml(label)}</span></span>`;
+}
+
 // Safely stringifies values from timeline events avoiding any [object Object]
 function stringifySafeValue(val) {
   if (val === null || val === undefined) return '';
@@ -489,179 +519,181 @@ async function renderAuthenticatedDescription(descHtml, ticketId, containerEl) {
           }
         });
       }
+    } else if (src && (src.startsWith('data:image/') || src.startsWith('blob:') || src.startsWith('http'))) {
+      img.style.cursor = 'zoom-in';
+      img.title = 'Clique para ampliar imagem';
+      img.onclick = () => openImageLightbox(src, 'Imagem da descrição', ticketId);
     }
   }
 }
 
 function formatEventContent(ev) {
-  const authorName = ev.user?.name || 'Sistema';
-  let title = 'Evento na demanda';
+  const authorName = ev.user?.name || (ev.user?.email ? ev.user.email.split('@')[0] : 'Sistema');
+  let title = 'Alteração registrada';
   let dotIcon = '⚡';
   let dotColor = '#38bdf8';
   let detail = '';
+  let subdetail = '';
 
   const fromVal = ev.fromValue || {};
   const toVal = ev.toValue || {};
+  const reasonText = ev.reason ? String(ev.reason).trim() : '';
 
   switch (ev.kind) {
     case 'created':
     case 'ticket_created':
-      title = `Demanda aberta por <strong>${escapeHtml(authorName)}</strong>`;
-      dotIcon = '➕';
-      dotColor = '#10b981';
-      if (toVal.title) {
-        detail = `<div class="stream-event-desc">"${escapeHtml(toVal.title)}"</div>`;
-      }
+      title = 'Chamado aberto';
+      dotIcon = '✉';
+      dotColor = '#38bdf8';
+      const createdTitle = toVal.title || ev.ticket?.title || '';
+      const createdStatus = toVal.status || 'queued';
+      detail = `<span class="stream-event-desc-text">${createdTitle ? 'Título: ' + escapeHtml(createdTitle) + ' · ' : ''}Situação: ${renderStatusPill(createdStatus)}</span>`;
       break;
 
     case 'status_change':
     case 'status_changed':
     case 'status':
-      const fromSt = formatStatusLabel(fromVal.status !== undefined ? fromVal.status : fromVal);
-      const toSt = formatStatusLabel(toVal.status !== undefined ? toVal.status : toVal);
-      title = `Situação alterada de <strong>${escapeHtml(fromSt)}</strong> para <strong>${escapeHtml(toSt)}</strong>`;
-      dotIcon = '🔄';
-      dotColor = '#38bdf8';
-      if (ev.reason) {
-        detail = `<div class="stream-event-reason">Motivo: ${escapeHtml(ev.reason)}</div>`;
+      title = 'Situação alterada';
+      dotIcon = '▶';
+      dotColor = '#10b981';
+      detail = `${renderStatusPill(fromVal)} <span class="stream-pill-arrow">➔</span> ${renderStatusPill(toVal)}`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
       }
       break;
 
     case 'assigned':
     case 'assignee_changed':
     case 'developer_assigned':
-      const devName = toVal.assignedToName || toVal.assignedTo?.name || toVal.name || stringifySafeValue(toVal) || 'Desenvolvedor';
-      title = `Atribuído a <strong>${escapeHtml(String(devName))}</strong> por ${escapeHtml(authorName)}`;
+      title = 'Responsável alterado';
       dotIcon = '👤';
       dotColor = '#818cf8';
+      const fromDev = fromVal.assignedToName || fromVal.assignedTo?.name || fromVal.name || (fromVal ? stringifySafeValue(fromVal) : 'Sem responsável');
+      const toDev = toVal.assignedToName || toVal.assignedTo?.name || toVal.name || stringifySafeValue(toVal) || 'Desenvolvedor';
+      detail = `<span class="stream-text-pill">${escapeHtml(String(fromDev || 'ninguém'))}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(String(toDev))}</span>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'reviewer_assigned':
     case 'reviewer_changed':
-      const revName = toVal.reviewerName || toVal.reviewer?.name || toVal.name || stringifySafeValue(toVal) || 'Validador';
-      title = `Validador definido: <strong>${escapeHtml(String(revName))}</strong> por ${escapeHtml(authorName)}`;
-      dotIcon = '🧐';
+      title = 'Validador alterado';
+      dotIcon = '👤';
       dotColor = '#a855f7';
+      const fromRev = fromVal.reviewerName || fromVal.reviewer?.name || fromVal.name || (fromVal ? stringifySafeValue(fromVal) : 'ninguém');
+      const toRev = toVal.reviewerName || toVal.reviewer?.name || toVal.name || stringifySafeValue(toVal) || 'Validador';
+      detail = `<span class="stream-text-pill">${escapeHtml(String(fromRev || 'ninguém'))}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(String(toRev))}</span>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'returned':
     case 'return':
     case 'rejected':
-      title = `Chamado retornado para ajustes por <strong>${escapeHtml(authorName)}</strong>`;
-      dotIcon = '↩️';
+      title = 'Chamado retornado para ajustes';
+      dotIcon = '↩';
       dotColor = '#ef4444';
-      if (ev.reason) {
-        detail = `<div class="stream-event-reason">Motivo: ${escapeHtml(ev.reason)}</div>`;
+      if (reasonText) {
+        subdetail = `Motivo: ${escapeHtml(reasonText)}`;
       }
       break;
 
     case 'layout_linked':
     case 'layout_changed':
     case 'layout':
-      const lCode = toVal.layoutCode || toVal.code || toVal.layout?.code || (typeof toVal === 'number' ? toVal : '');
-      const lName = toVal.layoutName || toVal.name || toVal.layout?.name || '';
-      title = lCode
-        ? `Layout <strong>${escapeHtml(String(lCode))}</strong> ${lName ? '(' + escapeHtml(lName) + ') ' : ''}vinculado por <strong>${escapeHtml(authorName)}</strong>`
-        : `Layout vinculado à demanda por <strong>${escapeHtml(authorName)}</strong>`;
+      title = 'Layout apontado';
       dotIcon = '📐';
       dotColor = '#06b6d4';
+      const lCode = toVal.layoutCode || toVal.code || toVal.layout?.code || (typeof toVal === 'number' ? toVal : '');
+      const lName = toVal.layoutName || toVal.name || toVal.layout?.name || '';
+      if (lCode) {
+        detail = `<span class="stream-layout-pill">📐 ${escapeHtml(String(lCode))}${lName ? ' · ' + escapeHtml(lName) : ''}</span>`;
+      } else {
+        detail = `<span class="stream-layout-pill">Layout desvinculado</span>`;
+      }
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'client_due_changed':
     case 'client_due_date_changed':
-      const fromDue = fromVal.clientDueDate ? formatDisplayDate(fromVal.clientDueDate) : stringifySafeValue(fromVal);
-      const toDue = toVal.clientDueDate ? formatDisplayDate(toVal.clientDueDate) : stringifySafeValue(toVal);
-      title = `Prazo do cliente alterado${fromDue ? ' de <strong>' + fromDue + '</strong>' : ''} para <strong>${toDue || '-'}</strong> por ${escapeHtml(authorName)}`;
+      title = 'Prazo do cliente alterado';
       dotIcon = '📅';
       dotColor = '#6366f1';
+      const fromDue = fromVal.clientDueDate ? formatDisplayDate(fromVal.clientDueDate) : stringifySafeValue(fromVal);
+      const toDue = toVal.clientDueDate ? formatDisplayDate(toVal.clientDueDate) : stringifySafeValue(toVal);
+      detail = `<span class="stream-text-pill">${fromDue ? escapeHtml(fromDue) : '-'}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toDue || '-')}</span>`;
       break;
 
     case 'delivery_due_changed':
     case 'delivery_due_date_changed':
-      const fromDel = fromVal.deliveryDueDate ? formatDisplayDate(fromVal.deliveryDueDate) : stringifySafeValue(fromVal);
-      const toDel = toVal.deliveryDueDate ? formatDisplayDate(toVal.deliveryDueDate) : stringifySafeValue(toVal);
-      title = `Prazo de entrega alterado${fromDel ? ' de <strong>' + fromDel + '</strong>' : ''} para <strong>${toDel || '-'}</strong> por ${escapeHtml(authorName)}`;
+      title = 'Prazo de entrega alterado';
       dotIcon = '📅';
       dotColor = '#6366f1';
+      const fromDel = fromVal.deliveryDueDate ? formatDisplayDate(fromVal.deliveryDueDate) : stringifySafeValue(fromVal);
+      const toDel = toVal.deliveryDueDate ? formatDisplayDate(toVal.deliveryDueDate) : stringifySafeValue(toVal);
+      detail = `<span class="stream-text-pill">${fromDel ? escapeHtml(fromDel) : '-'}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toDel || '-')}</span>`;
       break;
 
     case 'priority_change':
     case 'priority_changed':
     case 'priority':
-      const fromPri = formatPriorityLabel(fromVal.priority !== undefined ? fromVal.priority : fromVal);
-      const toPri = formatPriorityLabel(toVal.priority !== undefined ? toVal.priority : toVal);
-      title = `Prioridade alterada de <strong>${escapeHtml(fromPri)}</strong> para <strong>${escapeHtml(toPri)}</strong> por ${escapeHtml(authorName)}`;
+      title = 'Prioridade alterada';
       dotIcon = '⚡';
       dotColor = '#f59e0b';
+      const fromPri = formatPriorityLabel(fromVal.priority !== undefined ? fromVal.priority : fromVal);
+      const toPri = formatPriorityLabel(toVal.priority !== undefined ? toVal.priority : toVal);
+      detail = `<span class="stream-text-pill">${escapeHtml(fromPri)}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toPri)}</span>`;
       break;
 
     case 'updated':
+      title = 'Chamado editado';
+      dotIcon = '📝';
+      dotColor = '#94a3b8';
       if (toVal.description !== undefined || fromVal.description !== undefined) {
         const descStr = String(toVal.description || '');
         const hadImg = String(fromVal.description || '').includes('<img');
         const hasImg = descStr.includes('<img');
         if (!hadImg && hasImg) {
-          title = `Imagem ou anexo adicionado à descrição por <strong>${escapeHtml(authorName)}</strong>`;
-          dotIcon = '🖼️';
-          dotColor = '#06b6d4';
+          detail = `<span class="stream-event-desc-text">Imagem adicionada à descrição</span>`;
         } else {
-          title = `Descrição da demanda atualizada por <strong>${escapeHtml(authorName)}</strong>`;
-          dotIcon = '📝';
-          dotColor = '#64748b';
+          detail = `<span class="stream-event-desc-text">Descrição atualizada</span>`;
         }
       } else if (toVal.labels !== undefined) {
-        title = `Etiquetas da demanda atualizadas por <strong>${escapeHtml(authorName)}</strong>`;
-        dotIcon = '🏷️';
-        dotColor = '#8b5cf6';
+        detail = `<span class="stream-event-desc-text">Etiquetas da demanda alteradas</span>`;
       } else if (toVal.title !== undefined) {
-        title = `Título alterado para <strong>"${escapeHtml(toVal.title)}"</strong> por ${escapeHtml(authorName)}`;
-        dotIcon = '✏️';
-        dotColor = '#38bdf8';
+        detail = `<span class="stream-event-desc-text">Título: "${escapeHtml(toVal.title)}"</span>`;
       } else if (toVal.clientDatabase !== undefined) {
-        title = `Banco de dados atualizado para <strong>"${escapeHtml(toVal.clientDatabase || 'Sem banco')}"</strong> por ${escapeHtml(authorName)}`;
-        dotIcon = '📦';
-        dotColor = '#38bdf8';
+        detail = `<span class="stream-event-desc-text">Banco: "${escapeHtml(toVal.clientDatabase || 'Sem banco')}"</span>`;
       } else if (toVal.movideskTicketId !== undefined) {
-        title = `Ticket Movidesk associado: <strong>#${escapeHtml(String(toVal.movideskTicketId))}</strong> por ${escapeHtml(authorName)}`;
-        dotIcon = '🎫';
-        dotColor = '#38bdf8';
-      } else {
-        const fromStr = stringifySafeValue(fromVal);
-        const toStr = stringifySafeValue(toVal);
-        if (fromStr && toStr) {
-          title = `Atualização de <strong>${escapeHtml(fromStr)}</strong> para <strong>${escapeHtml(toStr)}</strong> por ${escapeHtml(authorName)}`;
-        } else if (toStr) {
-          title = `Atualizado para <strong>${escapeHtml(toStr)}</strong> por ${escapeHtml(authorName)}`;
-        } else {
-          title = `Demanda atualizada por <strong>${escapeHtml(authorName)}</strong>`;
-        }
-        dotIcon = 'ℹ️';
-        dotColor = '#64748b';
+        detail = `<span class="stream-event-desc-text">Ticket Movidesk: #${escapeHtml(String(toVal.movideskTicketId))}</span>`;
       }
-      if (ev.reason) {
-        detail = `<div class="stream-event-reason">Motivo: ${escapeHtml(ev.reason)}</div>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
       }
       break;
 
     default:
+      title = 'Chamado editado';
+      dotIcon = '📝';
+      dotColor = '#94a3b8';
       const fallbackFrom = stringifySafeValue(fromVal);
       const fallbackTo = stringifySafeValue(toVal);
       if (fallbackFrom && fallbackTo) {
-        title = `Alteração de <strong>${escapeHtml(fallbackFrom)}</strong> para <strong>${escapeHtml(fallbackTo)}</strong> por ${escapeHtml(authorName)}`;
+        detail = `<span class="stream-text-pill">${escapeHtml(fallbackFrom)}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(fallbackTo)}</span>`;
       } else if (fallbackTo) {
-        title = `Definido como <strong>${escapeHtml(fallbackTo)}</strong> por ${escapeHtml(authorName)}`;
-      } else {
-        title = `Alteração registrada por <strong>${escapeHtml(authorName)}</strong>`;
+        detail = `<span class="stream-text-pill pill-highlight">${escapeHtml(fallbackTo)}</span>`;
       }
-      dotIcon = '⚡';
-      dotColor = '#64748b';
-      if (ev.reason) {
-        detail = `<div class="stream-event-reason">${escapeHtml(ev.reason)}</div>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
       }
       break;
   }
 
-  return { title, dotIcon, dotColor, detail };
+  return { title, dotIcon, dotColor, detail, subdetail, authorName };
 }
 
 function toggleDrawerExpand() {
@@ -680,6 +712,14 @@ function toggleDrawerExpand() {
 }
 
 function switchDrawerTab(tabName) {
+  // Se solicitado comments ou attachments, redirecionar para a visualização principal unificada
+  if (tabName === 'comments' || tabName === 'attachments') {
+    const targetId = tabName === 'comments' ? 'drawerCommentInputBox' : 'drawerDropzone';
+    tabName = 'details';
+    setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+  }
   drawerActiveTab = tabName;
   const tabs = {
     details: { btn: 'drawerTabBtnDetails', pane: 'drawerPaneDetails' },
@@ -1149,6 +1189,98 @@ function openTicketInImporter(ticketOrId) {
 }
 window.openTicketInImporter = openTicketInImporter;
 
+// Copia o link direto do chamado no Importer Ultra para a área de transferência
+async function copyDrawerTicketLink(ticketOrId) {
+  const target = ticketOrId || (typeof window.getSelectedTicket === 'function' ? window.getSelectedTicket() : null) || selectedTicket || window.selectedTicket;
+  const targetId = (typeof target === 'object' && target !== null) ? target.id : target;
+  if (!targetId) {
+    if (typeof showToast === 'function') {
+      showToast('Nenhuma demanda selecionada para copiar o link.', 'warning');
+    }
+    return false;
+  }
+
+  const url = `https://importer.conciliadorcontabil.com.br/support/tickets/${targetId}`;
+  let copied = false;
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } else if (window.electronAPI && window.electronAPI.copyToClipboard) {
+      window.electronAPI.copyToClipboard(url);
+      copied = true;
+    } else if (typeof document !== 'undefined' && document.createElement) {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  } catch (err) {
+    console.warn('Falha ao usar clipboard API, tentando fallback:', err);
+    try {
+      if (typeof document !== 'undefined' && document.createElement) {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        copied = document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    } catch (fallbackErr) {
+      console.error('Falha geral ao copiar:', fallbackErr);
+    }
+  }
+
+  if (copied) {
+    const btn = document.getElementById('btnDrawerCopyLink');
+    if (btn) {
+      btn.classList.add('copied');
+      btn.title = 'Link copiado!';
+      const iconSpan = document.getElementById('drawerCopyLinkIcon');
+      if (iconSpan) {
+        iconSpan.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        `;
+      }
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        const numText = target && typeof target === 'object' && target.number ? `#${target.number}` : '';
+        btn.title = numText ? `Copiar link da demanda ${numText}` : 'Copiar link da demanda';
+        if (iconSpan) {
+          iconSpan.innerHTML = `
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+          `;
+        }
+      }, 1800);
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('Link da demanda copiado com sucesso!', 'success', 2500);
+    }
+    return true;
+  } else {
+    if (typeof showToast === 'function') {
+      showToast('Não foi possível copiar o link automaticamente.', 'error');
+    }
+    return false;
+  }
+}
+window.copyDrawerTicketLink = copyDrawerTicketLink;
+
 function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
   if (!ticket) return;
 
@@ -1167,6 +1299,11 @@ function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
   const numEl = document.getElementById('drawerDemandNumber');
   if (numEl) {
     numEl.textContent = `#${ticket.number || '---'}`;
+  }
+
+  const copyBtn = document.getElementById('btnDrawerCopyLink');
+  if (copyBtn && !copyBtn.classList.contains('copied')) {
+    copyBtn.title = ticket.number ? `Copiar link da demanda #${ticket.number}` : 'Copiar link da demanda';
   }
 
   // Badges no topo (Status do Layout, Tipo, Situação, Prioridade, Etiquetas, Ignorado)
@@ -1338,9 +1475,18 @@ async function openDemandDrawer(ticket) {
   selectedDrawerLabels = new Set((ticket.labels || []).map(l => (l.label ? l.label.id : l.id)).filter(Boolean));
   renderDrawerLabelsPicker();
 
-  // Meta info
+  // Meta & Requester info
+  const requesterName = ticket.requestedBy?.name || ticket.requestedBy?.businessName || ticket.requesterName || ticket.createdBy?.name || 'Não identificado';
+  const requesterEmail = ticket.requestedBy?.email || '';
+
   const reqEl = document.getElementById('drawerMetaRequester');
-  if (reqEl) reqEl.textContent = ticket.requestedBy?.name || '-';
+  if (reqEl) reqEl.textContent = requesterName;
+  const reqNameEl = document.getElementById('drawerRequesterName');
+  if (reqNameEl) reqNameEl.textContent = requesterName;
+  const reqEmailEl = document.getElementById('drawerRequesterEmail');
+  if (reqEmailEl) reqEmailEl.textContent = requesterEmail;
+  const bottomReqEl = document.getElementById('drawerBottomRequesterName');
+  if (bottomReqEl) bottomReqEl.textContent = requesterName;
   const createdEl = document.getElementById('drawerMetaCreatedAt');
   if (createdEl) createdEl.textContent = formatDisplayDate(ticket.createdAt);
   const idEl = document.getElementById('drawerMetaId');
@@ -1350,8 +1496,8 @@ async function openDemandDrawer(ticket) {
   const notesTextarea = document.getElementById('drawerLocalNotes');
   if (notesTextarea) notesTextarea.value = window.appStore.getNote(ticket.id) || '';
 
-  // Description initial render
-  toggleDrawerDescEdit(false);
+  // Bloqueia campos para modo de leitura por padrão (menos validador)
+  setDrawerFieldsEditable(false);
   const descBox = document.getElementById('drawerDescription');
   if (ticket.description) {
     renderAuthenticatedDescription(ticket.description, ticket.id, descBox);
@@ -1586,7 +1732,19 @@ function renderDrawerActivityStream() {
     return;
   }
 
+  let lastDateHeader = '';
   container.innerHTML = filtered.map(it => {
+    let dateHeaderHtml = '';
+    const d = it.createdAt ? (it.createdAt instanceof Date ? it.createdAt : new Date(it.createdAt)) : new Date();
+    const dateHeaderKey = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' }).toUpperCase();
+    if (dateHeaderKey && dateHeaderKey !== lastDateHeader) {
+      lastDateHeader = dateHeaderKey;
+      dateHeaderHtml = `<div class="stream-date-separator"><span>${dateHeaderKey}</span></div>`;
+    }
+
+    const dayMonth = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     if (it.itemType === 'comment') {
       const c = it.raw;
       const userName = c.user?.name || 'Equipe';
@@ -1600,8 +1758,7 @@ function renderDrawerActivityStream() {
       else if (isSupport) roleBadge = '<span class="comment-role-tag role-support">Suporte</span>';
       else if (role) roleBadge = `<span class="comment-role-tag role-admin">${escapeHtml(role)}</span>`;
 
-      const d = it.createdAt;
-      const dateFormatted = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateFormatted = `${escapeHtml(userName)} · ${dayMonth} às ${timeStr}`;
 
       let contentHtml = c.contentHtml ? sanitizeHtml(c.contentHtml) : escapeHtml(c.content || '');
       contentHtml = contentHtml.replace(
@@ -1656,6 +1813,7 @@ function renderDrawerActivityStream() {
       }
 
       return `
+        ${dateHeaderHtml}
         <div class="comment-bubble ${isDev ? 'is-developer' : (isSupport ? 'is-support' : '')}">
           <div class="comment-header">
             <div class="comment-author-info">
@@ -1672,21 +1830,24 @@ function renderDrawerActivityStream() {
     } else {
       // Timeline Event
       const ev = it.raw;
-      const d = it.createdAt;
-      const dateFormatted = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const { title, dotIcon, dotColor, detail } = formatEventContent(ev);
+      const { title, dotIcon, dotColor, detail, subdetail, authorName } = formatEventContent(ev);
+      const dateFormatted = `${escapeHtml(authorName)} · ${dayMonth} às ${timeStr}`;
 
       return `
+        ${dateHeaderHtml}
         <div class="stream-event-item">
-          <div class="stream-event-dot" style="background: ${dotColor}22; border-color: ${dotColor}; color: ${dotColor};">
-            ${dotIcon}
-          </div>
-          <div class="stream-event-body">
-            <div class="stream-event-header">
-              <span class="stream-event-title">${title}</span>
-              <span class="stream-event-time">${dateFormatted}</span>
+          <div class="stream-event-main">
+            <span class="stream-event-icon" style="color: ${dotColor};">${dotIcon}</span>
+            <div class="stream-event-details">
+              <div class="stream-event-title-line">
+                <span class="stream-event-title">${title}</span>
+                ${detail ? `<span class="stream-event-inline-detail">${detail}</span>` : ''}
+              </div>
+              ${subdetail ? `<div class="stream-event-subdetail">${subdetail}</div>` : ''}
             </div>
-            ${detail}
+          </div>
+          <div class="stream-event-meta">
+            <span class="stream-event-author-time">${dateFormatted}</span>
           </div>
         </div>
       `;
@@ -1753,35 +1914,255 @@ function setDrawerStreamFilter(filter) {
   renderDrawerActivityStream();
 }
 
-function toggleDrawerDescEdit(forceState) {
+let isDrawerEditable = false;
+
+function setDrawerFieldsEditable(editable) {
+  isDrawerEditable = !!editable;
+  isEditingDescription = isDrawerEditable;
+  const drawer = document.getElementById('demandDrawer');
+  if (drawer) {
+    drawer.classList.toggle('is-editing-mode', isDrawerEditable);
+  }
+
+  // 1. Título
+  const titleInput = document.getElementById('drawerEditTitle');
+  if (titleInput) titleInput.readOnly = !isDrawerEditable;
+
+  // 2. Situação, Prioridade, Responsável
+  const statusSelect = document.getElementById('drawerEditStatus');
+  if (statusSelect) statusSelect.disabled = !isDrawerEditable;
+
+  const devSelect = document.getElementById('drawerEditAssignedTo');
+  if (devSelect) devSelect.disabled = !isDrawerEditable;
+
+  const prioritySelect = document.getElementById('drawerEditPriority');
+  if (prioritySelect) prioritySelect.disabled = !isDrawerEditable;
+
+  // 3. Prazos
+  const deliveryDateInput = document.getElementById('drawerEditDeliveryDueDate');
+  if (deliveryDateInput) deliveryDateInput.readOnly = !isDrawerEditable;
+  const btnToggleDevCal = document.getElementById('btnToggleDrawerDeliveryCal');
+  if (btnToggleDevCal) {
+    btnToggleDevCal.disabled = !isDrawerEditable;
+    btnToggleDevCal.style.opacity = isDrawerEditable ? '1' : '0.4';
+    btnToggleDevCal.style.pointerEvents = isDrawerEditable ? 'auto' : 'none';
+  }
+
+  const clientDateInput = document.getElementById('drawerEditClientDueDate');
+  if (clientDateInput) clientDateInput.readOnly = !isDrawerEditable;
+  const btnToggleClientCal = document.getElementById('btnToggleDrawerClientCal');
+  if (btnToggleClientCal) {
+    btnToggleClientCal.disabled = !isDrawerEditable;
+    btnToggleClientCal.style.opacity = isDrawerEditable ? '1' : '0.4';
+    btnToggleClientCal.style.pointerEvents = isDrawerEditable ? 'auto' : 'none';
+  }
+
+  // 4. Validador: NUNCA É BLOQUEADO (sempre liberado como solicitado)
+  const reviewerSelect = document.getElementById('drawerEditReviewer');
+  if (reviewerSelect) reviewerSelect.disabled = false;
+  const btnReviewerMe = document.getElementById('btnAssignReviewerMe');
+  if (btnReviewerMe) btnReviewerMe.disabled = false;
+  const btnReviewerClear = document.getElementById('btnClearDrawerReviewer');
+  if (btnReviewerClear) btnReviewerClear.disabled = false;
+
+  // 5. Tipo e Produto
+  const typeSelect = document.getElementById('drawerEditType');
+  if (typeSelect) typeSelect.disabled = !isDrawerEditable;
+
+  const prodSelect = document.getElementById('drawerEditProduct');
+  if (prodSelect) prodSelect.disabled = !isDrawerEditable;
+
+  // 6. Banco e Movidesk
+  const dbInput = document.getElementById('drawerEditDatabase');
+  if (dbInput) dbInput.readOnly = !isDrawerEditable;
+
+  const movideskInput = document.getElementById('drawerEditMovidesk');
+  if (movideskInput) movideskInput.readOnly = !isDrawerEditable;
+
+  // 7. Layout
+  const layoutSearchInput = document.getElementById('drawerEditLayoutSearch');
+  if (layoutSearchInput) layoutSearchInput.disabled = !isDrawerEditable;
+
+  const btnClearLayout = document.getElementById('btnDrawerClearLayoutField');
+  if (btnClearLayout) btnClearLayout.style.display = isDrawerEditable ? 'inline-flex' : 'none';
+
+  // 8. Etiquetas
+  const btnLabels = document.getElementById('btnDrawerLabels');
+  if (btnLabels) {
+    btnLabels.disabled = !isDrawerEditable;
+    btnLabels.style.opacity = isDrawerEditable ? '1' : '0.85';
+    btnLabels.style.pointerEvents = isDrawerEditable ? 'auto' : 'none';
+  }
+
+  // 9. Descrição: alternar entre visualização e editor rico
   const viewEl = document.getElementById('drawerDescription');
   const editWrapper = document.getElementById('drawerDescEditWrapper');
-  const btn = document.getElementById('btnToggleEditDesc');
-  const icon = document.getElementById('btnToggleEditDescIcon');
-  const text = document.getElementById('btnToggleEditDescText');
   const editor = document.getElementById('drawerEditDescEditor');
+  const descToolbar = document.getElementById('drawerDescToolbar');
+  const descModeHint = document.getElementById('drawerDescModeHint');
 
-  if (!viewEl || !editWrapper) return;
+  if (descToolbar) {
+    descToolbar.style.opacity = isDrawerEditable ? '1' : '0.55';
+    descToolbar.style.pointerEvents = isDrawerEditable ? 'auto' : 'none';
+  }
+  if (descModeHint) {
+    descModeHint.textContent = isDrawerEditable ? 'Modo de Edição Ativo' : 'Visualização rica';
+    descModeHint.style.color = isDrawerEditable ? '#34d399' : 'var(--text-muted)';
+  }
 
-  const shouldOpen = typeof forceState === 'boolean' ? forceState : editWrapper.style.display === 'none';
-  isEditingDescription = shouldOpen;
-
-  if (shouldOpen) {
-    viewEl.style.display = 'none';
-    editWrapper.style.display = 'block';
+  if (isDrawerEditable) {
+    if (viewEl) viewEl.style.display = 'none';
+    if (editWrapper) editWrapper.style.display = 'block';
     if (editor) {
-      editor.innerHTML = selectedTicket?.description || viewEl.innerHTML;
-      editor.focus();
+      editor.innerHTML = selectedTicket?.description || (viewEl ? viewEl.innerHTML : '');
     }
-    if (icon) icon.textContent = '✕';
-    if (text) text.textContent = 'Fechar Editor';
   } else {
-    viewEl.style.display = 'block';
-    editWrapper.style.display = 'none';
-    if (icon) icon.textContent = '✏️';
-    if (text) text.textContent = 'Editar Descrição';
+    if (viewEl) viewEl.style.display = 'block';
+    if (editWrapper) editWrapper.style.display = 'none';
+  }
+
+  // 10. Botões da barra de ações inferior
+  const btnBottom = document.getElementById('btnDrawerSaveTicketBottom');
+  const btnCancel = document.getElementById('btnDrawerCancelEdit');
+  if (btnBottom) {
+    if (isDrawerEditable) {
+      btnBottom.innerHTML = '<span>💾</span> Salvar Edição';
+      btnBottom.classList.remove('btn-edit-mode');
+      btnBottom.classList.add('btn-saving-mode');
+    } else {
+      btnBottom.innerHTML = '<span>✏️</span> Editar Demanda';
+      btnBottom.classList.remove('btn-saving-mode');
+      btnBottom.classList.add('btn-edit-mode');
+    }
+  }
+  if (btnCancel) {
+    btnCancel.style.display = isDrawerEditable ? 'inline-flex' : 'none';
   }
 }
+
+function handleDrawerSaveOrEditClick() {
+  if (!isDrawerEditable) {
+    setDrawerFieldsEditable(true);
+    setTimeout(() => {
+      document.getElementById('drawerEditTitle')?.focus();
+    }, 50);
+  } else {
+    saveDrawerTicketChanges();
+  }
+}
+
+function handleDrawerCancelEdit() {
+  if (!selectedTicket) return;
+
+  // Restaura valores originais
+  const titleInput = document.getElementById('drawerEditTitle');
+  if (titleInput) titleInput.value = selectedTicket.title || '';
+
+  const statusSelect = document.getElementById('drawerEditStatus');
+  if (statusSelect) {
+    let stVal = (selectedTicket.status || 'queued').toLowerCase().trim();
+    if (stVal === 'open' || stVal === 'aberto' || stVal === 'fila') stVal = 'queued';
+    if (stVal === 'closed' || stVal === 'completed' || stVal === 'finished') stVal = 'done';
+    if (stVal === 'waiting' || stVal === 'waiting_creator') stVal = 'waiting_requester';
+    statusSelect.value = stVal;
+  }
+
+  const devSelect = document.getElementById('drawerEditAssignedTo');
+  if (devSelect) devSelect.value = selectedTicket.assignedTo?.id || '';
+
+  const prioritySelect = document.getElementById('drawerEditPriority');
+  if (prioritySelect) {
+    prioritySelect.value = normalizePriorityToApi(selectedTicket.priority);
+    updatePrioritySelectVisual(prioritySelect);
+  }
+
+  const deliveryDateInput = document.getElementById('drawerEditDeliveryDueDate');
+  if (deliveryDateInput) deliveryDateInput.value = formatDateToBrInput(selectedTicket.deliveryDueDate);
+
+  const clientDateInput = document.getElementById('drawerEditClientDueDate');
+  if (clientDateInput) clientDateInput.value = formatDateToBrInput(selectedTicket.clientDueDate);
+
+  const dbInput = document.getElementById('drawerEditDatabase');
+  if (dbInput) dbInput.value = selectedTicket.clientDatabase || '';
+
+  const movideskInput = document.getElementById('drawerEditMovidesk');
+  if (movideskInput) movideskInput.value = selectedTicket.movideskTicketId || '';
+
+  const typeSelect = document.getElementById('drawerEditType');
+  if (typeSelect) typeSelect.value = selectedTicket.ticketTypeId || selectedTicket.ticketType?.id || '';
+
+  const prodSelect = document.getElementById('drawerEditProduct');
+  if (prodSelect) {
+    populateAndSelectProduct(prodSelect, selectedTicket);
+  }
+
+  selectedDrawerLabels = new Set((selectedTicket.labels || []).map(l => (l.label ? l.label.id : l.id)).filter(Boolean));
+  renderDrawerLabelsPicker();
+
+  setDrawerFieldsEditable(false);
+}
+
+function toggleDrawerDescEdit(forceState) {
+  const shouldOpen = typeof forceState === 'boolean' ? forceState : !isDrawerEditable;
+  setDrawerFieldsEditable(shouldOpen);
+}
+
+// Permite colar imagens/prints diretamente na descrição detalhada (modo edição ou ativando edição se em leitura)
+function setupDrawerDescriptionImagePaste() {
+  const editor = document.getElementById('drawerEditDescEditor');
+  const descView = document.getElementById('drawerDescription');
+
+  const handleImagePasteIntoDesc = (e) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    const items = Array.from(clipboardData.items || []);
+    const imgItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'));
+    if (!imgItem) return;
+
+    const file = imgItem.getAsFile();
+    if (!file) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Se estiver em modo de leitura, habilita o modo de edição primeiro
+    if (typeof isDrawerEditable !== 'undefined' && !isDrawerEditable) {
+      setDrawerFieldsEditable(true);
+    } else if (typeof window.setDrawerFieldsEditable === 'function' && window.isDrawerFieldsEditable && !window.isDrawerFieldsEditable()) {
+      window.setDrawerFieldsEditable(true);
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEv) => {
+      const dataUrl = loadEv.target?.result;
+      if (!dataUrl) return;
+
+      const targetEditor = document.getElementById('drawerEditDescEditor');
+      if (targetEditor) {
+        targetEditor.focus();
+        const imgHtml = `<p><img src="${dataUrl}" alt="Print colado" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+        document.execCommand('insertHTML', false, imgHtml);
+        targetEditor.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof showToast === 'function') {
+          showToast('📸 Imagem colada na descrição detalhada!', 'success', 2500);
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  if (editor && !editor.dataset.descPasteBound) {
+    editor.dataset.descPasteBound = 'true';
+    editor.addEventListener('paste', handleImagePasteIntoDesc);
+  }
+
+  if (descView && !descView.dataset.descPasteBound) {
+    descView.dataset.descPasteBound = 'true';
+    descView.addEventListener('paste', handleImagePasteIntoDesc);
+  }
+}
+window.setupDrawerDescriptionImagePaste = setupDrawerDescriptionImagePaste;
 
 function renderDrawerAttachments(attachments) {
   const list = document.getElementById('drawerAttachmentsList');
@@ -1946,7 +2327,10 @@ function renderDrawerAttachments(attachments) {
       if (btnDownloadAll) btnDownloadAll.style.display = 'none';
     } else {
       if (inlineEmpty) inlineEmpty.style.display = 'none';
-      if (btnDownloadAll) btnDownloadAll.style.display = count >= 2 ? 'inline-flex' : 'none';
+      if (btnDownloadAll) {
+        btnDownloadAll.style.display = count > 0 ? 'inline-flex' : 'none';
+        btnDownloadAll.innerHTML = `<span>⚡</span> <span>Baixar Todos (${count})</span>`;
+      }
 
       inlineList.innerHTML = attachments.map(att => {
         const fileName = att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || 'Arquivo anexado';
@@ -2073,10 +2457,21 @@ function renderTimelinePendingAttachments() {
   });
 }
 
+let lastCommentPasteTimestamp = 0;
+
 function handleCommentPaste(e) {
   if (!selectedTicket) return;
-  const clipboardData = e.clipboardData;
+  const clipboardData = e?.clipboardData;
   if (!clipboardData) return;
+
+  const now = Date.now();
+  if (now - lastCommentPasteTimestamp < 400) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
 
   const items = Array.from(clipboardData.items || []);
   const filesToAdd = [];
@@ -2087,24 +2482,40 @@ function handleCommentPaste(e) {
       if (file) {
         let fileName = file.name || 'print.png';
         if (fileName === 'image.png' || !fileName) {
-          const now = new Date();
-          const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+          const d = new Date();
+          const timeStr = `${String(d.getHours()).padStart(2, '0')}-${String(d.getMinutes()).padStart(2, '0')}-${String(d.getSeconds()).padStart(2, '0')}`;
           fileName = `print_${timeStr}.png`;
         }
-        const namedFile = new File([file], fileName, { type: file.type || 'image/png' });
-        filesToAdd.push(namedFile);
+        // Deduplicar: não adiciona se já houver anexo com mesmo nome e tamanho idêntico
+        const isDuplicate = timelinePendingAttachments.some(existing => 
+          existing.name === fileName && existing.size === file.size
+        );
+        if (!isDuplicate) {
+          const namedFile = new File([file], fileName, { type: file.type || 'image/png' });
+          filesToAdd.push(namedFile);
+        }
       }
     }
   }
 
   if (filesToAdd.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
     for (const f of Array.from(clipboardData.files)) {
-      filesToAdd.push(f);
+      const isDuplicate = timelinePendingAttachments.some(existing => 
+        existing.name === f.name && existing.size === f.size
+      );
+      if (!isDuplicate) {
+        filesToAdd.push(f);
+      }
     }
   }
 
   if (filesToAdd.length > 0) {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+    lastCommentPasteTimestamp = now;
     filesToAdd.forEach(f => timelinePendingAttachments.push(f));
     renderTimelinePendingAttachments();
     showToast(`📸 ${filesToAdd.length} print/imagem colado! Clique em 'Salvar Interação' para publicar.`);
@@ -2189,6 +2600,9 @@ async function submitComment() {
     drawerCurrentEvents = (details.events || []).filter(e => e.kind !== 'comment');
     renderDrawerActivityStream();
     renderDrawerAttachments(details.attachments || []);
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(selectedTicket.id);
+    }
   } catch (err) {
     console.error('Failed to post comment / attachments:', err);
     if (statusEl) {
@@ -2437,6 +2851,9 @@ async function handleFinalizeTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showAppAlert('Demanda finalizada com sucesso!', 'Concluído', 'success');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2519,6 +2936,9 @@ async function handleReturnTicketToDev(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showAppAlert('Demanda devolvida para a fila com sucesso!', 'Na Fila', 'info');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2580,6 +3000,9 @@ async function handleStartTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showToast('🚀 Demanda iniciada com sucesso!');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2656,6 +3079,9 @@ async function handlePauseTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showAppAlert('Demanda pausada com sucesso!', 'Pausado', 'warning');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2733,6 +3159,9 @@ async function handleWaitRequesterTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showAppAlert('Demanda colocada em espera por resposta do solicitante!', 'Aguardando N2', 'info');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2780,6 +3209,9 @@ async function handleSendToReviewTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showToast('📤 Demanda enviada para revisão com sucesso!');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -2871,6 +3303,9 @@ async function handleResumeTicket(targetTicket = null) {
     }
 
     renderDemands();
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(ticket.id);
+    }
     showAppAlert(isClosed ? 'Chamado reaberto para desenvolvimento!' : 'Demanda retomada para desenvolvimento!', isClosed ? 'Chamado Reaberto' : 'Em Desenvolvimento', 'success');
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
@@ -3090,6 +3525,9 @@ async function changeReviewerWorkflow(targetReviewerId, targetReviewerName) {
 
     renderDemands();
     await refreshDrawerActivity(selectedTicket.id);
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(selectedTicket.id);
+    }
   } catch (err) {
     if (statusText) statusText.textContent = '';
     if (reviewerSelect) reviewerSelect.value = currentReviewerId;
@@ -3360,8 +3798,8 @@ async function saveDrawerTicketChanges() {
     if (payload.description) {
       const descBox = document.getElementById('drawerDescription');
       if (descBox) renderAuthenticatedDescription(payload.description, selectedTicket.id, descBox);
-      toggleDrawerDescEdit(false);
     }
+    setDrawerFieldsEditable(false);
 
     // Feedback de sucesso
     if (statusText) {
@@ -3393,6 +3831,10 @@ async function saveDrawerTicketChanges() {
       console.warn('Could not refresh timeline events after save:', e);
     }
 
+    if (typeof window.triggerActionResync === 'function') {
+      window.triggerActionResync(selectedTicket.id);
+    }
+
   } catch (err) {
     console.error('Failed to update ticket:', err);
     if (statusText) {
@@ -3403,12 +3845,11 @@ async function saveDrawerTicketChanges() {
   } finally {
     if (btnTop) {
       btnTop.disabled = false;
-      btnTop.innerHTML = '<span>💾</span> Salvar Alterações';
     }
     if (btnBottom) {
       btnBottom.disabled = false;
-      btnBottom.innerHTML = '<span>💾</span> Salvar Alterações da Demanda';
     }
+    setDrawerFieldsEditable(isDrawerEditable);
   }
 }
 
@@ -3467,10 +3908,15 @@ window.setDrawerSelectedLabels = (s) => {
 };
 window.getDrawerActiveTab = () => drawerActiveTab;
 window.isDrawerEditingDesc = () => isEditingDescription;
+window.isDrawerFieldsEditable = () => isDrawerEditable;
+window.setDrawerFieldsEditable = setDrawerFieldsEditable;
+window.handleDrawerSaveOrEditClick = handleDrawerSaveOrEditClick;
+window.handleDrawerCancelEdit = handleDrawerCancelEdit;
 window.toggleDrawerDescEdit = toggleDrawerDescEdit;
 window.switchDrawerTab = switchDrawerTab;
 window.renderDrawerActivityStream = renderDrawerActivityStream;
 window.renderDrawerAttachments = renderDrawerAttachments;
 window.renderDrawerHeaderMetaAndTitle = renderDrawerHeaderMetaAndTitle;
+window.setupDrawerDescriptionImagePaste = setupDrawerDescriptionImagePaste;
 
 
