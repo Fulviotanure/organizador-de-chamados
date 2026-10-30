@@ -3190,6 +3190,34 @@ function promptJustification({
   });
 }
 
+// Sincroniza o estado atualizado do chamado no TabManager e limpa o flag de pendência (dirty)
+function syncTicketToTabManager(ticket) {
+  if (!ticket || !window.appTabs) return;
+  const ticketId = ticket.id;
+  const tab = window.appTabs.tabs?.find(t => String(t.ticketId) === String(ticketId));
+  if (tab) {
+    tab.ticket = { ...tab.ticket, ...ticket };
+    tab.status = ticket.status || tab.status;
+    tab.isDirty = false;
+  }
+  const session = window.appTabs.ticketSessions?.get(ticketId);
+  if (session) {
+    session.ticket = { ...session.ticket, ...ticket };
+    if (session.formOverrides) {
+      session.formOverrides.title = ticket.title;
+      session.formOverrides.status = ticket.status;
+      session.formOverrides.assignedTo = ticket.assignedTo?.id ? String(ticket.assignedTo.id) : '';
+      session.formOverrides.reviewer = ticket.reviewer?.id ? String(ticket.reviewer.id) : (ticket.reviewerId ? String(ticket.reviewerId) : '');
+      session.formOverrides.database = ticket.clientDatabase || '';
+      session.formOverrides.movidesk = ticket.movideskTicketId || '';
+    }
+  }
+  if (typeof window.appTabs.markDirty === 'function') {
+    window.appTabs.markDirty(ticketId, false);
+  }
+}
+window.syncTicketToTabManager = syncTicketToTabManager;
+
 // Ação de Fluxo: Finalizar Chamado (Status: closed - Sem exigir justificativa)
 async function handleFinalizeTicket(targetTicket = null) {
   const ticket = targetTicket || selectedTicket;
@@ -3246,6 +3274,8 @@ async function handleFinalizeTicket(targetTicket = null) {
         await window.appStore.saveDemandsCache();
       }
     }
+
+    syncTicketToTabManager(ticket);
 
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
@@ -3332,6 +3362,8 @@ async function handleReturnTicketToDev(targetTicket = null) {
       }
     }
 
+    syncTicketToTabManager(ticket);
+
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
       renderDrawerWorkflowButtons(ticket);
@@ -3395,6 +3427,8 @@ async function handleStartTicket(targetTicket = null) {
         await window.appStore.saveDemandsCache();
       }
     }
+
+    syncTicketToTabManager(ticket);
 
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
@@ -3474,6 +3508,8 @@ async function handlePauseTicket(targetTicket = null) {
         await window.appStore.saveDemandsCache();
       }
     }
+
+    syncTicketToTabManager(ticket);
 
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
@@ -3555,6 +3591,8 @@ async function handleWaitRequesterTicket(targetTicket = null) {
       }
     }
 
+    syncTicketToTabManager(ticket);
+
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
       renderDrawerWorkflowButtons(ticket);
@@ -3604,6 +3642,8 @@ async function handleSendToReviewTicket(targetTicket = null) {
         await window.appStore.saveDemandsCache();
       }
     }
+
+    syncTicketToTabManager(ticket);
 
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
@@ -3706,6 +3746,8 @@ async function handleResumeTicket(targetTicket = null) {
         await window.appStore.saveDemandsCache();
       }
     }
+
+    syncTicketToTabManager(ticket);
 
     if (ticket === selectedTicket) {
       renderDrawerHeaderMetaAndTitle(ticket);
@@ -4227,10 +4269,12 @@ async function saveDrawerTicketChanges() {
     }
 
     // Atualizar tab se estiver em sistema multi-abas
+    syncTicketToTabManager(selectedTicket);
     if (window.appTabs && selectedTicket) {
       window.appTabs.updateTab(selectedTicket.id, {
         title: selectedTicket.title,
-        status: selectedTicket.status
+        status: selectedTicket.status,
+        ticket: selectedTicket
       });
       window.appTabs.markDirty(selectedTicket.id, false);
     }

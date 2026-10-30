@@ -350,6 +350,11 @@ try {
     const tabsJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'tabs.js'), 'utf8');
     assert.ok(tabsJs.includes("targetTab.type === 'list'") && tabsJs.includes('renderDemands'), 'tabs.js must refresh demands without resetting filter when switching to list');
     assert.ok(drawerJs.includes('closeDemandDrawer') && drawerJs.includes('renderDemands'), 'closeDemandDrawer must refresh demands on preserved active filter');
+
+    // Test 20: Finalized/closed tickets do not trigger "Descartar Alterações" prompt
+    console.log('Integration Test 20: Finalized/closed tickets do not trigger false dirty prompt');
+    assert.ok(drawerJs.includes('syncTicketToTabManager'), 'syncTicketToTabManager must exist in drawer.js');
+    assert.ok(tabsJs.includes('isEditingFields'), 'checkDirty must check isEditingFields');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

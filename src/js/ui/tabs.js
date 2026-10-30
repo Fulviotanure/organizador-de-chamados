@@ -447,9 +447,16 @@ class TabManager {
     // 3. Modificações em campos de ficha técnica (formOverrides)
     if (session.formOverrides) {
       const fo = session.formOverrides;
-      const t = session.ticket || tab.ticket || {};
+      const storeTicket = window.appStore?.demands?.find(d => String(d.id) === String(ticketId));
+      const t = storeTicket || session.ticket || tab.ticket || {};
       if (fo.title !== undefined && fo.title.trim() !== (t.title || '').trim()) return true;
-      if (fo.status !== undefined && fo.status !== (t.status || 'queued')) return true;
+      if (fo.status !== undefined) {
+        let stNorm = (t.status || 'queued').toLowerCase().trim();
+        if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
+        if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
+        if (stNorm === 'waiting' || stNorm === 'waiting_creator') stNorm = 'waiting_requester';
+        if (fo.status !== stNorm) return true;
+      }
       if (fo.assignedTo !== undefined && String(fo.assignedTo) !== String(t.assignedTo?.id || '')) return true;
       if (fo.reviewer !== undefined && String(fo.reviewer) !== String(t.reviewer?.id || t.reviewerId || '')) return true;
       const origDeliv = typeof formatDateToBrInput === 'function' ? formatDateToBrInput(t.deliveryDueDate) : '';
@@ -478,7 +485,13 @@ class TabManager {
     const tab = this.tabs.find(t => String(t.ticketId) === String(currentTicketId));
     if (!tab) return false;
 
-    const ticket = tab.ticket || {};
+    // Obter dados mais frescos da demanda (da store ou de selectedTicket)
+    const storeTicket = window.appStore?.demands?.find(d => String(d.id) === String(currentTicketId));
+    const activeSelected = (window.selectedTicket && String(window.selectedTicket.id) === String(currentTicketId)) ? window.selectedTicket : null;
+    const ticket = storeTicket || activeSelected || tab.ticket || {};
+    if (storeTicket) tab.ticket = { ...tab.ticket, ...storeTicket };
+    else if (activeSelected) tab.ticket = { ...tab.ticket, ...activeSelected };
+
     let isDirty = false;
 
     // 1. Rascunho de comentário
@@ -489,54 +502,12 @@ class TabManager {
     const pendingFiles = window.getTimelinePendingAttachments ? window.getTimelinePendingAttachments() : [];
     if (pendingFiles && pendingFiles.length > 0) isDirty = true;
 
-    // 3. Título alterado
-    const titleVal = document.getElementById('drawerEditTitle')?.value;
-    if (titleVal !== undefined && titleVal !== null && ticket.title !== undefined) {
-      if (titleVal.trim() !== (ticket.title || '').trim()) isDirty = true;
-    }
-
-    // 4. Status alterado
-    const statusVal = document.getElementById('drawerEditStatus')?.value;
-    if (statusVal && ticket.status) {
-      let stNorm = (ticket.status || 'queued').toLowerCase().trim();
-      if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
-      if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
-      if (stNorm === 'waiting' || stNorm === 'waiting_creator') stNorm = 'waiting_requester';
-      if (statusVal !== stNorm) isDirty = true;
-    }
-
-    // 5. Responsável alterado
-    const devVal = document.getElementById('drawerEditAssignedTo')?.value;
-    const currentDevId = ticket.assignedTo?.id || '';
-    if (devVal !== undefined && String(devVal) !== String(currentDevId)) isDirty = true;
-
-    // 6. Validador alterado
-    const revVal = document.getElementById('drawerEditReviewer')?.value;
-    const currentRevId = ticket.reviewer?.id || ticket.reviewerId || '';
-    if (revVal !== undefined && String(revVal) !== String(currentRevId)) isDirty = true;
-
-    // 7. Prazos alterados
-    const delivVal = document.getElementById('drawerEditDeliveryDueDate')?.value;
-    const origDeliv = typeof formatDateToBrInput === 'function' ? formatDateToBrInput(ticket.deliveryDueDate) : '';
-    if (delivVal !== undefined && delivVal !== origDeliv) isDirty = true;
-
-    const clientVal = document.getElementById('drawerEditClientDueDate')?.value;
-    const origClient = typeof formatDateToBrInput === 'function' ? formatDateToBrInput(ticket.clientDueDate) : '';
-    if (clientVal !== undefined && clientVal !== origClient) isDirty = true;
-
-    // 8. Banco e Movidesk
-    const dbVal = document.getElementById('drawerEditDatabase')?.value;
-    if (dbVal !== undefined && dbVal !== (ticket.clientDatabase || '')) isDirty = true;
-
-    const movVal = document.getElementById('drawerEditMovidesk')?.value;
-    if (movVal !== undefined && movVal !== (ticket.movideskTicketId || '')) isDirty = true;
-
-    // 9. Notas locais
+    // 3. Notas locais
     const notesVal = document.getElementById('drawerLocalNotes')?.value;
     const origNotes = window.appStore?.getNote ? (window.appStore.getNote(currentTicketId) || '') : '';
     if (notesVal !== undefined && notesVal !== origNotes) isDirty = true;
 
-    // 10. Descrição em modo de edição ou com conteúdo alterado
+    // 4. Descrição em modo de edição ou com conteúdo alterado
     const isEditingDesc = window.isDrawerEditingDesc ? window.isDrawerEditingDesc() : false;
     if (isEditingDesc) {
       const descEd = document.getElementById('drawerEditDescEditor');
@@ -545,6 +516,53 @@ class TabManager {
       if (currentDescHtml.length > 0 && currentDescHtml !== origDesc) {
         isDirty = true;
       }
+    }
+
+    // 5. Validador alterado
+    const revVal = document.getElementById('drawerEditReviewer')?.value;
+    const currentRevId = ticket.reviewer?.id || ticket.reviewerId || '';
+    if (revVal !== undefined && String(revVal) !== String(currentRevId)) isDirty = true;
+
+    // 6. Campos de ficha técnica: só contam como dirty se estiverem em modo de edição
+    // ou se isDrawerFieldsEditable não estiver definido no ambiente atual
+    const isEditingFields = window.isDrawerFieldsEditable ? window.isDrawerFieldsEditable() : true;
+    if (isEditingFields) {
+      // Título alterado
+      const titleVal = document.getElementById('drawerEditTitle')?.value;
+      if (titleVal !== undefined && titleVal !== null && ticket.title !== undefined) {
+        if (titleVal.trim() !== (ticket.title || '').trim()) isDirty = true;
+      }
+
+      // Status alterado
+      const statusVal = document.getElementById('drawerEditStatus')?.value;
+      if (statusVal && ticket.status) {
+        let stNorm = (ticket.status || 'queued').toLowerCase().trim();
+        if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
+        if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
+        if (stNorm === 'waiting' || stNorm === 'waiting_creator') stNorm = 'waiting_requester';
+        if (statusVal !== stNorm) isDirty = true;
+      }
+
+      // Responsável alterado
+      const devVal = document.getElementById('drawerEditAssignedTo')?.value;
+      const currentDevId = ticket.assignedTo?.id || '';
+      if (devVal !== undefined && String(devVal) !== String(currentDevId)) isDirty = true;
+
+      // Prazos alterados
+      const delivVal = document.getElementById('drawerEditDeliveryDueDate')?.value;
+      const origDeliv = typeof formatDateToBrInput === 'function' ? formatDateToBrInput(ticket.deliveryDueDate) : '';
+      if (delivVal !== undefined && delivVal !== origDeliv) isDirty = true;
+
+      const clientVal = document.getElementById('drawerEditClientDueDate')?.value;
+      const origClient = typeof formatDateToBrInput === 'function' ? formatDateToBrInput(ticket.clientDueDate) : '';
+      if (clientVal !== undefined && clientVal !== origClient) isDirty = true;
+
+      // Banco e Movidesk
+      const dbVal = document.getElementById('drawerEditDatabase')?.value;
+      if (dbVal !== undefined && dbVal !== (ticket.clientDatabase || '')) isDirty = true;
+
+      const movVal = document.getElementById('drawerEditMovidesk')?.value;
+      if (movVal !== undefined && movVal !== (ticket.movideskTicketId || '')) isDirty = true;
     }
 
     this.markDirty(currentTicketId, isDirty);
