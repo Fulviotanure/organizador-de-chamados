@@ -513,10 +513,30 @@ class AppStore {
 
   // Cache Demands (Mantém preservados chamados ignorados, favoritos ou com notas locais)
   async setDemands(demandsList) {
+    const existingMap = new Map((this.demands || []).map(d => [d.id, d]));
     const incomingMap = new Map((demandsList || []).map(d => [d.id, d]));
 
     // Se uma demanda da API já estiver em ignorados, sincronizar os dados mais recentes no cache
     (demandsList || []).forEach(d => {
+      const existing = existingMap.get(d.id);
+
+      // 1. Preservar closedAt existente na store local para não ser apagado pela API
+      if (existing && existing.closedAt && !d.closedAt) {
+        d.closedAt = existing.closedAt;
+      }
+
+      // 2. Detecção inteligente de transição para Concluído (fechado no app ou externamente no site):
+      const wasDone = existing && ['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'].includes(String(existing.status || '').toLowerCase());
+      const isNowDone = ['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'].includes(String(d.status || '').toLowerCase());
+      if (isNowDone) {
+        if (!wasDone) {
+          // Transição acabou de ocorrer na API
+          d.closedAt = d.closedAt || d.completedAt || d.finishedAt || d.resolvedAt || d.updatedAt || new Date().toISOString();
+        } else if (!d.closedAt && (d.completedAt || d.finishedAt || d.resolvedAt)) {
+          d.closedAt = d.completedAt || d.finishedAt || d.resolvedAt;
+        }
+      }
+
       if (this.isIgnored(d.id)) {
         if (!this.ignoredTicketsCache) this.ignoredTicketsCache = {};
         this.ignoredTicketsCache[d.id] = { ...(this.ignoredTicketsCache[d.id] || {}), ...d };
@@ -550,6 +570,9 @@ class AppStore {
         localStorage.setItem('cc_ignoredTicketsCache', JSON.stringify(this.ignoredTicketsCache));
       }
     } catch (e) {}
+
+    // Resolução assíncrona em background de chamados concluídos hoje que ainda não tenham closedAt explícito
+    this.resolveClosedTodayDemands().catch(e => console.warn('[Store] Falha em resolveClosedTodayDemands:', e));
   }
 
   async upsertDemand(demand) {
@@ -776,6 +799,29 @@ class AppStore {
     return false;
   }
 
+  extractClosedAtFromEvents(events) {
+    if (!Array.isArray(events) || events.length === 0) return null;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i];
+      if (!ev) continue;
+      const k = String(ev.kind || ev.type || '').toLowerCase();
+      if (k === 'status_change' || k === 'status_changed' || k === 'status') {
+        const toVal = ev.toValue !== undefined ? ev.toValue : ev.to;
+        let st = '';
+        if (typeof toVal === 'object' && toVal !== null) {
+          st = toVal.status || toVal.name || toVal.value || '';
+        } else {
+          st = String(toVal || '');
+        }
+        st = String(st).toLowerCase().trim();
+        if (['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'].includes(st)) {
+          return ev.createdAt ? new Date(ev.createdAt).toISOString() : null;
+        }
+      }
+    }
+    return null;
+  }
+
   isTicketClosedToday(ticket) {
     if (!ticket) return false;
     const status = (ticket.status || '').toLowerCase();
@@ -785,18 +831,89 @@ class AppStore {
     // Somente no nome do colaborador logado
     if (!this.isTicketForCurrentUser(ticket)) return false;
 
-    // Usar a data em que foi alterado para concluído (Em Revisão para Concluído)
-    // NÃO usar fallback para updatedAt para evitar falsos positivos de chamados antigos sincronizados hoje
-    const closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt;
-    if (!closeDateStr) return false;
+    // 1. Usar a data em que foi alterado para concluído (seja pelo app, timeline ou API)
+    const closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt || ticket.resolvedAt;
+    if (closeDateStr) {
+      const d = new Date(closeDateStr);
+      if (!isNaN(d.getTime())) {
+        const now = new Date();
+        return d.getFullYear() === now.getFullYear() &&
+               d.getMonth() === now.getMonth() &&
+               d.getDate() === now.getDate();
+      }
+    }
 
-    const d = new Date(closeDateStr);
-    if (isNaN(d.getTime())) return false;
+    // 2. Se o ticket tiver eventos incorporados, extrair o evento de fechamento
+    if (Array.isArray(ticket.events)) {
+      const eventClosedAt = this.extractClosedAtFromEvents(ticket.events);
+      if (eventClosedAt) {
+        ticket.closedAt = eventClosedAt;
+        const d = new Date(eventClosedAt);
+        if (!isNaN(d.getTime())) {
+          const now = new Date();
+          return d.getFullYear() === now.getFullYear() &&
+                 d.getMonth() === now.getMonth() &&
+                 d.getDate() === now.getDate();
+        }
+      }
+    }
 
+    return false;
+  }
+
+  async resolveClosedTodayDemands() {
+    if (!window.conciliadorAPI || !this.token) return;
     const now = new Date();
-    return d.getFullYear() === now.getFullYear() &&
-           d.getMonth() === now.getMonth() &&
-           d.getDate() === now.getDate();
+
+    // Candidatos: chamados 'done' do usuário atual, com updatedAt de hoje, que ainda não têm closedAt verificado
+    const candidates = (this.demands || []).filter(t => {
+      const st = String(t.status || '').toLowerCase();
+      const isDone = ['done', 'closed', 'completed', 'finished', 'concluido', 'finalizado'].includes(st);
+      if (!isDone) return false;
+      if (!this.isTicketForCurrentUser(t)) return false;
+      if (t.closedAt) return false;
+
+      if (!t.updatedAt) return false;
+      const upd = new Date(t.updatedAt);
+      if (isNaN(upd.getTime())) return false;
+      return upd.getFullYear() === now.getFullYear() &&
+             upd.getMonth() === now.getMonth() &&
+             upd.getDate() === now.getDate();
+    });
+
+    if (candidates.length === 0) return;
+
+    let updatedAny = false;
+    for (const cand of candidates.slice(0, 10)) {
+      try {
+        const details = await window.conciliadorAPI.fetchDemandDetails(cand.id);
+        if (details && Array.isArray(details.events)) {
+          const closedAtFromEvent = this.extractClosedAtFromEvents(details.events);
+          if (closedAtFromEvent) {
+            cand.closedAt = closedAtFromEvent;
+            updatedAny = true;
+          } else if (cand.updatedAt) {
+            cand.closedAt = cand.updatedAt;
+            updatedAny = true;
+          }
+        } else if (cand.updatedAt) {
+          cand.closedAt = cand.updatedAt;
+          updatedAny = true;
+        }
+      } catch (e) {
+        console.warn(`[Store] Falha ao verificar eventos para ${cand.id}:`, e);
+      }
+    }
+
+    if (updatedAny) {
+      await this.saveDemandsCache();
+      if (typeof window.renderFixedFiltersList === 'function') {
+        window.renderFixedFiltersList();
+      }
+      if (typeof window.renderDemands === 'function') {
+        window.renderDemands();
+      }
+    }
   }
 
   getClosedTodayCount() {

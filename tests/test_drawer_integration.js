@@ -309,6 +309,13 @@ try {
     assert.ok(drawerJs.includes('stream-date-separator'), 'stream-date-separator must exist');
     assert.ok(drawerJs.includes('stream-status-pill'), 'stream-status-pill must exist');
     assert.ok(drawerJs.includes('stream-event-author-time'), 'stream-event-author-time must exist');
+
+    // Test 15: Detection of closed today from API and timeline events
+    console.log('Integration Test 15: Closed today detection from API & timeline events');
+    const storeJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'store.js'), 'utf8');
+    assert.ok(storeJs.includes('extractClosedAtFromEvents'), 'extractClosedAtFromEvents must exist in store.js');
+    assert.ok(storeJs.includes('resolveClosedTodayDemands'), 'resolveClosedTodayDemands must exist in store.js');
+    assert.ok(drawerJs.includes('syncClosedAtFromDetails'), 'syncClosedAtFromDetails must exist in drawer.js');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

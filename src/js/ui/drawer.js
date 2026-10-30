@@ -1551,9 +1551,28 @@ async function openDemandDrawer(ticket) {
   overlay?.classList.add('open');
   drawer?.classList.add('open');
 
+function syncClosedAtFromDetails(details) {
+  if (!details || !Array.isArray(details.events) || !window.appStore) return;
+  const closedAt = window.appStore.extractClosedAtFromEvents?.(details.events);
+  if (closedAt) {
+    details.closedAt = closedAt;
+    if (Array.isArray(window.appStore.demands)) {
+      const idx = window.appStore.demands.findIndex(d => d.id === details.id);
+      if (idx !== -1 && !window.appStore.demands[idx].closedAt) {
+        window.appStore.demands[idx].closedAt = closedAt;
+        window.appStore.saveDemandsCache?.();
+        if (typeof window.renderFixedFiltersList === 'function') {
+          window.renderFixedFiltersList();
+        }
+      }
+    }
+  }
+}
+
   // Fetch full ticket details asynchronously
   try {
     const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
+    syncClosedAtFromDetails(details);
 
     // Race condition guard: se o usuário já navegou para outra aba ou voltou para a lista enquanto a rede respondia,
     // apenas atualiza o cache da sessão desse chamado sem sobrescrever a tela do chamado visível.
@@ -2595,6 +2614,7 @@ async function submitComment() {
 
     // Refresh ticket details
     const details = await window.conciliadorAPI.fetchDemandDetails(selectedTicket.id);
+    syncClosedAtFromDetails(details);
     selectedTicket = { ...selectedTicket, ...details };
     drawerCurrentComments = details.comments || [];
     drawerCurrentEvents = (details.events || []).filter(e => e.kind !== 'comment');
@@ -2638,6 +2658,7 @@ async function refreshDrawerActivity(ticketId) {
   if (!ticketId) return;
   try {
     const details = await window.conciliadorAPI.fetchDemandDetails(ticketId);
+    syncClosedAtFromDetails(details);
     if (selectedTicket && selectedTicket.id === ticketId) {
       selectedTicket = { ...selectedTicket, ...details };
       drawerCurrentComments = details.comments || [];
@@ -3823,6 +3844,7 @@ async function saveDrawerTicketChanges() {
     // Recarregar detalhes frescos do backend
     try {
       const refreshed = await window.conciliadorAPI.fetchDemandDetails(selectedTicket.id);
+      syncClosedAtFromDetails(refreshed);
       selectedTicket = { ...selectedTicket, ...refreshed };
       drawerCurrentComments = refreshed.comments || [];
       drawerCurrentEvents = (refreshed.events || []).filter(e => e.kind !== 'comment');
