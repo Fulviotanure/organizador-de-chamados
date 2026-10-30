@@ -277,19 +277,25 @@ try {
     assert.strictEqual(syncCallCount, 1, 'syncDemands called immediately');
 
     // Test 13: Drawer layout restructuring (Cards, Actions, Requester footer, Tabs extinction)
-    console.log('Integration Test 13: Unified card layout, side actions, requester footer & tab extinction');
+    console.log('Integration Test 13: Unified card layout, workflow card after same layout, tools near title');
     const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
     assert.ok(indexHtml.includes('class="drawer-prop-card drawer-desc-card"'), 'Description must be inside drawer-prop-card');
     assert.ok(indexHtml.includes('📝 Descrição'), 'Description card must have 📝 Descrição header');
-    assert.ok(indexHtml.includes('drawerSideActionsCard'), 'Side actions card must exist');
+    assert.ok(indexHtml.includes('drawerWorkflowCard'), 'Workflow card must exist after same layout');
+    assert.ok(indexHtml.includes('drawer-actions-fixed-bar'), 'External tool actions bar must exist near title');
     assert.ok(indexHtml.includes('drawerRequesterName'), 'Requester name field in card footer must exist');
     assert.ok(indexHtml.includes('drawerBottomRequesterName'), 'Requester in drawer bottom bar must exist');
     assert.ok(indexHtml.includes('drawer-tabs" style="display: none !important;"'), 'Secondary tab bar must be extinguished');
 
-    // Verify index HTML order: drawerSameLayoutCard followed by drawerSideActionsCard
+    // Verify index HTML order: drawerSameLayoutCard followed by drawerWorkflowCard
     const sameLayoutIndex = indexHtml.indexOf('id="drawerSameLayoutCard"');
-    const sideActionsIndex = indexHtml.indexOf('id="drawerSideActionsCard"');
-    assert.ok(sameLayoutIndex > 0 && sideActionsIndex > sameLayoutIndex, 'Side actions must be placed after same layout tickets');
+    const workflowCardIndex = indexHtml.indexOf('id="drawerWorkflowCard"');
+    assert.ok(sameLayoutIndex > 0 && workflowCardIndex > sameLayoutIndex, 'Workflow actions (reabrir/editar) must be placed after same layout tickets');
+
+    // Verify tools are located before drawer-body
+    const toolsIndex = indexHtml.indexOf('class="drawer-actions-fixed-bar"');
+    const drawerBodyIndex = indexHtml.indexOf('class="drawer-body"');
+    assert.ok(toolsIndex > 0 && toolsIndex < drawerBodyIndex, 'Tools buttons must be near the title before drawer body');
 
     // Test 14: Atendimento & Activity Stream aesthetic (Pills, Event row, Toolbar)
     console.log('Integration Test 14: Atendimento & Activity Stream aesthetic');

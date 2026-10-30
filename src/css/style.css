@@ -3177,45 +3177,37 @@ body.table-col-resizing * {
   padding: 6px 10px;
 }
 
-/* Card de Ações Rápidas no Painel Lateral (abaixo de Chamados com o Mesmo Layout) */
-.drawer-side-actions-card {
+/* Card de Ações do Chamado (Reabrir, Iniciar, Finalizar, Editar) - Logo após Chamados com este Layout */
+.drawer-workflow-card {
   gap: 10px;
 }
 
-.drawer-side-actions-content {
+.drawer-workflow-card .drawer-bottom-workflow-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  width: 100%;
 }
 
-.drawer-side-actions-primary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.drawer-side-actions-primary .btn-action-fixed {
+.drawer-workflow-card .btn-bottom-action {
   width: 100%;
   justify-content: center;
-  height: 36px;
-  font-size: 12.5px;
+  height: 38px;
+  font-size: 13px;
   box-sizing: border-box;
 }
 
-.drawer-side-actions-secondary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding-top: 8px;
+.drawer-workflow-card .drawer-edit-actions-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 
-.drawer-side-actions-secondary .quick-action-btn {
+.drawer-workflow-card .btn-save-drawer {
   width: 100%;
+  height: 38px;
   justify-content: center;
-  height: 32px;
-  font-size: 11.5px;
-  padding: 0 4px;
+  font-size: 13px;
 }
 
 /* Solicitante no Rodapé */

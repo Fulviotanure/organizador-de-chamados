@@ -476,6 +476,38 @@
         </div>
       </div>
 
+      <!-- 2. BOTÕES DE LINKS EXTERNOS E FERRAMENTAS ABAIXO DO TÍTULO -->
+      <div class="drawer-actions-fixed-bar">
+        <div class="drawer-actions-fixed-group main-actions">
+          <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
+            <span>🎫</span> <span>Abrir no Movidesk</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra" style="display: none;">
+            <span>🌐</span> <span>Abrir no Importer</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
+            <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
+          </button>
+          <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
+            <span>🚀</span> <span>Google Drive / AutoDrive</span>
+          </button>
+        </div>
+
+        <div class="drawer-actions-fixed-separator"></div>
+
+        <div class="drawer-actions-fixed-group util-actions">
+          <button type="button" class="quick-action-btn" id="btnToggleDrawerFavorite" title="Favoritar este chamado">
+            <span>⭐</span> Favorito
+          </button>
+          <button type="button" class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
+            <span>🚫</span> Ignorar Chamado
+          </button>
+          <button type="button" class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
+            <span>📦</span> Arquivar
+          </button>
+        </div>
+      </div>
+
       <!-- Abas secundárias extintas (Visualização Unificada Full-Screen) -->
       <div class="drawer-tabs" style="display: none !important;">
         <button class="drawer-tab active" data-tab="details" id="drawerTabBtnDetails" style="display: none;"></button>
@@ -885,35 +917,25 @@
               </div>
             </div>
 
-            <!-- Card 3: Ações Rápidas & Links Externos (Logo depois de Chamados Abertos) -->
-            <div class="drawer-prop-card drawer-side-actions-card" id="drawerSideActionsCard">
+            <!-- Card 3: Ações do Chamado (Reabrir Chamado, Iniciar, Finalizar e Editar) - Logo após Chamados com este Layout -->
+            <div class="drawer-prop-card drawer-workflow-card" id="drawerWorkflowCard">
               <div class="drawer-prop-card-header">
-                <span class="drawer-prop-card-title">⚡ Ações e Ferramentas</span>
+                <span class="drawer-prop-card-title">⚡ Ações do Chamado</span>
+                <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
               </div>
-              <div class="drawer-side-actions-content">
-                <div class="drawer-side-actions-primary">
-                  <button type="button" class="btn-action-fixed btn-action-movidesk" id="btnDrawerOpenMovidesk" title="Abrir chamado no Movidesk">
-                    <span>🎫</span> <span>Abrir no Movidesk</span>
-                  </button>
-                  <button type="button" class="btn-action-fixed btn-action-importer" id="btnDrawerOpenConciliador" title="Abrir chamado no Importer Ultra" style="display: none;">
-                    <span>🌐</span> <span>Abrir no Importer</span>
-                  </button>
-                  <button type="button" class="btn-action-fixed btn-action-layout" id="btnDrawerOpenLayout" title="Abrir layout deste chamado no Importer Ultra" style="display: none;">
-                    <span>📐</span> <span id="btnDrawerOpenLayoutText">Abrir Layout</span>
-                  </button>
-                  <button type="button" class="btn-action-fixed btn-action-drive" id="btnDrawerAutoDrive" title="Integrar e enviar dados desta demanda para o AutoDrive / Google Drive">
-                    <span>🚀</span> <span>Google Drive / AutoDrive</span>
-                  </button>
+              <div class="drawer-workflow-card-body" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Botões de Fluxo do Chamado (Reabrir Chamado, Iniciar, Finalizar, etc.) -->
+                <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer" style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
+                  <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons() -->
                 </div>
-                <div class="drawer-side-actions-secondary">
-                  <button type="button" class="quick-action-btn" id="btnToggleDrawerFavorite" title="Favoritar este chamado">
-                    <span>⭐</span> <span>Favorito</span>
+
+                <!-- Botões de Edição da Demanda -->
+                <div class="drawer-edit-actions-row" style="display: flex; gap: 8px; width: 100%;">
+                  <button type="button" class="btn-secondary" id="btnDrawerCancelEdit" style="display: none; height: 38px; padding: 0 14px; font-weight: 500; flex: 1;">
+                    Cancelar
                   </button>
-                  <button type="button" class="quick-action-btn" id="btnToggleDrawerIgnore" title="Ocultar chamado de todas as listas padrão">
-                    <span>🚫</span> <span>Ignorar</span>
-                  </button>
-                  <button type="button" class="quick-action-btn" id="btnArchiveTicket" title="Arquivar esta demanda">
-                    <span>📦</span> <span>Arquivar</span>
+                  <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom" style="flex: 2; height: 38px; justify-content: center; width: 100%;">
+                    <span>✏️</span> Editar Demanda
                   </button>
                 </div>
               </div>
@@ -930,25 +952,13 @@
           </div>
         </div>
 
-        <!-- 5. BOTÕES DE FLUXO (REABRIR, FINALIZAR, INICIAR, ETC) E EDITAR / SALVAR ALTERAÇÕES -->
-        <div class="drawer-bottom-actions-bar" id="drawerBottomActionsBar">
+        <!-- Barra de Rodapé com Solicitante -->
+        <div class="drawer-bottom-actions-bar" id="drawerBottomActionsBar" style="padding: 10px 18px;">
           <div class="drawer-bottom-left-info" style="display: flex; align-items: center; gap: 14px;">
             <div class="drawer-bottom-requester-pill" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 5px 12px; border-radius: 6px;">
               <span>👤 Solicitante:</span>
               <strong id="drawerBottomRequesterName" style="color: #e2e8f0; font-weight: 600;">-</strong>
             </div>
-            <div id="drawerSaveStatusText" class="drawer-save-status-text"></div>
-          </div>
-          <div class="drawer-bottom-actions-right">
-            <div class="drawer-bottom-workflow-actions" id="drawerBottomWorkflowActionsContainer">
-              <!-- Renderizado dinamicamente via renderDrawerWorkflowButtons(): Reabrir Chamado, Finalizar, Devolver, etc. -->
-            </div>
-            <button type="button" class="btn-secondary" id="btnDrawerCancelEdit" style="display: none; height: 38px; padding: 0 16px; font-weight: 500;">
-              Cancelar Edição
-            </button>
-            <button type="button" class="btn-save-drawer" id="btnDrawerSaveTicketBottom">
-              <span>✏️</span> Editar Demanda
-            </button>
           </div>
         </div>
       </div>
