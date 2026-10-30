@@ -355,6 +355,17 @@ try {
     console.log('Integration Test 20: Finalized/closed tickets do not trigger false dirty prompt');
     assert.ok(drawerJs.includes('syncTicketToTabManager'), 'syncTicketToTabManager must exist in drawer.js');
     assert.ok(tabsJs.includes('isEditingFields'), 'checkDirty must check isEditingFields');
+
+    // Test 21: Verify JavaScript syntax across all source files in src/js
+    console.log('Integration Test 21: JS syntax integrity across all source files');
+    const { execSync } = require('child_process');
+    const jsFiles = ['app.js', 'store.js', 'api.js', 'ui/drawer.js', 'ui/tabs.js', 'ui/table-kanban.js', 'ui/calendar.js', 'ui/dialogs.js', 'ui/icons.js', 'ui/layouts-browser.js'];
+    jsFiles.forEach(file => {
+      const fullPath = path.join(__dirname, '..', 'src', 'js', file);
+      if (fs.existsSync(fullPath)) {
+        execSync(`node -c "${fullPath}"`);
+      }
+    });
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

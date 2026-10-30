@@ -361,7 +361,7 @@ function setupEventListeners() {
   });
 
   // Clear all filters button
-  document.getElementById('btnClearQuickFilters')?.addEventListener('click', () => {
+  document.getElementById('btnClearQuickFilters')?.addEventListener('click', async () => {
     window.appStore.quickFilters = {
       status: [],
       type: [],
