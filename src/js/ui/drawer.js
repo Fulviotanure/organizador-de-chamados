@@ -1151,6 +1151,15 @@ window.openTicketInImporter = openTicketInImporter;
 
 function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
   if (!ticket) return;
+
+  if (window.appTabs && ticket.id) {
+    window.appTabs.updateTab(ticket.id, {
+      title: ticket.title,
+      status: ticket.status,
+      number: ticket.number
+    });
+  }
+
   const layoutInfo = getTicketLayoutInfo(ticket);
   const layoutCode = layoutInfo.code;
   const currentLayoutStatus = customLayoutStatus || layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
@@ -1211,7 +1220,18 @@ function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
 }
 
 async function openDemandDrawer(ticket) {
+  if (!ticket || !ticket.id) return;
+
+  if (window.appTabs && !window.appTabs.isRestoringSession) {
+    const activeTab = window.appTabs.tabs.find(t => t.id === window.appTabs.activeTabId);
+    if (!activeTab || String(activeTab.ticketId) !== String(ticket.id)) {
+      window.appTabs.openTicketTab(ticket, true);
+      return;
+    }
+  }
+
   selectedTicket = ticket;
+  window.selectedTicket = ticket;
   const overlay = document.getElementById('drawerOverlay');
   const drawer = document.getElementById('demandDrawer');
 
@@ -1339,30 +1359,37 @@ async function openDemandDrawer(ticket) {
     descBox.innerHTML = '<span style="color: var(--text-muted);">Carregando descrição completa...</span>';
   }
 
-  // Stream & Attachments placeholders
+  // Stream & Attachments: se já possui comentários em cache/sessão, renderiza instantaneamente
   const streamList = document.getElementById('drawerStreamList');
-  if (streamList) {
-    streamList.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">Carregando diálogo e histórico...</div>';
-  }
   const attachList = document.getElementById('drawerAttachmentsList');
   const attachEmpty = document.getElementById('drawerAttachmentsEmpty');
-  if (attachList) attachList.innerHTML = '';
-  if (attachEmpty) attachEmpty.style.display = 'block';
-
   const inlineList = document.getElementById('drawerInlineAttachmentsList');
   const inlineEmpty = document.getElementById('drawerInlineAttachmentsEmpty');
   const inlineBadge = document.getElementById('drawerInlineAttachmentsBadge');
   const btnDownloadAll = document.getElementById('btnInlineDownloadAllAttachments');
-  if (inlineList) inlineList.innerHTML = '';
-  if (inlineEmpty) inlineEmpty.style.display = 'block';
-  if (inlineBadge) inlineBadge.textContent = '0';
-  if (btnDownloadAll) btnDownloadAll.style.display = 'none';
 
-  document.getElementById('drawerStreamCountBadge').textContent = '0';
-  document.getElementById('streamCountAll').textContent = '0';
-  document.getElementById('streamCountComments').textContent = '0';
-  document.getElementById('streamCountEvents').textContent = '0';
-  document.getElementById('drawerAttachmentsCountBadge').textContent = '0';
+  if (Array.isArray(ticket.comments)) {
+    drawerCurrentComments = ticket.comments;
+    drawerCurrentEvents = (ticket.events || []).filter(e => e.kind !== 'comment');
+    renderDrawerActivityStream();
+    renderDrawerAttachments(ticket.attachments || []);
+  } else {
+    if (streamList) {
+      streamList.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 30px;">Carregando diálogo e histórico...</div>';
+    }
+    if (attachList) attachList.innerHTML = '';
+    if (attachEmpty) attachEmpty.style.display = 'block';
+    if (inlineList) inlineList.innerHTML = '';
+    if (inlineEmpty) inlineEmpty.style.display = 'block';
+    if (inlineBadge) inlineBadge.textContent = '0';
+    if (btnDownloadAll) btnDownloadAll.style.display = 'none';
+
+    document.getElementById('drawerStreamCountBadge').textContent = '0';
+    document.getElementById('streamCountAll').textContent = '0';
+    document.getElementById('streamCountComments').textContent = '0';
+    document.getElementById('streamCountEvents').textContent = '0';
+    document.getElementById('drawerAttachmentsCountBadge').textContent = '0';
+  }
 
   // Status text reset
   const statusText = document.getElementById('drawerSaveStatusText');
@@ -1381,7 +1408,16 @@ async function openDemandDrawer(ticket) {
   // Fetch full ticket details asynchronously
   try {
     const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
+
+    // Race condition guard: se o usuário já navegou para outra aba ou voltou para a lista enquanto a rede respondia,
+    // apenas atualiza o cache da sessão desse chamado sem sobrescrever a tela do chamado visível.
+    if (window.appTabs && String(window.appTabs.getActiveTicketId()) !== String(ticket.id)) {
+      window.appTabs.cacheFetchedDetails(ticket.id, details);
+      return;
+    }
+
     selectedTicket = { ...ticket, ...details };
+    window.selectedTicket = selectedTicket;
 
     // Refresh dynamic workflow buttons and same layout with fresh API details
     renderDrawerWorkflowButtons(selectedTicket);
@@ -1412,6 +1448,9 @@ async function openDemandDrawer(ticket) {
         if (layoutDetail && layoutDetail.status) {
           finalLayoutStatus = layoutDetail.status;
           registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name, status: finalLayoutStatus });
+          if (window.appTabs && String(window.appTabs.getActiveTicketId()) !== String(ticket.id)) {
+            return;
+          }
           if (selectedTicket) {
             if (selectedTicket.layout) selectedTicket.layout.status = finalLayoutStatus;
             selectedTicket.layoutStatus = finalLayoutStatus;
@@ -3321,6 +3360,15 @@ async function saveDrawerTicketChanges() {
       setTimeout(() => { if (statusText) statusText.textContent = ''; }, 4000);
     }
 
+    // Atualizar tab se estiver em sistema multi-abas
+    if (window.appTabs && selectedTicket) {
+      window.appTabs.updateTab(selectedTicket.id, {
+        title: selectedTicket.title,
+        status: selectedTicket.status
+      });
+      window.appTabs.markDirty(selectedTicket.id, false);
+    }
+
     // Atualizar tabela/kanban para refletir alterações
     renderDemands();
 
@@ -3359,10 +3407,15 @@ async function archiveCurrentTicket() {
   const ok = await showAppConfirm(`Deseja realmente arquivar a demanda #${selectedTicket.number}?`, 'Arquivar Demanda', { isDanger: true, confirmText: 'Arquivar Demanda' });
   if (ok) {
     try {
-      await window.conciliadorAPI.archiveTicket(selectedTicket.id);
-      closeDemandDrawer();
+      const ticketToArchive = selectedTicket;
+      await window.conciliadorAPI.archiveTicket(ticketToArchive.id);
+      if (window.appTabs && ticketToArchive.id) {
+        await window.appTabs.closeTab(ticketToArchive.id, true);
+      } else {
+        closeDemandDrawer();
+      }
       await syncDemands();
-      showAppAlert(`A demanda #${selectedTicket.number} foi arquivada com sucesso.`, 'Demanda Arquivada', 'success');
+      showAppAlert(`A demanda #${ticketToArchive.number} foi arquivada com sucesso.`, 'Demanda Arquivada', 'success');
     } catch (err) {
       showAppError('Erro ao Arquivar Demanda', err);
     }
@@ -3379,5 +3432,35 @@ function closeDemandDrawer() {
   timelinePendingAttachments = [];
   renderTimelinePendingAttachments();
   selectedTicket = null;
+  window.selectedTicket = null;
 }
+
+// Expor funções e acessores de estado do Drawer para o TabManager e aplicação geral
+window.openDemandDrawer = openDemandDrawer;
+window.closeDemandDrawer = closeDemandDrawer;
+window.getSelectedTicket = () => {
+  if (window.appTabs && window.appTabs.getActiveTicketId()) {
+    const activeTab = window.appTabs.tabs.find(t => String(t.ticketId) === String(window.appTabs.getActiveTicketId()));
+    if (activeTab && activeTab.ticket) return activeTab.ticket;
+  }
+  return selectedTicket || window.selectedTicket || null;
+};
+window.getTimelinePendingAttachments = () => timelinePendingAttachments;
+window.setTimelinePendingAttachments = (arr) => {
+  timelinePendingAttachments = arr || [];
+  renderTimelinePendingAttachments();
+};
+window.getDrawerSelectedLabels = () => new Set(selectedDrawerLabels);
+window.setDrawerSelectedLabels = (s) => {
+  selectedDrawerLabels = new Set(s);
+  renderDrawerLabelsPicker();
+};
+window.getDrawerActiveTab = () => drawerActiveTab;
+window.isDrawerEditingDesc = () => isEditingDescription;
+window.toggleDrawerDescEdit = toggleDrawerDescEdit;
+window.switchDrawerTab = switchDrawerTab;
+window.renderDrawerActivityStream = renderDrawerActivityStream;
+window.renderDrawerAttachments = renderDrawerAttachments;
+window.renderDrawerHeaderMetaAndTitle = renderDrawerHeaderMetaAndTitle;
+
 

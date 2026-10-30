@@ -1832,7 +1832,11 @@ async function submitCreateTicket() {
 
     // Refresh list and open new ticket
     await syncDemands();
-    openDemandDrawer(createdTicket);
+    if (window.appTabs) {
+      window.appTabs.openTicketTab(createdTicket);
+    } else {
+      openDemandDrawer(createdTicket);
+    }
 
   } catch (err) {
     console.error('Error creating ticket:', err);

@@ -75,8 +75,13 @@ Aplicativo Desktop moderno para Windows desenvolvido para organizar, filtrar e g
   - **Prazo de Entrega**: seletor de data.
 - **Sincronização Imediata**: o chamado é enviado diretamente à API oficial, atualizado na lista/Kanban e aberto no painel de visualização na hora!
 
-### 4. 🔍 Central de Visualização Completa do Chamado (Workspace Integrado)
-- Clique em qualquer demanda para abrir a central completa sem sair do app:
+### 4. 🔍 Central de Visualização Completa & Sistema Multi-Abas
+- **Espaço de Trabalho Multi-Abas**:
+  - Abra múltiplos chamados em abas superiores dedicadas mantendo a aba fixa **📋 Demandas** sempre acessível.
+  - Alternância instantânea de contexto sem recarregar e com preservação total de rascunhos de texto, anexos pendentes e posição de rolagem.
+  - Atalhos de teclado rápidos: `Ctrl + W` (fechar chamado), `Ctrl + Tab` / `Ctrl + Shift + Tab` (navegar entre abas), `Ctrl + 1` (voltar à lista geral) e `Ctrl + 2..9` (acesso direto à aba).
+  - Proteção contra perda de dados com indicador visual de alterações pendentes (*dirty dot* `•`) e diálogo de confirmação.
+- Clique em qualquer demanda na Tabela ou Kanban para abrir sua aba dedicada:
   - **🗖 Modo Expandido / Reduzido**: botão no cabeçalho para alternar entre painel lateral compacto e workspace amplo em tela cheia.
   - **Aba 📄 Ficha & Descrição**:
     - Ficha técnica completa: Solicitante, Responsável, Validador, Banco de Dados, Layout, Prazos SLA, Movidesk, Produto e Prioridade.

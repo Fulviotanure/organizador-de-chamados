@@ -6790,3 +6790,270 @@ body.table-col-resizing * {
   }
 }
 
+/* ==========================================================================
+   Multi-Tab Workspace Bar (.app-tab-bar)
+   ========================================================================== */
+.app-tab-bar {
+  height: 38px;
+  background: #090d14;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  flex-shrink: 0;
+  user-select: none;
+  position: relative;
+  z-index: 50;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.tabs-scroll-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex: 1;
+}
+
+.tabs-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar-controls {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 3px;
+  background: #090d14;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tab-scroll-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-scroll-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* Individual Tab */
+.tab-item {
+  height: 32px;
+  max-width: 230px;
+  min-width: 110px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tab-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.tab-item.active {
+  background: #111827;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
+  border-top: 2px solid var(--accent-primary);
+  font-weight: 600;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.tab-item.tab-item-pinned {
+  min-width: 105px;
+  max-width: 130px;
+  font-weight: 600;
+}
+
+.tab-item.tab-item-pinned.active {
+  border-top-color: #3b82f6;
+}
+
+.tab-icon {
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tab-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tab-number {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.tab-item.active .tab-number {
+  color: #7dd3fc;
+}
+
+.tab-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* Dirty Dot indicator (Unsaved changes or draft) */
+.tab-dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+  flex-shrink: 0;
+  display: none;
+}
+
+.tab-item.is-dirty .tab-dirty-dot {
+  display: inline-block;
+}
+
+/* Tab Close Button */
+.tab-close-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 2px;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.tab-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+/* Button Back to List in Drawer Header */
+.drawer-left-controls {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 20;
+}
+
+.btn-drawer-back-to-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-drawer-back-to-list:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-drawer-back-to-list .back-icon {
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+
+.btn-drawer-back-to-list:hover .back-icon {
+  transform: translateX(-2px);
+}
+
+/* ==========================================================================
+   Full-Screen Workspace Active Mode (body.ticket-workspace-active)
+   ========================================================================== */
+body.ticket-workspace-active .app-container {
+  display: none !important;
+}
+
+body.ticket-workspace-active .drawer-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+body.ticket-workspace-active #demandDrawer {
+  position: static !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 10 !important;
+  margin: 0 !important;
+  background: #0B0F17 !important;
+}
+
+/* Hide expand/compress toggle button in full workspace mode */
+body.ticket-workspace-active #btnToggleDrawerExpand {
+  display: none !important;
+}
+
+/* In non-workspace mode, ensure drawer is completely hidden if not opened as dialog */
+body:not(.ticket-workspace-active) #demandDrawer:not(.open) {
+  display: none !important;
+}
+
+

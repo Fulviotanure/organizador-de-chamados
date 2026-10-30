@@ -46,6 +46,17 @@
     </div>
   </header>
 
+  <!-- Top Multi-Tab Workspace Bar -->
+  <nav class="app-tab-bar" id="appTabBar" aria-label="Abas de Trabalho">
+    <div class="tabs-scroll-container" id="tabsScrollContainer">
+      <!-- As abas são geradas dinamicamente via TabManager (js/ui/tabs.js) -->
+    </div>
+    <div class="tab-bar-controls" id="tabBarControls">
+      <button type="button" class="tab-scroll-btn" id="btnScrollTabsLeft" title="Rolar abas para a esquerda">‹</button>
+      <button type="button" class="tab-scroll-btn" id="btnScrollTabsRight" title="Rolar abas para a direita">›</button>
+    </div>
+  </nav>
+
   <!-- Main Container -->
   <div class="app-container">
     
@@ -116,7 +127,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.42</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.43</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -423,6 +434,14 @@
       
       <!-- 1. TÍTULO CENTRALIZADO -->
       <div class="drawer-title-row">
+        <!-- Voltar à Lista no Canto Superior Esquerdo -->
+        <div class="drawer-left-controls">
+          <button type="button" class="btn-drawer-back-to-list" id="btnDrawerBackToList" title="Voltar à Lista de Demandas (Ctrl+1)">
+            <span class="back-icon">←</span>
+            <span>Demandas</span>
+          </button>
+        </div>
+
         <!-- Controles da Janela do Chamado no Canto Superior Direito -->
         <div class="drawer-window-controls">
           <button type="button" class="btn-external-link btn-drawer-minimize" id="btnDrawerMinimize" style="display: none;" title="Minimizar janela do programa">
@@ -431,7 +450,7 @@
           <button type="button" class="icon-btn-ghost btn-drawer-toggle-size" id="btnToggleDrawerExpand" title="Expandir visualização / Reduzir largura">
             <span id="drawerExpandIcon">🗖</span>
           </button>
-          <button type="button" class="icon-btn-ghost btn-drawer-close" id="btnCloseDrawer" title="Fechar chamado (Esc)">✕</button>
+          <button type="button" class="icon-btn-ghost btn-drawer-close" id="btnCloseDrawer" title="Fechar aba do chamado (Ctrl+W)">✕</button>
         </div>
 
         <!-- Área Central com Número, Badges e Título Centralizado -->
@@ -1938,6 +1957,7 @@
   <script src="js/store.js"></script>
   <script src="js/ui/icons.js"></script>
   <script src="js/ui/dialogs.js"></script>
+  <script src="js/ui/tabs.js"></script>
   <script src="js/ui/layouts-browser.js"></script>
   <script src="js/ui/table-kanban.js"></script>
   <script src="js/ui/drawer.js"></script>

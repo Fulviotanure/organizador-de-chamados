@@ -1,5 +1,6 @@
 // Main Application Controller
-let selectedTicket = null;
+window.selectedTicket = null;
+const getActiveTicket = () => (window.getSelectedTicket ? window.getSelectedTicket() : window.selectedTicket);
 let autoSyncTimerId = null;
 
 // Create Ticket, Calendar & Attachment State
@@ -59,6 +60,7 @@ async function initApplication() {
       if (typeof resolveMissingLayoutStatuses === 'function') {
         resolveMissingLayoutStatuses().catch(() => {});
       }
+      window.appTabs?.restorePersistedTabs();
     }
 
     // Now sync fresh data from API
@@ -215,6 +217,11 @@ async function syncDemands() {
     populateDeveloperSelects();
     renderFixedFiltersList();
     renderDemands();
+    if (window.appTabs?.hasRestoredPersistedTabs) {
+      window.appTabs?.syncWithStoreDemands?.();
+    } else {
+      window.appTabs?.restorePersistedTabs();
+    }
   } catch (err) {
     console.error('Error syncing demands:', err);
     if (err.message === 'UNAUTHORIZED') {
@@ -527,12 +534,32 @@ function setupEventListeners() {
   // Archive Ticket
   document.getElementById('btnArchiveTicket')?.addEventListener('click', archiveCurrentTicket);
 
-  // Drawer Close
-  document.getElementById('btnCloseDrawer')?.addEventListener('click', closeDemandDrawer);
-  document.getElementById('drawerOverlay')?.addEventListener('click', closeDemandDrawer);
+  // Drawer Close & Multi-Tab Routing
+  document.getElementById('btnCloseDrawer')?.addEventListener('click', () => {
+    if (window.appTabs) {
+      window.appTabs.closeTab(window.appTabs.activeTabId);
+    } else {
+      closeDemandDrawer();
+    }
+  });
+  document.getElementById('drawerOverlay')?.addEventListener('click', () => {
+    if (window.appTabs) {
+      window.appTabs.switchToTab('demands-list');
+    } else {
+      closeDemandDrawer();
+    }
+  });
+  document.getElementById('btnDrawerBackToList')?.addEventListener('click', () => {
+    if (window.appTabs) {
+      window.appTabs.switchToTab('demands-list');
+    } else {
+      closeDemandDrawer();
+    }
+  });
 
   const openTicketInMovidesk = () => {
-    const movId = document.getElementById('drawerEditMovidesk')?.value || selectedTicket?.movideskTicketId;
+    const curTicket = getActiveTicket();
+    const movId = document.getElementById('drawerEditMovidesk')?.value || curTicket?.movideskTicketId;
     if (movId && window.electronAPI) {
       window.electronAPI.openExternal(`https://conciliador-contabil2.movidesk.com/Ticket/Edit/${movId}`);
     } else if (movId) {
@@ -542,10 +569,14 @@ function setupEventListeners() {
     }
   };
 
-  document.getElementById('btnDrawerOpenConciliador')?.addEventListener('click', () => openTicketInImporter(selectedTicket));
+  document.getElementById('btnDrawerOpenConciliador')?.addEventListener('click', () => {
+    const curTicket = getActiveTicket();
+    if (curTicket) openTicketInImporter(curTicket);
+  });
   document.getElementById('btnDrawerOpenLayout')?.addEventListener('click', () => {
-    if (!selectedTicket) return;
-    const info = getTicketLayoutInfo(selectedTicket);
+    const curTicket = getActiveTicket();
+    if (!curTicket) return;
+    const info = getTicketLayoutInfo(curTicket);
     const hiddenId = document.getElementById('drawerEditLayoutId')?.value;
     openLayoutInImporter(hiddenId || info.id, info.code);
   });
@@ -553,7 +584,8 @@ function setupEventListeners() {
 
   // AutoDrive Button in Drawer Header
   document.getElementById('btnDrawerAutoDrive')?.addEventListener('click', () => {
-    if (selectedTicket) openAutoDriveModal(selectedTicket);
+    const curTicket = getActiveTicket();
+    if (curTicket) openAutoDriveModal(curTicket);
   });
 
   // Minimize Program Button when viewing Demand
@@ -566,24 +598,26 @@ function setupEventListeners() {
   document.getElementById('btnDrawerOpenMovideskAction')?.addEventListener('click', openTicketInMovidesk);
 
   document.getElementById('btnToggleDrawerFavorite')?.addEventListener('click', async () => {
-    if (selectedTicket) {
-      const isFav = await window.appStore.toggleFavorite(selectedTicket.id);
+    const curTicket = getActiveTicket();
+    if (curTicket) {
+      const isFav = await window.appStore.toggleFavorite(curTicket.id);
       renderFixedFiltersList();
       renderDemands();
       const btn = document.getElementById('btnToggleDrawerFavorite');
-      btn.innerHTML = `<span>⭐</span> ${isFav ? 'Remover Favorito' : 'Favoritar'}`;
+      if (btn) btn.innerHTML = `<span>⭐</span> ${isFav ? 'Remover Favorito' : 'Favoritar'}`;
     }
   });
 
   document.getElementById('btnToggleDrawerIgnore')?.addEventListener('click', async () => {
-    if (selectedTicket) {
-      const isNowIgnored = await window.appStore.toggleIgnore(selectedTicket.id);
+    const curTicket = getActiveTicket();
+    if (curTicket) {
+      const isNowIgnored = await window.appStore.toggleIgnore(curTicket.id);
       const btn = document.getElementById('btnToggleDrawerIgnore');
       if (btn) {
         btn.innerHTML = isNowIgnored ? '<span>↩️</span> Reativar Chamado' : '<span>🚫</span> Ignorar Chamado';
         btn.style.color = isNowIgnored ? '#10b981' : '';
       }
-      renderDrawerHeaderMetaAndTitle(selectedTicket);
+      renderDrawerHeaderMetaAndTitle(curTicket);
       renderFixedFiltersList();
       renderDemands();
       showAppAlert(
@@ -601,13 +635,14 @@ function setupEventListeners() {
   let noteDebounceTimer;
   const notesTextarea = document.getElementById('drawerLocalNotes');
   notesTextarea?.addEventListener('input', () => {
-    if (!selectedTicket) return;
+    const curTicket = getActiveTicket();
+    if (!curTicket) return;
     const statusEl = document.getElementById('noteSaveStatus');
     if (statusEl) statusEl.textContent = 'Salvando...';
 
     clearTimeout(noteDebounceTimer);
     noteDebounceTimer = setTimeout(async () => {
-      await window.appStore.saveNote(selectedTicket.id, notesTextarea.value);
+      await window.appStore.saveNote(curTicket.id, notesTextarea.value);
       if (statusEl) statusEl.textContent = 'Salvo automaticamente';
     }, 600);
   });
@@ -946,14 +981,15 @@ function setupEventListeners() {
       }
     }
 
-    // Esc -> close drawer / modals / lightbox
+    // Esc -> fecha apenas modais flutuantes e popovers (fechar abas requer Ctrl+W ou clique explícito)
     if (e.key === 'Escape') {
       closeUserSettingsModal();
       closeImageLightbox();
       closeAutoDriveModal();
-      closeDemandDrawer();
       closeCreateTicketModal();
       closeFilterModal();
+      document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
     }
   });
 

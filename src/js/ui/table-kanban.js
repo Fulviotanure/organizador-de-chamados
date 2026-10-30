@@ -280,7 +280,10 @@ function bindTableRowElements(rows) {
       if (e.target.closest('.favorite-star') || e.target.closest('.btn-open-movi') || e.target.closest('.btn-open-layout') || e.target.closest('.btn-toggle-ignore') || e.target.closest('.btn-quick-autodrive')) return;
       const ticketId = row.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
-      if (ticket) openDemandDrawer(ticket);
+      if (ticket) {
+        if (window.appTabs) window.appTabs.openTicketTab(ticket);
+        else openDemandDrawer(ticket);
+      }
     });
 
     row.querySelectorAll('.btn-quick-autodrive').forEach(btn => {
@@ -786,7 +789,10 @@ function renderKanbanView(demands) {
       if (e.target.closest('.btn-kanban-ignore') || e.target.closest('.btn-kanban-autodrive') || e.target.closest('.btn-kanban-action') || e.target.closest('.btn-open-layout')) return;
       const ticketId = card.dataset.id;
       const ticket = window.appStore.demands.find(d => d.id === ticketId);
-      if (ticket) openDemandDrawer(ticket);
+      if (ticket) {
+        if (window.appTabs) window.appTabs.openTicketTab(ticket);
+        else openDemandDrawer(ticket);
+      }
     });
   });
 

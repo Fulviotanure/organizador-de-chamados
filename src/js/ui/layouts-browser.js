@@ -517,7 +517,8 @@ function renderSameLayoutTickets(ticket) {
       const tId = item.dataset.ticketId;
       const target = window.appStore.demands.find(d => d.id === tId);
       if (target) {
-        openDemandDrawer(target);
+        if (window.appTabs) window.appTabs.openTicketTab(target);
+        else openDemandDrawer(target);
       }
     });
   });

@@ -1,11 +1,12 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "description": "Chamados Conciliador Contábil",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "test": "node tests/test_tabs.js && node tests/test_drawer_integration.js",
     "build": "electron-builder --win",
     "build:dir": "electron-builder --win --dir",
     "release": "electron-builder --win --publish always"
