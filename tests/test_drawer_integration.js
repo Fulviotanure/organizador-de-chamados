@@ -316,6 +316,17 @@ try {
     assert.ok(storeJs.includes('extractClosedAtFromEvents'), 'extractClosedAtFromEvents must exist in store.js');
     assert.ok(storeJs.includes('resolveClosedTodayDemands'), 'resolveClosedTodayDemands must exist in store.js');
     assert.ok(drawerJs.includes('syncClosedAtFromDetails'), 'syncClosedAtFromDetails must exist in drawer.js');
+
+    // Test 16: Comment inline image resolution and authenticated rendering
+    console.log('Integration Test 16: Comment inline image resolution & authentication');
+    assert.ok(drawerJs.includes('resolveAuthenticatedImageBlob'), 'resolveAuthenticatedImageBlob must exist in drawer.js');
+    assert.ok(drawerJs.includes('prepareRichContentWithImagePlaceholders'), 'prepareRichContentWithImagePlaceholders must exist in drawer.js');
+    assert.ok(drawerJs.includes('renderAuthenticatedInlineImages'), 'renderAuthenticatedInlineImages must exist in drawer.js');
+    assert.ok(drawerJs.includes('comment-inline-img'), 'comment-inline-img class must exist in drawer.js');
+
+    const styleCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+    assert.ok(styleCss.includes('.comment-inline-img'), '.comment-inline-img style rule must exist');
+    assert.ok(styleCss.includes('zoom-in'), 'cursor zoom-in for comment images must exist');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

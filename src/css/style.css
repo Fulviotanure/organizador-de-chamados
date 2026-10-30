@@ -3693,11 +3693,33 @@ body.table-col-resizing * {
   word-break: break-word;
 }
 
-.comment-content img {
+.comment-content img,
+.comment-inline-img {
   max-width: 100%;
-  border-radius: var(--radius-sm);
-  margin-top: 8px;
-  border: 1px solid var(--border-color);
+  max-height: 520px;
+  width: auto;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 8px;
+  margin: 6px 6px 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(9, 13, 22, 0.6);
+  cursor: zoom-in;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.comment-content img:hover,
+.comment-inline-img:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.25);
+}
+
+.comment-content img.is-loading,
+.comment-inline-img.is-loading {
+  opacity: 0.8;
+  cursor: wait;
 }
 
 .comment-input-box {

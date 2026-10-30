@@ -201,6 +201,7 @@ function populateAndSelectProduct(selectEl, item, prods) {
 
 // Caching blob URLs for image attachments & descriptions
 const attachmentBlobCache = new Map();
+const authenticatedImgBlobCache = new Map();
 let currentLightboxAttachment = null;
 
 async function getOrFetchAttachmentBlobUrl(ticketId, attachmentId) {
@@ -216,6 +217,182 @@ async function getOrFetchAttachmentBlobUrl(ticketId, attachmentId) {
   } catch (e) {
     console.warn('Failed to load blob for attachment:', attachmentId, e);
     return null;
+  }
+}
+
+async function resolveAuthenticatedImageBlob(src, ticketId) {
+  if (!src) return null;
+  if (src.startsWith('data:image/') || src.startsWith('blob:')) {
+    return src;
+  }
+  if (authenticatedImgBlobCache.has(src)) {
+    return authenticatedImgBlobCache.get(src);
+  }
+
+  // 1. Check if src contains /support/tickets/:ticketId/attachments/:attId
+  const ticketAttMatch = src.match(/\/support\/tickets\/([a-zA-Z0-9_-]+)\/attachments\/([a-zA-Z0-9_-]+)/);
+  const targetTicketId = (ticketAttMatch && ticketAttMatch[1]) ? ticketAttMatch[1] : ticketId;
+  let attId = (ticketAttMatch && ticketAttMatch[2]) ? ticketAttMatch[2] : null;
+
+  // 2. If no full ticket path match, check general /attachments/:id
+  if (!attId) {
+    const generalAttMatch = src.match(/\/attachments\/([a-zA-Z0-9_-]+)/);
+    if (generalAttMatch) {
+      attId = generalAttMatch[1];
+    }
+  }
+
+  // 3. If attId found, try fetch via getOrFetchAttachmentBlobUrl
+  if (attId && targetTicketId) {
+    const blobUrl = await getOrFetchAttachmentBlobUrl(targetTicketId, attId);
+    if (blobUrl) {
+      authenticatedImgBlobCache.set(src, blobUrl);
+      return blobUrl;
+    }
+  }
+
+  // 4. If not resolved via attachment endpoint, try fetchWithAuth on backend URL
+  let fullUrl = src;
+  if (src.startsWith('/')) {
+    fullUrl = `https://api.importer.conciliadorcontabil.com.br${src}`;
+  }
+
+  if (fullUrl.includes('conciliadorcontabil.com.br') || fullUrl.startsWith('/')) {
+    try {
+      if (window.conciliadorAPI && typeof window.conciliadorAPI.fetchWithAuth === 'function') {
+        const resp = await window.conciliadorAPI.fetchWithAuth(fullUrl);
+        if (resp && resp.ok) {
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          authenticatedImgBlobCache.set(src, blobUrl);
+          authenticatedImgBlobCache.set(fullUrl, blobUrl);
+          return blobUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('Falha ao autenticar imagem inline via fetchWithAuth:', fullUrl, e);
+    }
+  }
+
+  return src;
+}
+
+function prepareRichContentWithImagePlaceholders(rawHtml, rawContent, ticketId) {
+  let contentHtml = rawHtml ? sanitizeHtml(rawHtml) : '';
+  if (!contentHtml && rawContent) {
+    let txt = escapeHtml(rawContent);
+    // Convert markdown images ![alt](url) -> <img src="url" alt="alt">
+    txt = txt.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    txt = txt.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    txt = txt.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    txt = txt.replace(/`([^`]+)`/g, '<code>$1</code>');
+    txt = txt.replace(/\n/g, '<br>');
+    contentHtml = txt;
+  }
+
+  if (!contentHtml) return '';
+
+  // Fix relative /api/v1/ prefix
+  contentHtml = contentHtml.replace(
+    /src="\/api\/v1\//g,
+    'src="https://api.importer.conciliadorcontabil.com.br/api/v1/'
+  );
+
+  // SVG placeholder to prevent Chromium from making unauthenticated requests that return HTTP 401
+  const placeholderSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100'><rect width='160' height='100' rx='6' fill='%23131b2e'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2338bdf8' font-size='12' font-family='sans-serif'>🖼️ Carregando...</text></svg>";
+
+  contentHtml = contentHtml.replace(
+    /<img\s+([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi,
+    (fullMatch, before, src, after) => {
+      if (src.startsWith('data:') || src.startsWith('blob:')) {
+        return `<img ${before}src="${src}" class="comment-inline-img" ${after}>`;
+      }
+
+      // Check if already in cache
+      const attMatch = src.match(/\/attachments\/([a-zA-Z0-9_-]+)/);
+      const attId = attMatch ? attMatch[1] : null;
+      const cacheKey = (ticketId && attId) ? `${ticketId}_${attId}` : null;
+      const cachedUrl = (cacheKey && attachmentBlobCache.get(cacheKey)) || authenticatedImgBlobCache.get(src);
+
+      if (cachedUrl) {
+        return `<img ${before}src="${cachedUrl}" data-original-src="${escapeHtml(src)}" ${attId ? `data-att-id="${attId}"` : ''} class="comment-inline-img" ${after}>`;
+      }
+
+      return `<img ${before}src="${placeholderSvg}" data-pending-src="${escapeHtml(src)}" ${attId ? `data-att-id="${attId}"` : ''} class="comment-inline-img is-loading" ${after}>`;
+    }
+  );
+
+  return contentHtml;
+}
+
+async function renderAuthenticatedInlineImages(container, ticketId, defaultLabel = 'Imagem') {
+  if (!container) return;
+  const imgs = Array.from(container.querySelectorAll('.comment-content img, #drawerDescription img, img.comment-inline-img'));
+  if (imgs.length === 0) return;
+
+  // Group images by bubble or card for gallery navigation
+  const groups = new Map();
+  imgs.forEach(img => {
+    const parent = img.closest('.comment-bubble') || img.closest('.drawer-desc-card') || container;
+    if (!groups.has(parent)) {
+      groups.set(parent, []);
+    }
+    groups.get(parent).push(img);
+  });
+
+  for (const [parent, bubbleImgs] of groups.entries()) {
+    bubbleImgs.forEach((img, idx) => {
+      const pendingSrc = img.getAttribute('data-pending-src') || img.getAttribute('src');
+      if (!pendingSrc) return;
+
+      const altText = img.getAttribute('alt') || `${defaultLabel} ${idx + 1}`;
+      const attId = img.dataset.attId || null;
+
+      const setupImageInteractivity = (finalUrl, resolvedAttId) => {
+        img.style.cursor = 'zoom-in';
+        img.title = 'Clique para ampliar imagem';
+        img.onclick = (e) => {
+          e.stopPropagation();
+          const gallery = bubbleImgs.map((m, gIdx) => ({
+            blobUrl: m.src,
+            fileName: m.getAttribute('alt') || `${defaultLabel} ${gIdx + 1}`,
+            ticketId,
+            attId: m.dataset.attId || null
+          })).filter(g => g.blobUrl && !g.blobUrl.startsWith('data:image/svg'));
+          const currentIdx = gallery.findIndex(g => g.blobUrl === finalUrl);
+          openImageLightbox(
+            finalUrl,
+            altText,
+            ticketId,
+            resolvedAttId,
+            gallery.length > 1 ? gallery : null,
+            currentIdx >= 0 ? currentIdx : 0
+          );
+        };
+      };
+
+      if (pendingSrc.startsWith('blob:') || (pendingSrc.startsWith('data:image/') && !pendingSrc.startsWith('data:image/svg'))) {
+        img.classList.remove('is-loading');
+        setupImageInteractivity(pendingSrc, attId);
+        return;
+      }
+
+      resolveAuthenticatedImageBlob(pendingSrc, ticketId).then(blobUrl => {
+        if (blobUrl) {
+          img.src = blobUrl;
+          img.removeAttribute('data-pending-src');
+          img.classList.remove('is-loading');
+          setupImageInteractivity(blobUrl, attId);
+        } else {
+          img.classList.remove('is-loading');
+          img.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100'><rect width='160' height='100' rx='6' fill='%23131b2e'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23ef4444' font-size='11' font-family='sans-serif'>⚠️ Imagem indisponível</text></svg>";
+        }
+      }).catch(err => {
+        console.warn('Erro ao carregar imagem autenticada:', pendingSrc, err);
+        img.classList.remove('is-loading');
+        img.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100'><rect width='160' height='100' rx='6' fill='%23131b2e'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23ef4444' font-size='11' font-family='sans-serif'>⚠️ Erro ao carregar</text></svg>";
+      });
+    });
   }
 }
 
@@ -496,35 +673,10 @@ async function renderAuthenticatedDescription(descHtml, ticketId, containerEl) {
     return;
   }
 
-  let formatted = descHtml.replace(
-    /src="\/api\/v1\//g,
-    'src="https://api.importer.conciliadorcontabil.com.br/api/v1/'
-  );
-  containerEl.innerHTML = sanitizeHtml(formatted);
+  const formatted = prepareRichContentWithImagePlaceholders(descHtml, '', ticketId);
+  containerEl.innerHTML = formatted;
 
-  // Replace any embedded attachments with authenticated blobs so they actually load and are clickable
-  const imgs = containerEl.querySelectorAll('img');
-  for (const img of imgs) {
-    const src = img.getAttribute('src');
-    if (src && src.includes('/attachments/')) {
-      const match = src.match(/\/attachments\/([^\/]+)\/download/);
-      if (match) {
-        const attId = match[1];
-        getOrFetchAttachmentBlobUrl(ticketId, attId).then(blobUrl => {
-          if (blobUrl) {
-            img.src = blobUrl;
-            img.style.cursor = 'zoom-in';
-            img.title = 'Clique para ampliar imagem';
-            img.onclick = () => openImageLightbox(blobUrl, 'Imagem da descrição', ticketId, attId);
-          }
-        });
-      }
-    } else if (src && (src.startsWith('data:image/') || src.startsWith('blob:') || src.startsWith('http'))) {
-      img.style.cursor = 'zoom-in';
-      img.title = 'Clique para ampliar imagem';
-      img.onclick = () => openImageLightbox(src, 'Imagem da descrição', ticketId);
-    }
-  }
+  renderAuthenticatedInlineImages(containerEl, ticketId, 'Imagem da descrição');
 }
 
 function formatEventContent(ev) {
@@ -1751,6 +1903,7 @@ function renderDrawerActivityStream() {
     return;
   }
 
+  const ticketId = selectedTicket?.id;
   let lastDateHeader = '';
   container.innerHTML = filtered.map(it => {
     let dateHeaderHtml = '';
@@ -1779,11 +1932,7 @@ function renderDrawerActivityStream() {
 
       const dateFormatted = `${escapeHtml(userName)} · ${dayMonth} às ${timeStr}`;
 
-      let contentHtml = c.contentHtml ? sanitizeHtml(c.contentHtml) : escapeHtml(c.content || '');
-      contentHtml = contentHtml.replace(
-        /src="\/api\/v1\//g,
-        'src="https://api.importer.conciliadorcontabil.com.br/api/v1/'
-      );
+      const contentHtml = prepareRichContentWithImagePlaceholders(c.contentHtml, c.content, ticketId);
 
       // Render attachments associated with this comment if any
       const rawCommentAtts = c.attachments || [];
@@ -1874,7 +2023,6 @@ function renderDrawerActivityStream() {
   }).join('');
 
   // Load blob thumbnails for comment images and attach event listeners
-  const ticketId = selectedTicket?.id;
   if (ticketId) {
     filtered.forEach(it => {
       if (it.itemType === 'comment' && Array.isArray(it.raw.attachments)) {
@@ -1914,6 +2062,9 @@ function renderDrawerActivityStream() {
         openAttachmentFile(ticketId, attId, fileName);
       });
     });
+
+    // Render & authenticate any inline images embedded in comment bubbles (with lightbox & zoom)
+    renderAuthenticatedInlineImages(container, ticketId, 'Imagem do comentário');
   }
 
   // Scroll to newest activity at bottom
