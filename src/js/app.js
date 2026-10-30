@@ -378,9 +378,27 @@ function setupEventListeners() {
   });
 
   // Create Ticket Modal Buttons & Controls
-  document.getElementById('btnOpenCreateTicketModal')?.addEventListener('click', openCreateTicketModal);
-  document.getElementById('btnCloseCreateTicketModal')?.addEventListener('click', closeCreateTicketModal);
-  document.getElementById('btnCancelCreateTicket')?.addEventListener('click', closeCreateTicketModal);
+  document.getElementById('btnOpenCreateTicketModal')?.addEventListener('click', () => {
+    if (window.appTabs) {
+      window.appTabs.openCreateTicketTab(true);
+    } else {
+      openCreateTicketModal();
+    }
+  });
+  document.getElementById('btnCloseCreateTicketModal')?.addEventListener('click', () => {
+    if (window.appTabs && window.appTabs.activeTabId === 'new-ticket') {
+      window.appTabs.closeTab('new-ticket');
+    } else {
+      closeCreateTicketModal();
+    }
+  });
+  document.getElementById('btnCancelCreateTicket')?.addEventListener('click', () => {
+    if (window.appTabs && window.appTabs.activeTabId === 'new-ticket') {
+      window.appTabs.closeTab('new-ticket');
+    } else {
+      closeCreateTicketModal();
+    }
+  });
   document.getElementById('btnSubmitCreateTicket')?.addEventListener('click', submitCreateTicket);
   setupLayoutAutocomplete();
 
@@ -535,13 +553,18 @@ function setupEventListeners() {
   document.getElementById('btnArchiveTicket')?.addEventListener('click', archiveCurrentTicket);
 
   // Drawer Close & Multi-Tab Routing
-  document.getElementById('btnCloseDrawer')?.addEventListener('click', () => {
-    if (window.appTabs) {
-      window.appTabs.closeTab(window.appTabs.activeTabId);
-    } else {
-      closeDemandDrawer();
-    }
-  });
+  const btnCloseDrawerEl = document.getElementById('btnCloseDrawer');
+  if (btnCloseDrawerEl && !btnCloseDrawerEl.dataset?.tabBound) {
+    if (btnCloseDrawerEl.dataset) btnCloseDrawerEl.dataset.tabBound = 'true';
+    btnCloseDrawerEl.addEventListener('click', () => {
+      if (window.appTabs) {
+        window.appTabs.closeTab(window.appTabs.activeTabId);
+      } else {
+        closeDemandDrawer();
+      }
+    });
+  }
+
   document.getElementById('drawerOverlay')?.addEventListener('click', () => {
     if (window.appTabs) {
       window.appTabs.switchToTab('demands-list');
@@ -549,13 +572,18 @@ function setupEventListeners() {
       closeDemandDrawer();
     }
   });
-  document.getElementById('btnDrawerBackToList')?.addEventListener('click', () => {
-    if (window.appTabs) {
-      window.appTabs.switchToTab('demands-list');
-    } else {
-      closeDemandDrawer();
-    }
-  });
+
+  const btnDrawerBackEl = document.getElementById('btnDrawerBackToList');
+  if (btnDrawerBackEl && !btnDrawerBackEl.dataset?.tabBound) {
+    if (btnDrawerBackEl.dataset) btnDrawerBackEl.dataset.tabBound = 'true';
+    btnDrawerBackEl.addEventListener('click', () => {
+      if (window.appTabs) {
+        window.appTabs.switchToTab('demands-list');
+      } else {
+        closeDemandDrawer();
+      }
+    });
+  }
 
   const openTicketInMovidesk = () => {
     const curTicket = getActiveTicket();
@@ -644,6 +672,11 @@ function setupEventListeners() {
     noteDebounceTimer = setTimeout(async () => {
       await window.appStore.saveNote(curTicket.id, notesTextarea.value);
       if (statusEl) statusEl.textContent = 'Salvo automaticamente';
+      if (window.appTabs) {
+        const session = window.appTabs.ticketSessions.get(curTicket.id);
+        if (session) session.notes = notesTextarea.value;
+        window.appTabs.checkDirty(curTicket.id);
+      }
     }, 600);
   });
 
@@ -954,10 +987,14 @@ function setupEventListeners() {
         window.electronAPI.minimize();
       }
     }
-    // Ctrl+N -> new ticket modal
+    // Ctrl+N -> new ticket tab / modal
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
       e.preventDefault();
-      openCreateTicketModal();
+      if (window.appTabs) {
+        window.appTabs.openCreateTicketTab(true);
+      } else {
+        openCreateTicketModal();
+      }
     }
     // Ctrl+F or Ctrl+K -> focus search
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'k')) {
@@ -986,7 +1023,13 @@ function setupEventListeners() {
       closeUserSettingsModal();
       closeImageLightbox();
       closeAutoDriveModal();
-      closeCreateTicketModal();
+      if (!window.appTabs || window.appTabs.activeTabId !== 'new-ticket') {
+        closeCreateTicketModal();
+      } else {
+        document.getElementById('calFloatingPopover')?.style.setProperty('display', 'none');
+        document.getElementById('calClientPopover')?.style.setProperty('display', 'none');
+        document.getElementById('panelNewTicketLabels')?.style.setProperty('display', 'none');
+      }
       closeFilterModal();
       document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
       document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');

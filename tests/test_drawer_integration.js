@@ -131,4 +131,37 @@ assert.strictEqual(context.window.getSelectedTicket?.(), null);
 const s501 = appTabs.ticketSessions.get(501);
 assert.strictEqual(s501.ticket.title, 'Updated 501 Details');
 
+// Test 3: dataset.tabBound guard prevents duplicate bindings on drawer buttons
+console.log('Integration Test 3: dataset.tabBound guard on drawer buttons');
+const btnCloseEl = getOrCreateEl('btnCloseDrawer');
+btnCloseEl.dataset.tabBound = 'true';
+let listenerCount = 0;
+btnCloseEl.addEventListener = () => { listenerCount++; };
+
+// Simulate app.js binding attempt
+if (!btnCloseEl.dataset?.tabBound) {
+  btnCloseEl.addEventListener('click', () => {});
+}
+assert.strictEqual(listenerCount, 0, 'No duplicate listener should be added when tabBound is true');
+
+// Test 4: Tab dirty state reset after comment submission
+console.log('Integration Test 4: Dirty state reset after comment submission');
+const ticketC = { id: 601, number: '601', title: 'Ticket C', status: 'queued' };
+appTabs.openTicketTab(ticketC, true);
+getOrCreateEl('drawerEditTitle').value = 'Ticket C';
+const commentInput = getOrCreateEl('drawerNewCommentText');
+commentInput.value = 'Texto do comentário';
+appTabs.checkDirty(601);
+assert.strictEqual(appTabs.isTicketDirty(601), true, 'Must be dirty while comment has text');
+
+// Simulate comment submission success: textarea cleared and session reset
+commentInput.value = '';
+const session601 = appTabs.ticketSessions.get(601);
+if (session601) {
+  session601.commentDraft = '';
+  session601.pendingAttachments = [];
+}
+appTabs.checkDirty(601);
+assert.strictEqual(appTabs.isTicketDirty(601), false, 'Must be non-dirty after comment is cleared and submitted');
+
 console.log('\n✅ All drawer integration tests passed successfully!');

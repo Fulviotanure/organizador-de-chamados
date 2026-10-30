@@ -24,6 +24,7 @@ class TabManager {
       bodyTop: 0
     };
     this.isRestoringSession = false;
+    this.createTicketSession = null;
     this.dirtyDebounceTimer = null;
     this.initialized = false;
     this.hasRestoredPersistedTabs = false;
@@ -44,6 +45,11 @@ class TabManager {
       this.tabsContainerEl?.scrollBy({ left: 220, behavior: 'smooth' });
     });
 
+    // New Tab Button (+)
+    document.getElementById('btnNewTab')?.addEventListener('click', () => {
+      this.openCreateTicketTab(true);
+    });
+
     // Mouse wheel horizontal scrolling over tab bar
     this.tabsContainerEl?.addEventListener('wheel', (e) => {
       if (e.deltaY !== 0) {
@@ -57,6 +63,15 @@ class TabManager {
     if (btnBackToList && !btnBackToList.dataset?.tabBound) {
       if (btnBackToList.dataset) btnBackToList.dataset.tabBound = 'true';
       btnBackToList.addEventListener('click', () => {
+        this.switchToTab('demands-list');
+      });
+    }
+
+    // Create Ticket Header Back to List Button
+    const btnCreateTicketBackToList = document.getElementById('btnCreateTicketBackToList');
+    if (btnCreateTicketBackToList && !btnCreateTicketBackToList.dataset?.tabBound) {
+      if (btnCreateTicketBackToList.dataset) btnCreateTicketBackToList.dataset.tabBound = 'true';
+      btnCreateTicketBackToList.addEventListener('click', () => {
         this.switchToTab('demands-list');
       });
     }
@@ -82,11 +97,49 @@ class TabManager {
     this.render();
   }
 
-  // Retorna ID do ticket ativo no workspace, ou null se estiver na lista geral
+  // Retorna ID do ticket ativo no workspace, ou null se estiver na lista geral ou em novo chamado
   getActiveTicketId() {
-    if (this.activeTabId === 'demands-list') return null;
+    if (this.activeTabId === 'demands-list' || this.activeTabId === 'new-ticket') return null;
     const tab = this.tabs.find(t => t.id === this.activeTabId);
     return tab?.ticketId || null;
+  }
+
+  // Abre ou foca na aba de Abertura de Novo Chamado
+  openCreateTicketTab(switchToTab = true) {
+    let tab = this.tabs.find(t => t.id === 'new-ticket');
+    if (tab) {
+      if (switchToTab) {
+        this.switchToTab('new-ticket');
+      }
+      return tab;
+    }
+
+    tab = {
+      id: 'new-ticket',
+      type: 'create-ticket',
+      title: 'Novo Chamado',
+      icon: '➕',
+      isPinned: false,
+      isDirty: false
+    };
+
+    this.tabs.push(tab);
+
+    // Se ainda não existia sessão em andamento, garante formulário resetado e pronto
+    if (!this.createTicketSession) {
+      if (typeof resetCreateTicketForm === 'function') {
+        resetCreateTicketForm();
+      }
+    }
+
+    this.render();
+
+    if (switchToTab) {
+      this.switchToTab('new-ticket');
+    }
+
+    this.persistOpenTabs();
+    return tab;
   }
 
   // Abre uma aba para um chamado (ou foca na existente)
@@ -158,6 +211,8 @@ class TabManager {
         this.saveListScrollSnapshot();
       } else if (prevTab.type === 'ticket') {
         this.saveTicketSession(prevTab.ticketId);
+      } else if (prevTab.type === 'create-ticket' || prevTab.id === 'new-ticket') {
+        this.saveCreateTicketSession();
       }
     }
 
@@ -169,6 +224,8 @@ class TabManager {
       this.restoreListScrollSnapshot();
     } else if (targetTab.type === 'ticket') {
       await this.restoreTicketSession(targetTab.ticketId);
+    } else if (targetTab.type === 'create-ticket' || targetTab.id === 'new-ticket') {
+      this.restoreCreateTicketSession();
     }
 
     // Rola a aba para a área visível do container
@@ -191,6 +248,70 @@ class TabManager {
       return false;
     }
 
+    // Fechamento específico da aba de Novo Chamado
+    if (tab.type === 'create-ticket' || tab.id === 'new-ticket') {
+      if (tab.isClosing) return false;
+      const isDirty = this.checkCreateTicketDirty();
+      if (!force && isDirty) {
+        tab.isClosing = true;
+        try {
+          let confirmFn = window.showAppConfirm;
+          if (typeof confirmFn !== 'function') {
+            confirmFn = typeof window.confirm === 'function' ? (msg) => Promise.resolve(window.confirm(msg)) : () => Promise.resolve(true);
+          }
+
+          const ok = await confirmFn(
+            'O formulário de abertura de chamado possui dados preenchidos que serão descartados.\n\nDeseja fechar esta aba e descartar o novo chamado?',
+            'Descartar Novo Chamado?',
+            {
+              isDanger: true,
+              confirmText: 'Fechar e Descartar',
+              cancelText: 'Continuar Preenchendo'
+            }
+          );
+
+          if (!ok) return false;
+        } finally {
+          tab.isClosing = false;
+        }
+      }
+
+      const currentIndex = this.tabs.findIndex(t => t.id === tab.id);
+      if (currentIndex === -1) return false;
+
+      const wasActive = this.activeTabId === tab.id;
+      let nextTabId = 'demands-list';
+      if (wasActive) {
+        if (currentIndex > 1) {
+          nextTabId = this.tabs[currentIndex - 1].id;
+        } else if (this.tabs.length > currentIndex + 1) {
+          nextTabId = this.tabs[currentIndex + 1].id;
+        }
+      }
+
+      this.createTicketSession = null;
+      if (typeof resetCreateTicketForm === 'function') {
+        resetCreateTicketForm();
+      }
+      this.tabs.splice(currentIndex, 1);
+
+      if (wasActive) {
+        await this.switchToTab(nextTabId);
+      } else {
+        this.render();
+        this.persistOpenTabs();
+      }
+
+      if (this.activeTabId === 'demands-list') {
+        this.syncWorkspaceVisibility();
+      }
+      return true;
+    }
+
+    if (tab.isClosing) {
+      return false;
+    }
+
     // Se estiver ativa agora, faz check de dirty fresco
     if (tab.id === this.activeTabId) {
       this.checkDirty(tab.ticketId);
@@ -198,41 +319,53 @@ class TabManager {
 
     // Verificação de segurança: confirmar descarte se houver alterações não salvas
     if (!force && (tab.isDirty || this.isTicketDirty(tab.ticketId))) {
-      let confirmFn = window.showAppConfirm;
-      if (typeof confirmFn !== 'function') {
-        confirmFn = typeof window.confirm === 'function' ? (msg) => Promise.resolve(window.confirm(msg)) : () => Promise.resolve(true);
-      }
-
-      const ok = await confirmFn(
-        `O chamado ${tab.number || '#' + tab.ticketId} possui alterações ou rascunho de comentário não salvos.\n\nDeseja fechar esta aba e descartar as alterações pendentes?`,
-        'Descartar Alterações?',
-        {
-          isDanger: true,
-          confirmText: 'Fechar e Descartar',
-          cancelText: 'Continuar no Chamado'
+      tab.isClosing = true;
+      try {
+        let confirmFn = window.showAppConfirm;
+        if (typeof confirmFn !== 'function') {
+          confirmFn = typeof window.confirm === 'function' ? (msg) => Promise.resolve(window.confirm(msg)) : () => Promise.resolve(true);
         }
-      );
 
-      if (!ok) return false;
-    }
+        const ok = await confirmFn(
+          `O chamado ${tab.number || '#' + tab.ticketId} possui alterações ou rascunho de comentário não salvos.\n\nDeseja fechar esta aba e descartar as alterações pendentes?`,
+          'Descartar Alterações?',
+          {
+            isDanger: true,
+            confirmText: 'Fechar e Descartar',
+            cancelText: 'Continuar no Chamado'
+          }
+        );
 
-    // Se a aba a fechar for a ativa, seleciona a aba anterior ou a lista
-    if (this.activeTabId === tab.id) {
-      let nextTabId = 'demands-list';
-      if (tabIndex > 1) {
-        nextTabId = this.tabs[tabIndex - 1].id;
-      } else if (this.tabs.length > tabIndex + 1) {
-        nextTabId = this.tabs[tabIndex + 1].id;
+        if (!ok) return false;
+      } finally {
+        tab.isClosing = false;
       }
-      await this.switchToTab(nextTabId);
     }
 
-    // Remove sessão e aba
-    this.ticketSessions.delete(tab.ticketId);
-    this.tabs.splice(tabIndex, 1);
+    // Re-checar índice caso a lista de abas tenha mudado durante a confirmação assíncrona
+    const currentIndex = this.tabs.findIndex(t => t.id === tab.id);
+    if (currentIndex === -1) return false;
 
-    this.render();
-    this.persistOpenTabs();
+    const wasActive = this.activeTabId === tab.id;
+    let nextTabId = 'demands-list';
+    if (wasActive) {
+      if (currentIndex > 1) {
+        nextTabId = this.tabs[currentIndex - 1].id;
+      } else if (this.tabs.length > currentIndex + 1) {
+        nextTabId = this.tabs[currentIndex + 1].id;
+      }
+    }
+
+    // Remove sessão e aba do estado antes de chavear ou renderizar
+    this.ticketSessions.delete(tab.ticketId);
+    this.tabs.splice(currentIndex, 1);
+
+    if (wasActive) {
+      await this.switchToTab(nextTabId);
+    } else {
+      this.render();
+      this.persistOpenTabs();
+    }
 
     // Se nenhuma aba de chamado restar e estivermos na lista, fecha gaveta
     if (this.activeTabId === 'demands-list') {
@@ -415,23 +548,203 @@ class TabManager {
   // Sincroniza a visibilidade do container principal e do drawer de acordo com a aba ativa
   syncWorkspaceVisibility() {
     const isList = this.activeTabId === 'demands-list';
+    const isCreateTicket = this.activeTabId === 'new-ticket';
     const drawer = document.getElementById('demandDrawer');
     const overlay = document.getElementById('drawerOverlay');
+    const createOverlay = document.getElementById('createTicketModalOverlay');
 
     if (isList) {
       document.body.classList.remove('ticket-workspace-active');
+      document.body.classList.remove('create-ticket-workspace-active');
       drawer?.classList.remove('open');
+      createOverlay?.classList.remove('open');
       overlay?.classList.remove('open');
 
       // Fecha popovers flutuantes
       document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
       document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calFloatingPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calClientPopover')?.style.setProperty('display', 'none');
+      window.selectedTicket = null;
+    } else if (isCreateTicket) {
+      document.body.classList.remove('ticket-workspace-active');
+      document.body.classList.add('create-ticket-workspace-active');
+      drawer?.classList.remove('open');
+      createOverlay?.classList.add('open');
+      overlay?.classList.remove('open');
+
+      // Fecha popovers flutuantes do drawer
+      document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
       window.selectedTicket = null;
     } else {
+      document.body.classList.remove('create-ticket-workspace-active');
       document.body.classList.add('ticket-workspace-active');
+      createOverlay?.classList.remove('open');
       drawer?.classList.add('open');
       overlay?.classList.remove('open'); // Sem overlay bloqueador em modo tela cheia
     }
+  }
+
+  // Snapshot em memória dos campos da tela de Abertura de Novo Chamado
+  saveCreateTicketSession() {
+    this.createTicketSession = {
+      title: document.getElementById('newTicketTitle')?.value || '',
+      layoutId: document.getElementById('newTicketLayoutId')?.value || '',
+      layoutSearch: document.getElementById('newTicketLayoutSearch')?.value || '',
+      selectedLayoutBoxDisplay: document.getElementById('newTicketSelectedLayoutBox')?.style.display || 'none',
+      selectedLayoutLabel: document.getElementById('newTicketSelectedLayoutLabel')?.textContent || '',
+      selectedLayoutSub: document.getElementById('newTicketSelectedLayoutSub')?.textContent || '',
+      movidesk: document.getElementById('newTicketMovidesk')?.value || '',
+      database: document.getElementById('newTicketDatabase')?.value || '',
+      type: document.getElementById('newTicketType')?.value || '',
+      product: document.getElementById('newTicketProduct')?.value || '',
+      assignedTo: document.getElementById('newTicketAssignedTo')?.value || '',
+      priority: document.getElementById('newTicketPriority')?.value || 'medium',
+      deliveryDateInput: document.getElementById('newTicketDeliveryDateInput')?.value || '',
+      dueDate: document.getElementById('newTicketDueDate')?.value || '',
+      clientDueDate: document.getElementById('newTicketClientDueDate')?.value || '',
+      description: document.getElementById('newTicketDescription')?.value || '',
+      descriptionEditorHtml: document.getElementById('newTicketDescriptionEditor')?.innerHTML || '',
+      selectedLabels: typeof newTicketSelectedLabels !== 'undefined' ? Array.from(newTicketSelectedLabels) : [],
+      selectedFiles: typeof newTicketSelectedFiles !== 'undefined' ? [...newTicketSelectedFiles] : []
+    };
+    this.checkCreateTicketDirty();
+  }
+
+  // Restaura os campos da tela de Abertura de Novo Chamado
+  restoreCreateTicketSession() {
+    if (!this.createTicketSession) return;
+    const s = this.createTicketSession;
+
+    const titleEl = document.getElementById('newTicketTitle');
+    if (titleEl) titleEl.value = s.title || '';
+
+    const layoutIdEl = document.getElementById('newTicketLayoutId');
+    if (layoutIdEl) layoutIdEl.value = s.layoutId || '';
+
+    const layoutSearchEl = document.getElementById('newTicketLayoutSearch');
+    if (layoutSearchEl) layoutSearchEl.value = s.layoutSearch || '';
+
+    const selectedLayoutBox = document.getElementById('newTicketSelectedLayoutBox');
+    const layoutSearchBox = document.getElementById('newTicketLayoutSearchBox');
+    if (selectedLayoutBox && layoutSearchBox) {
+      if (s.selectedLayoutBoxDisplay === 'flex' || s.layoutId) {
+        selectedLayoutBox.style.display = 'flex';
+        layoutSearchBox.style.display = 'none';
+        const lbl = document.getElementById('newTicketSelectedLayoutLabel');
+        const sub = document.getElementById('newTicketSelectedLayoutSub');
+        if (lbl) lbl.textContent = s.selectedLayoutLabel || '';
+        if (sub) sub.textContent = s.selectedLayoutSub || '';
+      } else {
+        selectedLayoutBox.style.display = 'none';
+        layoutSearchBox.style.display = 'block';
+      }
+    }
+
+    const moviEl = document.getElementById('newTicketMovidesk');
+    if (moviEl) moviEl.value = s.movidesk || '';
+
+    const dbEl = document.getElementById('newTicketDatabase');
+    if (dbEl) dbEl.value = s.database || '';
+
+    const typeEl = document.getElementById('newTicketType');
+    if (typeEl && s.type) typeEl.value = s.type;
+
+    const prodEl = document.getElementById('newTicketProduct');
+    if (prodEl && s.product) prodEl.value = s.product;
+
+    if (typeof updateDevSelectForCurrentType === 'function') {
+      updateDevSelectForCurrentType();
+    }
+
+    const devEl = document.getElementById('newTicketAssignedTo');
+    if (devEl && s.assignedTo) devEl.value = s.assignedTo;
+
+    const priorityEl = document.getElementById('newTicketPriority');
+    if (priorityEl) {
+      priorityEl.value = s.priority || 'medium';
+      if (typeof updatePrioritySelectVisual === 'function') updatePrioritySelectVisual(priorityEl);
+    }
+
+    const delivInput = document.getElementById('newTicketDeliveryDateInput');
+    if (delivInput) delivInput.value = s.deliveryDateInput || '';
+
+    const dueEl = document.getElementById('newTicketDueDate');
+    if (dueEl) dueEl.value = s.dueDate || '';
+
+    const clientDueEl = document.getElementById('newTicketClientDueDate');
+    if (clientDueEl) clientDueEl.value = s.clientDueDate || '';
+
+    const descEl = document.getElementById('newTicketDescription');
+    if (descEl) descEl.value = s.description || '';
+
+    const descEditor = document.getElementById('newTicketDescriptionEditor');
+    if (descEditor) descEditor.innerHTML = s.descriptionEditorHtml || '';
+
+    if (typeof newTicketSelectedLabels !== 'undefined' && Array.isArray(s.selectedLabels)) {
+      newTicketSelectedLabels.clear();
+      s.selectedLabels.forEach(id => newTicketSelectedLabels.add(id));
+      if (typeof renderLabelsPicker === 'function') renderLabelsPicker();
+    }
+
+    if (typeof newTicketSelectedFiles !== 'undefined' && Array.isArray(s.selectedFiles)) {
+      newTicketSelectedFiles.length = 0;
+      s.selectedFiles.forEach(f => newTicketSelectedFiles.push(f));
+      if (typeof renderSelectedFilesList === 'function') renderSelectedFilesList();
+    }
+
+    this.checkCreateTicketDirty();
+  }
+
+  // Verifica se o formulário de novo chamado tem dados preenchidos (dirty)
+  checkCreateTicketDirty() {
+    const title = document.getElementById('newTicketTitle')?.value || this.createTicketSession?.title || '';
+    const descEditor = document.getElementById('newTicketDescriptionEditor')?.innerHTML || this.createTicketSession?.descriptionEditorHtml || '';
+    const descText = (document.getElementById('newTicketDescription')?.value || this.createTicketSession?.description || '').trim();
+    const layoutId = document.getElementById('newTicketLayoutId')?.value || this.createTicketSession?.layoutId || '';
+    const movidesk = document.getElementById('newTicketMovidesk')?.value || this.createTicketSession?.movidesk || '';
+    const db = document.getElementById('newTicketDatabase')?.value || this.createTicketSession?.database || '';
+    const due = document.getElementById('newTicketDueDate')?.value || this.createTicketSession?.dueDate || '';
+    const clientDue = document.getElementById('newTicketClientDueDate')?.value || this.createTicketSession?.clientDueDate || '';
+    
+    let labelsCount = 0;
+    if (typeof newTicketSelectedLabels !== 'undefined' && newTicketSelectedLabels) {
+      labelsCount = newTicketSelectedLabels.size;
+    } else if (this.createTicketSession?.selectedLabels) {
+      labelsCount = this.createTicketSession.selectedLabels.length;
+    }
+
+    let filesCount = 0;
+    if (typeof newTicketSelectedFiles !== 'undefined' && newTicketSelectedFiles) {
+      filesCount = newTicketSelectedFiles.length;
+    } else if (this.createTicketSession?.selectedFiles) {
+      filesCount = this.createTicketSession.selectedFiles.length;
+    }
+
+    const cleanEditor = descEditor.replace(/<p><br><\/p>/gi, '').replace(/<[^>]*>/g, '').trim();
+
+    const isDirty = (
+      title.trim().length > 0 ||
+      cleanEditor.length > 0 ||
+      descText.length > 0 ||
+      Boolean(layoutId) ||
+      movidesk.trim().length > 0 ||
+      db.trim().length > 0 ||
+      Boolean(due) ||
+      Boolean(clientDue) ||
+      labelsCount > 0 ||
+      filesCount > 0
+    );
+
+    const tab = this.tabs.find(t => t.id === 'new-ticket');
+    if (tab) {
+      tab.isDirty = isDirty;
+      const tabEl = this.tabsContainerEl?.querySelector(`.tab-item[data-tab-id="new-ticket"]`);
+      if (tabEl) tabEl.classList.toggle('is-dirty', isDirty);
+    }
+
+    return isDirty;
   }
 
   // Snapshot de rolagem da Lista Geral
@@ -699,6 +1012,18 @@ class TabManager {
         `;
       }
 
+      if (tab.type === 'create-ticket' || tab.id === 'new-ticket') {
+        const isDirtyClass = tab.isDirty ? 'is-dirty' : '';
+        return `
+          <div class="tab-item tab-item-create-ticket ${isActive ? 'active' : ''} ${isDirtyClass}" data-tab-id="${tab.id}" title="Abertura de Novo Chamado">
+            <span class="tab-icon">➕</span>
+            <span class="tab-title">Novo Chamado</span>
+            <span class="tab-dirty-dot" title="Formulário preenchido com dados não salvos"></span>
+            <button type="button" class="tab-close-btn" data-close-tab="${tab.id}" title="Fechar esta aba (Ctrl+W)">✕</button>
+          </div>
+        `;
+      }
+
       const dotColor = this.getStatusColor(tab.status);
       const isDirtyClass = tab.isDirty ? 'is-dirty' : '';
 
@@ -757,11 +1082,12 @@ class TabManager {
 
       // 1. Ctrl + W: Fecha a aba ativa (exceto a aba de lista)
       if (isCtrlOrCmd && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
+        // Previne sempre o fechamento acidental da janela nativa do Electron
+        e.preventDefault();
+        e.stopPropagation();
         // Se houver modal flutuante aberto (imagem, perfil, etc), não fecha a aba
         if (this.isAnyModalOpen()) return;
         if (this.activeTabId !== 'demands-list') {
-          e.preventDefault();
-          e.stopPropagation();
           this.closeTab(this.activeTabId);
         }
         return;
@@ -805,6 +1131,7 @@ class TabManager {
         return !!(el && (el.classList.contains('open') || (el.style.display !== 'none' && el.style.display !== '')));
       },
       () => {
+        if (document.body.classList.contains('create-ticket-workspace-active')) return false;
         const el = document.getElementById('createTicketModalOverlay');
         return !!(el && el.classList.contains('open'));
       },
@@ -854,14 +1181,46 @@ class TabManager {
       el?.addEventListener('input', onDirtyTrigger);
       el?.addEventListener('change', onDirtyTrigger);
     });
+
+    // Campos do formulário de abertura de chamado
+    const createTicketFieldIds = [
+      'newTicketTitle',
+      'newTicketLayoutSearch',
+      'newTicketMovidesk',
+      'newTicketDatabase',
+      'newTicketType',
+      'newTicketProduct',
+      'newTicketAssignedTo',
+      'newTicketPriority',
+      'newTicketDeliveryDateInput',
+      'newTicketClientDueDate',
+      'newTicketDescriptionEditor'
+    ];
+
+    const onCreateTicketDirtyTrigger = () => {
+      if (this.dirtyDebounceTimer) clearTimeout(this.dirtyDebounceTimer);
+      this.dirtyDebounceTimer = setTimeout(() => {
+        if (this.activeTabId === 'new-ticket') {
+          this.checkCreateTicketDirty();
+        }
+      }, 150);
+    };
+
+    createTicketFieldIds.forEach(id => {
+      const el = document.getElementById(id);
+      el?.addEventListener('input', onCreateTicketDirtyTrigger);
+      el?.addEventListener('change', onCreateTicketDirtyTrigger);
+    });
   }
 
   // Salva lista de abas abertas no localStorage
   persistOpenTabs() {
     try {
       const ticketIds = this.tabs.filter(t => t.type === 'ticket').map(t => t.ticketId);
+      const hasCreateTicketTab = this.tabs.some(t => t.id === 'new-ticket' || t.type === 'create-ticket');
       const data = {
         activeTabId: this.activeTabId,
+        hasCreateTicketTab: hasCreateTicketTab,
         ticketIds: ticketIds
       };
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
@@ -877,19 +1236,34 @@ class TabManager {
       const raw = localStorage.getItem(this.STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
-      if (!data || !Array.isArray(data.ticketIds) || data.ticketIds.length === 0) return;
+      if (!data) return;
 
       const demands = window.appStore?.demands || [];
-      if (demands.length === 0) return;
 
       this.hasRestoredPersistedTabs = true;
 
-      data.ticketIds.forEach(id => {
-        const ticket = demands.find(d => String(d.id) === String(id));
-        if (ticket) {
-          this.openTicketTab(ticket, false);
-        }
-      });
+      // Restaura aba de Novo Chamado se estava aberta
+      if (data.hasCreateTicketTab && !this.tabs.some(t => t.id === 'new-ticket')) {
+        this.tabs.push({
+          id: 'new-ticket',
+          type: 'create-ticket',
+          title: 'Novo Chamado',
+          icon: '➕',
+          isPinned: false,
+          isDirty: false
+        });
+      }
+
+      if (Array.isArray(data.ticketIds) && demands.length > 0) {
+        data.ticketIds.forEach(id => {
+          const ticket = demands.find(d => String(d.id) === String(id));
+          if (ticket) {
+            this.openTicketTab(ticket, false);
+          }
+        });
+      }
+
+      this.render();
 
       if (data.activeTabId && this.tabs.some(t => t.id === data.activeTabId)) {
         this.switchToTab(data.activeTabId);

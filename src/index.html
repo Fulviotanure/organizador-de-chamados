@@ -52,6 +52,7 @@
       <!-- As abas são geradas dinamicamente via TabManager (js/ui/tabs.js) -->
     </div>
     <div class="tab-bar-controls" id="tabBarControls">
+      <button type="button" class="tab-new-btn" id="btnNewTab" title="Abrir Novo Chamado (Ctrl+N)">➕</button>
       <button type="button" class="tab-scroll-btn" id="btnScrollTabsLeft" title="Rolar abas para a esquerda">‹</button>
       <button type="button" class="tab-scroll-btn" id="btnScrollTabsRight" title="Rolar abas para a direita">›</button>
     </div>
@@ -127,7 +128,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.43</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.44</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -917,6 +918,10 @@
     <div class="modal-card modal-card-ultra-large">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 12px;">
+          <button type="button" class="btn-drawer-back-to-list" id="btnCreateTicketBackToList" title="Voltar à Lista de Demandas (mantém a aba de novo chamado aberta)">
+            <span class="back-icon">←</span>
+            <span>Voltar à Lista</span>
+          </button>
           <div class="brand-icon" style="width: 28px; height: 28px; font-size: 14px;">➕</div>
           <div>
             <div class="modal-title" style="font-size: 17px;">Abrir Novo Chamado</div>

@@ -1498,56 +1498,79 @@ function renderSelectedFilesList() {
   });
 }
 
-function openCreateTicketModal() {
-  const modal = document.getElementById('createTicketModalOverlay');
-  if (!modal) return;
+function resetCreateTicketForm() {
+  const titleEl = document.getElementById('newTicketTitle');
+  if (titleEl) titleEl.value = '';
+  const dbEl = document.getElementById('newTicketDatabase');
+  if (dbEl) dbEl.value = '';
+  const moviEl = document.getElementById('newTicketMovidesk');
+  if (moviEl) moviEl.value = '';
+  const dueEl = document.getElementById('newTicketDueDate');
+  if (dueEl) dueEl.value = '';
+  const delivInput = document.getElementById('newTicketDeliveryDateInput');
+  if (delivInput) delivInput.value = '';
+  const clientDueEl = document.getElementById('newTicketClientDueDate');
+  if (clientDueEl) clientDueEl.value = '';
 
-  // Reset fields
-  document.getElementById('newTicketTitle').value = '';
-  document.getElementById('newTicketDatabase').value = '';
-  document.getElementById('newTicketMovidesk').value = '';
-  document.getElementById('newTicketDueDate').value = '';
   if (document.getElementById('newTicketPriority')) {
     const pEl = document.getElementById('newTicketPriority');
     pEl.value = 'medium';
-    updatePrioritySelectVisual(pEl);
+    if (typeof updatePrioritySelectVisual === 'function') updatePrioritySelectVisual(pEl);
   }
-  document.getElementById('newTicketDescription').value = '';
+  const descEl = document.getElementById('newTicketDescription');
+  if (descEl) descEl.value = '';
   const descEditor = document.getElementById('newTicketDescriptionEditor');
   if (descEditor) descEditor.innerHTML = '';
   const popover = document.getElementById('calFloatingPopover');
   if (popover) popover.style.display = 'none';
-  renderNewTicketLayoutField('', null, '');
-  checkNewTicketLayoutConflicts(null, null);
+  const clientPopover = document.getElementById('calClientPopover');
+  if (clientPopover) clientPopover.style.display = 'none';
+
+  if (typeof renderNewTicketLayoutField === 'function') {
+    renderNewTicketLayoutField('', null, '');
+  }
+  if (typeof checkNewTicketLayoutConflicts === 'function') {
+    checkNewTicketLayoutConflicts(null, null);
+  }
 
   // Populate Types
   const typeSelect = document.getElementById('newTicketType');
-  if (typeSelect) {
+  if (typeSelect && window.appStore?.getTicketTypes) {
     const types = window.appStore.getTicketTypes();
     typeSelect.innerHTML = types.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
   }
 
   // Populate Products
   const prodSelect = document.getElementById('newTicketProduct');
-  if (prodSelect) {
+  if (prodSelect && window.appStore?.getProducts) {
     const prods = window.appStore.getProducts();
     prodSelect.innerHTML = prods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   }
 
   // Filter developers based on initially selected type/subject
-  updateDevSelectForCurrentType();
+  if (typeof updateDevSelectForCurrentType === 'function') {
+    updateDevSelectForCurrentType();
+  }
 
   // Reset labels & attachments for the new ticket modal
-  newTicketSelectedLabels.clear();
+  if (typeof newTicketSelectedLabels !== 'undefined' && newTicketSelectedLabels?.clear) {
+    newTicketSelectedLabels.clear();
+  }
   newTicketLabelsSearchQuery = '';
   const searchLabelsEl = document.getElementById('searchNewTicketLabels');
   if (searchLabelsEl) searchLabelsEl.value = '';
   const panelLabelsEl = document.getElementById('panelNewTicketLabels');
   if (panelLabelsEl) panelLabelsEl.style.display = 'none';
-  renderLabelsPicker();
+  if (typeof renderLabelsPicker === 'function') {
+    renderLabelsPicker();
+  }
 
-  newTicketSelectedFiles = [];
-  renderSelectedFilesList();
+  if (typeof newTicketSelectedFiles !== 'undefined') {
+    newTicketSelectedFiles.length = 0;
+  }
+  if (typeof renderSelectedFilesList === 'function') {
+    renderSelectedFilesList();
+  }
 
   const errBox = document.getElementById('createTicketError');
   if (errBox) errBox.style.display = 'none';
@@ -1558,12 +1581,29 @@ function openCreateTicketModal() {
   calCurrentMonth = now.getMonth();
   commonCalCurrentYear = now.getFullYear();
   commonCalCurrentMonth = now.getMonth();
-  selectCalendarDate(null);
-  selectClientCalendarDate(null, false);
+  if (typeof selectCalendarDate === 'function') selectCalendarDate(null);
+  if (typeof selectClientCalendarDate === 'function') selectClientCalendarDate(null, false);
 
   const btnClear = document.getElementById('btnClearSelectedDate');
   if (btnClear) {
-    btnClear.onclick = () => selectCalendarDate(null);
+    btnClear.onclick = () => {
+      if (typeof selectCalendarDate === 'function') selectCalendarDate(null);
+    };
+  }
+}
+
+function openCreateTicketModal(options = {}) {
+  // Se appTabs estiver disponível e não for forçado modo modal, abre como aba de trabalho
+  if (window.appTabs && !options?.forceModal) {
+    window.appTabs.openCreateTicketTab(true);
+    return;
+  }
+
+  const modal = document.getElementById('createTicketModalOverlay');
+  if (!modal) return;
+
+  if (!options?.preserveForm) {
+    resetCreateTicketForm();
   }
 
   modal.classList.add('open');
@@ -1571,6 +1611,10 @@ function openCreateTicketModal() {
 }
 
 function closeCreateTicketModal() {
+  if (window.appTabs && window.appTabs.activeTabId === 'new-ticket') {
+    window.appTabs.closeTab('new-ticket');
+    return;
+  }
   const modal = document.getElementById('createTicketModalOverlay');
   if (modal) modal.classList.remove('open');
   const popover = document.getElementById('calFloatingPopover');
@@ -1821,7 +1865,11 @@ async function submitCreateTicket() {
       }
     }
 
-    closeCreateTicketModal();
+    if (window.appTabs && window.appTabs.tabs.some(t => t.id === 'new-ticket')) {
+      await window.appTabs.closeTab('new-ticket', true);
+    } else {
+      closeCreateTicketModal();
+    }
 
     if (window.electronAPI) {
       window.electronAPI.showNotification(
@@ -1833,7 +1881,7 @@ async function submitCreateTicket() {
     // Refresh list and open new ticket
     await syncDemands();
     if (window.appTabs) {
-      window.appTabs.openTicketTab(createdTicket);
+      window.appTabs.openTicketTab(createdTicket, true);
     } else {
       openDemandDrawer(createdTicket);
     }

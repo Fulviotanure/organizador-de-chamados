@@ -6852,6 +6852,33 @@ body.table-col-resizing * {
   color: var(--text-primary);
 }
 
+.tab-new-btn {
+  width: 26px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-right: 4px;
+}
+
+.tab-new-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.tab-new-btn:active {
+  transform: translateY(0);
+}
+
 /* Individual Tab */
 .tab-item {
   height: 32px;
@@ -7054,6 +7081,90 @@ body.ticket-workspace-active #btnToggleDrawerExpand {
 /* In non-workspace mode, ensure drawer is completely hidden if not opened as dialog */
 body:not(.ticket-workspace-active) #demandDrawer:not(.open) {
   display: none !important;
+}
+
+/* ==========================================================================
+   Full-Screen Workspace Active Mode for Create Ticket (body.create-ticket-workspace-active)
+   ========================================================================== */
+body.create-ticket-workspace-active .app-container {
+  display: none !important;
+}
+
+body.create-ticket-workspace-active .drawer-overlay {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+body.create-ticket-workspace-active #demandDrawer {
+  display: none !important;
+}
+
+body.create-ticket-workspace-active #createTicketModalOverlay {
+  position: static !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #0B0F17 !important;
+  backdrop-filter: none !important;
+  z-index: 10 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body.create-ticket-workspace-active #createTicketModalOverlay .modal-card-ultra-large {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.create-ticket-workspace-active #createTicketModalOverlay .modal-header {
+  padding: 14px 24px !important;
+  background: #0d131f !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  flex-shrink: 0 !important;
+}
+
+body.create-ticket-workspace-active #createTicketModalOverlay .modal-dual-layout {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding: 24px 32px !important;
+}
+
+/* Show back-to-list button in workspace mode, hide in popover modal mode */
+body:not(.create-ticket-workspace-active) #btnCreateTicketBackToList {
+  display: none !important;
+}
+
+/* Distinctive accent for create-ticket tab item */
+.tab-item.tab-item-create-ticket {
+  border-bottom-color: rgba(56, 189, 248, 0.4);
+}
+
+.tab-item.tab-item-create-ticket.active {
+  border-bottom: 2px solid #38bdf8 !important;
+}
+
+.tab-item.tab-item-create-ticket .tab-icon {
+  font-size: 11px;
+  color: #38bdf8;
 }
 
 

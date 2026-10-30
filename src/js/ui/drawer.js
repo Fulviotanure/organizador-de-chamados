@@ -2172,6 +2172,16 @@ async function submitComment() {
     }
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
 
+    // Atualiza rascunho de comentários e status dirty do gerenciador de abas se ativo
+    if (window.appTabs && selectedTicket) {
+      const session = window.appTabs.ticketSessions.get(selectedTicket.id);
+      if (session) {
+        session.commentDraft = '';
+        session.pendingAttachments = [];
+      }
+      window.appTabs.checkDirty(selectedTicket.id);
+    }
+
     // Refresh ticket details
     const details = await window.conciliadorAPI.fetchDemandDetails(selectedTicket.id);
     selectedTicket = { ...selectedTicket, ...details };

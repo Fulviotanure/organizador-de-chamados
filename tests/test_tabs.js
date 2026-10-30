@@ -277,6 +277,9 @@ console.log('Test 5: Pinned tab close protection');
   const s6391_tab = appTabs.tabs.find(t => t.ticketId === 6391);
   s6391_tab.ticket.description = '<p>Descrição original antiga</p>';
   assert.strictEqual(appTabs.checkDirty(6391), true, 'Active tab with modified description editor must be recognized as dirty');
+  // Clean up mocks
+  context.window.isDrawerEditingDesc = () => false;
+  descEditorEl.innerHTML = '';
 
   // 15. Concurrent background fetch when active is demands-list
   console.log('Test 15: Concurrent background fetch when active tab is demands-list');
@@ -320,7 +323,149 @@ console.log('Test 5: Pinned tab close protection');
   appTabs.updateTab(7777, { number: '###7777' });
   assert.strictEqual(tabPound.number, '#7777');
 
-  console.log('\n✅ All 17 TabManager unit tests passed successfully!');
+  // 18. Re-entrancy guard during async close confirmation
+  console.log('Test 18: Re-entrancy guard during async close confirmation');
+  const tReentrant = { id: 8888, number: '8888', title: 'Chamado Reentrante', status: 'queued' };
+  appTabs.openTicketTab(tReentrant, true);
+  const tab8888 = appTabs.tabs.find(t => t.ticketId === 8888);
+  tab8888.isDirty = true;
+
+  let confirmResolve;
+  context.window.showAppConfirm = () => new Promise(res => { confirmResolve = res; });
+
+  // Initiate first closeTab (enters async confirmFn)
+  const closePromise1 = appTabs.closeTab('ticket-8888');
+  assert.strictEqual(tab8888.isClosing, true, 'Tab must be marked as closing');
+
+  // Attempt concurrent second closeTab while confirmation is open
+  const closePromise2 = appTabs.closeTab('ticket-8888');
+  const res2 = await closePromise2;
+  assert.strictEqual(res2, false, 'Concurrent closeTab must immediately reject without double dialog');
+
+  // Now resolve first confirmation
+  confirmResolve(true);
+  const res1 = await closePromise1;
+  assert.strictEqual(res1, true, 'First closeTab completes successfully');
+  assert.strictEqual(appTabs.tabs.some(t => t.ticketId === 8888), false, 'Tab 8888 removed');
+
+  // 19. Clean tab removal before state persistence
+  console.log('Test 19: Clean removal before state persistence in closeTab');
+  const tPreSwitch = { id: 9999, number: '9999', title: 'Chamado Persistencia', status: 'queued' };
+  appTabs.openTicketTab(tPreSwitch, true);
+  assert.strictEqual(appTabs.activeTabId, 'ticket-9999');
+
+  await appTabs.closeTab('ticket-9999', true);
+  const rawStorage = mockStorage.get(appTabs.STORAGE_KEY);
+  const storedData = JSON.parse(rawStorage || '{}');
+  assert.strictEqual(storedData.ticketIds.includes(9999), false, 'Tab 9999 must be excised from storage after closeTab');
+  assert.strictEqual(appTabs.tabs.some(t => t.ticketId === 9999), false, 'Tab 9999 must not be in tabs');
+
+  // 20. TabManager dirty check after note auto-save simulation
+  console.log('Test 20: TabManager dirty check after note auto-save simulation');
+  const tNote = { id: 1111, number: '1111', title: 'Chamado Nota', status: 'queued' };
+  appTabs.openTicketTab(tNote, true);
+  getOrCreateEl('drawerEditTitle').value = 'Chamado Nota';
+  const noteEl = getOrCreateEl('drawerLocalNotes');
+  noteEl.value = 'Nota recém-digitada';
+  assert.strictEqual(appTabs.checkDirty(1111), true, 'Dirty before save');
+  // Simulate store saving note
+  context.window.appStore.getNote = (id) => (id === 1111 ? 'Nota recém-digitada' : '');
+  const session1111 = appTabs.ticketSessions.get(1111);
+  if (session1111) session1111.notes = 'Nota recém-digitada';
+  assert.strictEqual(appTabs.checkDirty(1111), false, 'Not dirty after store save matches DOM input');
+
+  // 21. Open Create Ticket Tab
+  console.log('Test 21: Open Create Ticket Tab');
+  const createTab = appTabs.openCreateTicketTab(true);
+  assert(createTab, 'Create ticket tab should be returned');
+  assert.strictEqual(createTab.id, 'new-ticket');
+  assert.strictEqual(createTab.type, 'create-ticket');
+  assert.strictEqual(appTabs.activeTabId, 'new-ticket');
+  assert.strictEqual(appTabs.getActiveTicketId(), null);
+  assert(context.document.body.classList.contains('create-ticket-workspace-active'), 'body must have create-ticket-workspace-active');
+  assert(!context.document.body.classList.contains('ticket-workspace-active'), 'body must not have ticket-workspace-active');
+
+  // 22. Idempotent open of create ticket tab
+  console.log('Test 22: Idempotent open of create ticket tab');
+  const tabCountBefore = appTabs.tabs.length;
+  const sameCreateTab = appTabs.openCreateTicketTab(true);
+  assert.strictEqual(appTabs.tabs.length, tabCountBefore, 'Should not duplicate create-ticket tab');
+  assert.strictEqual(sameCreateTab.id, 'new-ticket');
+
+  // 23. Preservation of create ticket fields across tab switches
+  console.log('Test 23: Preservation of create ticket fields across tab switches');
+  getOrCreateEl('newTicketTitle').value = 'Nova Demanda Layout Itaú 123';
+  getOrCreateEl('newTicketDatabase').value = 'banco_teste_xyz';
+  getOrCreateEl('newTicketMovidesk').value = '98765';
+  getOrCreateEl('newTicketDescription').value = 'Instruções de homologação';
+  getOrCreateEl('newTicketDescriptionEditor').innerHTML = '<p>Instruções de homologação</p>';
+
+  // Switch to demands-list
+  await appTabs.switchToTab('demands-list');
+  assert.strictEqual(appTabs.activeTabId, 'demands-list');
+  assert(!context.document.body.classList.contains('create-ticket-workspace-active'));
+
+  // Clear inputs in DOM to simulate background changes / modal reset
+  getOrCreateEl('newTicketTitle').value = '';
+  getOrCreateEl('newTicketDatabase').value = '';
+
+  // Switch back to create-ticket tab
+  await appTabs.switchToTab('new-ticket');
+  assert.strictEqual(appTabs.activeTabId, 'new-ticket');
+  assert.strictEqual(getOrCreateEl('newTicketTitle').value, 'Nova Demanda Layout Itaú 123');
+  assert.strictEqual(getOrCreateEl('newTicketDatabase').value, 'banco_teste_xyz');
+  assert.strictEqual(getOrCreateEl('newTicketMovidesk').value, '98765');
+
+  // 24. Dirty detection for create ticket tab
+  console.log('Test 24: Dirty detection for create ticket tab');
+  assert.strictEqual(appTabs.checkCreateTicketDirty(), true, 'Create ticket with text must be dirty');
+  const currentCreateTab = appTabs.tabs.find(t => t.id === 'new-ticket');
+  assert.strictEqual(currentCreateTab.isDirty, true);
+
+  // 25. Close dirty create ticket tab with confirmation rejection and approval
+  console.log('Test 25: Close dirty create ticket tab with confirmation rejection and approval');
+  // Rejection:
+  context.window.showAppConfirm = () => Promise.resolve(false);
+  const rejectCreateClose = await appTabs.closeTab('new-ticket');
+  assert.strictEqual(rejectCreateClose, false, 'Close must be rejected');
+  assert(appTabs.tabs.some(t => t.id === 'new-ticket'), 'Tab must remain in tabs list');
+
+  // Approval:
+  context.window.showAppConfirm = () => Promise.resolve(true);
+  const acceptCreateClose = await appTabs.closeTab('new-ticket');
+  assert.strictEqual(acceptCreateClose, true, 'Close must succeed when approved');
+  assert(!appTabs.tabs.some(t => t.id === 'new-ticket'), 'Tab must be removed from tabs list');
+  assert.strictEqual(appTabs.createTicketSession, null, 'Session must be cleaned up');
+
+  // 26. Close clean (empty) create ticket tab without confirmation
+  console.log('Test 26: Close clean create ticket tab without prompt');
+  appTabs.openCreateTicketTab(true);
+  getOrCreateEl('newTicketTitle').value = '';
+  getOrCreateEl('newTicketDatabase').value = '';
+  getOrCreateEl('newTicketMovidesk').value = '';
+  getOrCreateEl('newTicketDescription').value = '';
+  getOrCreateEl('newTicketDescriptionEditor').innerHTML = '';
+  getOrCreateEl('newTicketDueDate').value = '';
+  getOrCreateEl('newTicketClientDueDate').value = '';
+  getOrCreateEl('newTicketLayoutId').value = '';
+  if (appTabs.createTicketSession) {
+    appTabs.createTicketSession.title = '';
+    appTabs.createTicketSession.description = '';
+    appTabs.createTicketSession.descriptionEditorHtml = '';
+    appTabs.createTicketSession.database = '';
+    appTabs.createTicketSession.movidesk = '';
+    appTabs.createTicketSession.layoutId = '';
+    appTabs.createTicketSession.dueDate = '';
+    appTabs.createTicketSession.clientDueDate = '';
+  }
+
+  let promptShown = false;
+  context.window.showAppConfirm = () => { promptShown = true; return Promise.resolve(true); };
+  const cleanClose = await appTabs.closeTab('new-ticket');
+  assert.strictEqual(cleanClose, true, 'Clean tab closes directly');
+  assert.strictEqual(promptShown, false, 'No confirm dialog for clean tab');
+
+  console.log('\n✅ All 26 TabManager unit tests passed successfully!');
 })().catch(err => {
   console.error('\n❌ Test failed:', err);
   process.exit(1);

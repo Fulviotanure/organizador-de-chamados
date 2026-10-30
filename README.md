@@ -78,8 +78,9 @@ Aplicativo Desktop moderno para Windows desenvolvido para organizar, filtrar e g
 ### 4. 🔍 Central de Visualização Completa & Sistema Multi-Abas
 - **Espaço de Trabalho Multi-Abas**:
   - Abra múltiplos chamados em abas superiores dedicadas mantendo a aba fixa **📋 Demandas** sempre acessível.
-  - Alternância instantânea de contexto sem recarregar e com preservação total de rascunhos de texto, anexos pendentes e posição de rolagem.
-  - Atalhos de teclado rápidos: `Ctrl + W` (fechar chamado), `Ctrl + Tab` / `Ctrl + Shift + Tab` (navegar entre abas), `Ctrl + 1` (voltar à lista geral) e `Ctrl + 2..9` (acesso direto à aba).
+  - Crie novos chamados em uma aba dedicada **➕ Novo Chamado** via botão superior ou atalho `Ctrl + N` sem interromper a navegação da lista geral.
+  - Alternância instantânea de contexto sem recarregar e com preservação total de rascunhos de texto, formulário de novo chamado, anexos pendentes e posição de rolagem.
+  - Atalhos de teclado rápidos: `Ctrl + N` (abrir aba de novo chamado), `Ctrl + W` (fechar chamado ou novo chamado), `Ctrl + Tab` / `Ctrl + Shift + Tab` (navegar entre abas), `Ctrl + 1` (voltar à lista geral) e `Ctrl + 2..9` (acesso direto à aba).
   - Proteção contra perda de dados com indicador visual de alterações pendentes (*dirty dot* `•`) e diálogo de confirmação.
 - Clique em qualquer demanda na Tabela ou Kanban para abrir sua aba dedicada:
   - **🗖 Modo Expandido / Reduzido**: botão no cabeçalho para alternar entre painel lateral compacto e workspace amplo em tela cheia.
