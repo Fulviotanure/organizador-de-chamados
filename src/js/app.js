@@ -372,7 +372,11 @@ function setupEventListeners() {
       label: []
     };
     window.appStore.searchQuery = '';
-    window.appStore.activeFilterId = 'all';
+    if (typeof window.appStore.setActiveFilterId === 'function') {
+      await window.appStore.setActiveFilterId('all');
+    } else {
+      window.appStore.activeFilterId = 'all';
+    }
 
     const searchInput = document.getElementById('inputSearch');
     if (searchInput) searchInput.value = '';

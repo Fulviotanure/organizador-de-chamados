@@ -66,15 +66,18 @@ class AppStore {
         const storedAutoRefresh = await window.electronAPI.loadStorage('autoRefreshMinutes', 3);
         const storedColWidths = await window.electronAPI.loadStorage('tableColumnWidths', {});
         const storedLayoutCache = await window.electronAPI.loadStorage('layoutCache', {});
+        const storedActiveFilter = await window.electronAPI.loadStorage('activeFilterId', null);
 
         // Fallback redundante com localStorage para máxima resiliência entre reinicializações
         let localIgnored = {};
         let localIgnoredCache = {};
+        let localActiveFilter = null;
         try {
           const rawIgnored = localStorage.getItem('cc_ignoredTickets');
           if (rawIgnored) localIgnored = JSON.parse(rawIgnored);
           const rawCache = localStorage.getItem('cc_ignoredTicketsCache');
           if (rawCache) localIgnoredCache = JSON.parse(rawCache);
+          localActiveFilter = localStorage.getItem('cc_activeFilterId');
         } catch (e) {}
 
         this.token = storedToken;
@@ -254,13 +257,51 @@ class AppStore {
           window.conciliadorAPI.setToken(this.token);
           window.conciliadorAPI.setUser(this.currentUser);
         }
+
+        // Restaurar fila/filtro ativo persistido (mantendo a última fila selecionada)
+        const targetActiveFilter = storedActiveFilter || localActiveFilter;
+        if (targetActiveFilter && this.fixedFilters.some(f => f.id === targetActiveFilter)) {
+          this.activeFilterId = targetActiveFilter;
+        } else {
+          this.activeFilterId = 'all';
+        }
       } catch (err) {
         console.warn('Storage init fallback to defaults:', err);
         this.fixedFilters = this.getDefaultFixedFilters();
+        this.activeFilterId = 'all';
       }
     } else {
       this.fixedFilters = this.getDefaultFixedFilters();
+      let localActiveFilter = null;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localActiveFilter = localStorage.getItem('cc_activeFilterId');
+        }
+      } catch (e) {}
+      if (localActiveFilter && this.fixedFilters.some(f => f.id === localActiveFilter)) {
+        this.activeFilterId = localActiveFilter;
+      } else {
+        this.activeFilterId = 'all';
+      }
     }
+  }
+
+  // Define e persiste a fila/filtro selecionado por último
+  async setActiveFilterId(filterId) {
+    if (!filterId) return;
+    this.activeFilterId = filterId;
+    if (window.electronAPI && typeof window.electronAPI.saveStorage === 'function') {
+      try {
+        await window.electronAPI.saveStorage('activeFilterId', filterId);
+      } catch (e) {
+        console.warn('Erro ao salvar activeFilterId no electronAPI:', e);
+      }
+    }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('cc_activeFilterId', filterId);
+      }
+    } catch (e) {}
   }
 
   getDefaultFixedFilters() {
@@ -430,7 +471,7 @@ class AppStore {
   async deleteFixedFilter(id) {
     this.fixedFilters = this.fixedFilters.filter(f => f.id !== id);
     if (this.activeFilterId === id) {
-      this.activeFilterId = 'all';
+      await this.setActiveFilterId('all');
     }
     await this.saveFixedFilters();
   }

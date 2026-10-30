@@ -4303,6 +4303,12 @@ function closeDemandDrawer() {
   renderTimelinePendingAttachments();
   selectedTicket = null;
   window.selectedTicket = null;
+  if (typeof window.renderFixedFiltersList === 'function') {
+    window.renderFixedFiltersList();
+  }
+  if (typeof window.renderDemands === 'function') {
+    window.renderDemands();
+  }
 }
 
 // Expor funções e acessores de estado do Drawer para o TabManager e aplicação geral

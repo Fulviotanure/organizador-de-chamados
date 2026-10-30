@@ -132,9 +132,13 @@ function renderFixedFiltersList() {
     `;
 
     // Click to activate filter
-    item.addEventListener('click', (e) => {
+    item.addEventListener('click', async (e) => {
       if (e.target.closest('.filter-action-btn')) return;
-      window.appStore.activeFilterId = f.id;
+      if (typeof window.appStore.setActiveFilterId === 'function') {
+        await window.appStore.setActiveFilterId(f.id);
+      } else {
+        window.appStore.activeFilterId = f.id;
+      }
       renderFixedFiltersList();
       renderDemands();
     });

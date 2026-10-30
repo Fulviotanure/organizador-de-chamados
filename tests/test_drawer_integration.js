@@ -342,6 +342,14 @@ try {
     assert.ok(drawerJs.includes('comment-mention-tag'), 'comment-mention-tag must exist in drawer.js');
     assert.ok(styleCss.includes('.comment-mentions-dropdown'), '.comment-mentions-dropdown style must exist');
     assert.ok(styleCss.includes('.comment-mention-tag'), '.comment-mention-tag style must exist');
+
+    // Test 19: Preservation of last active queue/filter upon closing ticket or switching to list
+    console.log('Integration Test 19: Preserving active queue when closing tickets');
+    assert.ok(storeJs.includes('setActiveFilterId'), 'setActiveFilterId method must exist in store.js');
+    assert.ok(storeJs.includes('storedActiveFilter'), 'storedActiveFilter restoration must exist in store.js');
+    const tabsJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'tabs.js'), 'utf8');
+    assert.ok(tabsJs.includes("targetTab.type === 'list'") && tabsJs.includes('renderDemands'), 'tabs.js must refresh demands without resetting filter when switching to list');
+    assert.ok(drawerJs.includes('closeDemandDrawer') && drawerJs.includes('renderDemands'), 'closeDemandDrawer must refresh demands on preserved active filter');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

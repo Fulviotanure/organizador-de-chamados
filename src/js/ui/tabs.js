@@ -222,6 +222,12 @@ class TabManager {
 
     if (targetTab.type === 'list') {
       this.restoreListScrollSnapshot();
+      if (typeof window.renderFixedFiltersList === 'function') {
+        window.renderFixedFiltersList();
+      }
+      if (typeof window.renderDemands === 'function') {
+        window.renderDemands();
+      }
     } else if (targetTab.type === 'ticket') {
       await this.restoreTicketSession(targetTab.ticketId);
     } else if (targetTab.type === 'create-ticket' || targetTab.id === 'new-ticket') {
