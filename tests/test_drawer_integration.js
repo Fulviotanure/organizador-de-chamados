@@ -498,6 +498,15 @@ try {
         fs.rmSync(testTempDir, { recursive: true, force: true });
       } catch (e) {}
     }
+
+    // Test 30: Direct layout approval without confirmation modal dialogs
+    console.log('Integration Test 30: Direct layout approval without confirmation modal dialogs');
+    assert.ok(drawerJs.includes('handleApproveLayout'), 'drawer.js must define handleApproveLayout');
+    // Ensure handleApproveLayout does not call showAppConfirm
+    const approveFnCode = drawerJs.match(/async function handleApproveLayout[\s\S]*?\n\}/)[0];
+    assert.ok(!approveFnCode.includes('showAppConfirm'), 'handleApproveLayout must not call showAppConfirm');
+    assert.ok(!approveFnCode.includes('showAppAlert'), 'handleApproveLayout must not call showAppAlert modal');
+    assert.ok(approveFnCode.includes("status: 'published'"), 'handleApproveLayout must update status to published');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

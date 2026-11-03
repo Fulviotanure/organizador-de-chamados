@@ -1482,23 +1482,9 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
   }
 
   if (!targetId) {
-    showAppAlert(`Não foi possível localizar o identificador do Layout ${layoutCode ? '#' + layoutCode : ''} no Importer Ultra.`, 'Erro ao Aprovar', 'error');
+    showToast(`Não foi possível localizar o ID do Layout ${layoutCode ? '#' + layoutCode : ''}.`, 'error');
     return;
   }
-
-  const ok = await showAppConfirm(
-    `Deseja realmente aprovar o Layout ${layoutCode ? `#${layoutCode}` : ''} ${layoutName ? `(${layoutName}) ` : ''}diretamente no Importer Ultra? O status passará para "Publicado / Aprovado".`,
-    'Aprovar Layout',
-    {
-      confirmText: 'Aprovar Layout',
-      confirmClass: 'btn-confirm-approve',
-      icon: '✅',
-      type: 'success',
-      subtitle: 'Aprovação Direta de Layout no Importer'
-    }
-  );
-
-  if (!ok) return;
 
   const btnApprove = document.getElementById('btnDrawerApproveLayout');
 
@@ -1510,8 +1496,6 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
   try {
     await window.conciliadorAPI.approveLayout(targetId);
 
-    showAppAlert(`Layout ${layoutCode ? `#${layoutCode}` : ''} aprovado com sucesso no Importer Ultra!`, 'Layout Aprovado', 'success');
-
     // Atualizar no cache de layout
     registerLayoutInCache({ id: targetId, code: layoutCode, name: layoutName, status: 'published' });
 
@@ -1521,7 +1505,7 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
       selectedTicket.layoutStatus = 'published';
     }
 
-    // Atualizar interface do drawer
+    // Atualizar interface do drawer imediatamente para status aprovado/publicado
     renderDrawerLayoutField(targetId, layoutCode, layoutName, 'published');
 
     // Atualizar cabeçalho do drawer
@@ -1531,9 +1515,11 @@ async function handleApproveLayout(layoutId, layoutCode, layoutName) {
 
     // Re-renderizar lista de demandas
     renderDemands();
+
+    showToast(`Layout ${layoutCode ? '#' + layoutCode : ''} aprovado!`, 'success');
   } catch (err) {
     console.error('Erro ao aprovar layout:', err);
-    showAppAlert('Falha ao aprovar layout no Importer Ultra: ' + translateErrorMessage(err), 'Erro', 'error');
+    showToast('Falha ao aprovar layout: ' + translateErrorMessage(err), 'error');
   } finally {
     if (btnApprove) {
       btnApprove.disabled = false;
