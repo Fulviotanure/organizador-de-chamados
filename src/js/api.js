@@ -437,6 +437,22 @@ class ConciliadorAPI {
     return await response.json();
   }
 
+  async deleteTicketAttachment(ticketId, attachmentId) {
+    if (!this.token) throw new Error('Não autenticado');
+
+    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/attachments/${attachmentId}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: 'Erro ao apagar anexo' }));
+      const msg = Array.isArray(err.message) ? err.message.join(', ') : (err.message || `Erro HTTP ${response.status}`);
+      throw new Error(msg);
+    }
+
+    return await response.json().catch(() => ({ success: true }));
+  }
+
   async fetchAttachmentBlob(ticketId, attachmentId) {
     if (!this.token) throw new Error('Não autenticado');
     const url = `${API_BASE_URL}/support/tickets/${ticketId}/attachments/${attachmentId}/download`;

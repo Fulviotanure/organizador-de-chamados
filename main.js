@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Notification, dialog, safeStorage, session } = require('electron');
+const { app, BrowserWindow, Menu, MenuItem, ipcMain, shell, Notification, dialog, safeStorage, session } = require('electron');
 
 // Garante instância única imediatamente no topo, antes de acessar userData ou inicializar serviços
 const gotTheLock = app.requestSingleInstanceLock();
@@ -174,7 +174,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      webSecurity: false // Allows loading local and API resources seamlessly
+      webSecurity: false, // Allows loading local and API resources seamlessly
+      spellcheck: true
     },
     show: false
   });
@@ -183,6 +184,88 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+  });
+
+  // Menu de contexto nativo com suporte a sugestões do corretor ortográfico (Spellchecker) e edição
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const menu = new Menu();
+
+    // 1. Sugestões de correção ortográfica
+    if (params.misspelledWord) {
+      if (params.dictionarySuggestions && params.dictionarySuggestions.length > 0) {
+        for (const suggestion of params.dictionarySuggestions) {
+          menu.append(new MenuItem({
+            label: suggestion,
+            click: () => mainWindow.webContents.replaceMisspelling(suggestion)
+          }));
+        }
+      } else {
+        menu.append(new MenuItem({
+          label: 'Nenhuma sugestão encontrada',
+          enabled: false
+        }));
+      }
+
+      menu.append(new MenuItem({
+        label: `Adicionar "${params.misspelledWord}" ao dicionário`,
+        click: () => mainWindow.webContents.session.addWordToSpellcheckerDictionary(params.misspelledWord)
+      }));
+
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    // 2. Ações padrão de edição em campos de texto / editáveis (contenteditable, inputs, textarea)
+    if (params.isEditable) {
+      menu.append(new MenuItem({
+        role: 'undo',
+        label: 'Desfazer',
+        enabled: params.editFlags.canUndo
+      }));
+      menu.append(new MenuItem({
+        role: 'redo',
+        label: 'Refazer',
+        enabled: params.editFlags.canRedo
+      }));
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({
+        role: 'cut',
+        label: 'Recortar',
+        enabled: params.editFlags.canCut
+      }));
+      menu.append(new MenuItem({
+        role: 'copy',
+        label: 'Copiar',
+        enabled: params.editFlags.canCopy
+      }));
+      menu.append(new MenuItem({
+        role: 'paste',
+        label: 'Colar',
+        enabled: params.editFlags.canPaste
+      }));
+      menu.append(new MenuItem({
+        role: 'selectAll',
+        label: 'Selecionar tudo',
+        enabled: params.editFlags.canSelectAll
+      }));
+    } else if (params.selectionText && params.selectionText.trim().length > 0) {
+      menu.append(new MenuItem({
+        role: 'copy',
+        label: 'Copiar'
+      }));
+      menu.append(new MenuItem({
+        role: 'selectAll',
+        label: 'Selecionar tudo'
+      }));
+    } else if (params.mediaType === 'image') {
+      menu.append(new MenuItem({
+        label: 'Copiar imagem',
+        click: () => mainWindow.webContents.copyImageAt(params.x, params.y)
+      }));
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup();
+    }
   });
 
   // Handle external links safely in system default browser
@@ -924,6 +1007,15 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(() => {
+  // Configuração do corretor ortográfico para Português (Brasil) e Inglês
+  if (session && session.defaultSession) {
+    try {
+      session.defaultSession.setSpellCheckerLanguages(['pt-BR', 'en-US']);
+    } catch (e) {
+      console.warn('Erro ao configurar idiomas do corretor ortográfico:', e.message);
+    }
+  }
+
   createWindow();
 
   // Downloads do Chromium direcionados automaticamente para a pasta Downloads sem perguntar

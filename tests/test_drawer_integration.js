@@ -412,6 +412,19 @@ try {
     assert.ok(styleCss.includes('.desc-inline-attachments-container'), 'style.css must style .desc-inline-attachments-container');
     assert.ok(calJs.includes('updPayload') && calJs.includes('title: createdTicket.title || title'), 'calendar.js must send full PATCH payload including title and description');
     assert.ok(calJs.includes('markdownImgs'), 'calendar.js must generate markdown fallback for image attachments');
+
+    // Test 25: Image attachments in create ticket description and attachment deletion
+    console.log('Integration Test 25: Image attachments in create ticket description and attachment deletion');
+    const apiJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'api.js'), 'utf8');
+    assert.ok(apiJs.includes('deleteTicketAttachment(ticketId, attachmentId)'), 'api.js must provide deleteTicketAttachment');
+    assert.ok(calJs.includes('insertImageFileIntoDescriptionEditor'), 'calendar.js must define insertImageFileIntoDescriptionEditor');
+    assert.ok(calJs.includes('data-desc-file-name'), 'calendar.js must track image file names with data-desc-file-name in description');
+    assert.ok(drawerJs.includes('deleteAttachmentFile'), 'drawer.js must define deleteAttachmentFile');
+    assert.ok(drawerJs.includes('inline-att-btn-delete'), 'drawer.js must render .inline-att-btn-delete');
+    assert.ok(drawerJs.includes('btn-delete-attachment'), 'drawer.js must render .btn-delete-attachment');
+    assert.ok(styleCss.includes('.inline-att-btn-delete'), 'style.css must style .inline-att-btn-delete');
+    assert.ok(styleCss.includes('.btn-delete-attachment'), 'style.css must style .btn-delete-attachment');
+    assert.ok(indexHtml.includes('id="btnLightboxDelete"'), 'index.html must have btnLightboxDelete button in lightbox');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

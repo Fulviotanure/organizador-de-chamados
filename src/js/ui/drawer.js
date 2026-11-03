@@ -563,6 +563,103 @@ async function openAttachmentFile(ticketId, attId, fileName) {
   }
 }
 
+async function deleteAttachmentFile(ticketId, attId, fileName) {
+  if (!ticketId || !attId) return;
+
+  const displayName = fileName || 'este anexo';
+  const ok = await showAppConfirm(
+    `Deseja realmente apagar o anexo "${displayName}" deste chamado?\n\nEsta ação removerá o arquivo permanentemente da demanda.`,
+    'Apagar Anexo',
+    { isDanger: true, confirmText: 'Apagar Anexo' }
+  );
+
+  if (!ok) return;
+
+  try {
+    if (typeof showToast === 'function') {
+      showToast('⏳ Apagando anexo...', 'info', 2000);
+    }
+
+    await window.conciliadorAPI.deleteTicketAttachment(ticketId, attId);
+
+    // 1. Atualizar lista de anexos no ticket em memória
+    if (selectedTicket && String(selectedTicket.id) === String(ticketId)) {
+      selectedTicket.attachments = (selectedTicket.attachments || []).filter(a => String(a.id) !== String(attId));
+      renderDrawerAttachments(selectedTicket.attachments);
+    }
+
+    // 2. Atualizar no store de demandas
+    if (window.appStore && Array.isArray(window.appStore.demands)) {
+      const d = window.appStore.demands.find(item => String(item.id) === String(ticketId));
+      if (d && Array.isArray(d.attachments)) {
+        d.attachments = d.attachments.filter(a => String(a.id) !== String(attId));
+        if (typeof window.appStore.saveDemandsCache === 'function') {
+          window.appStore.saveDemandsCache();
+        }
+      }
+    }
+
+    // 3. Atualizar nas sessões de abas se existir
+    if (window.appTabs) {
+      const session = window.appTabs.ticketSessions?.get(ticketId);
+      if (session && session.ticket && Array.isArray(session.ticket.attachments)) {
+        session.ticket.attachments = session.ticket.attachments.filter(a => String(a.id) !== String(attId));
+      }
+    }
+
+    // 4. Limpar cache de blob deste anexo
+    if (typeof attachmentBlobCache !== 'undefined') {
+      attachmentBlobCache.delete(`${ticketId}_${attId}`);
+    }
+
+    // 5. Se houver imagem na descrição referenciando este anexo, remover da descrição e atualizar
+    const descBox = document.getElementById('drawerDescription');
+    if (descBox && selectedTicket && selectedTicket.description) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = selectedTicket.description;
+      let descModified = false;
+      tempDiv.querySelectorAll('img').forEach(img => {
+        const attIdAttr = img.getAttribute('data-att-id');
+        const srcAttr = img.getAttribute('src') || '';
+        const originalSrc = img.getAttribute('data-original-src') || '';
+        if (attIdAttr === String(attId) || srcAttr.includes(`/attachments/${attId}`) || originalSrc.includes(`/attachments/${attId}`)) {
+          const parentP = img.closest('p') || img;
+          parentP.remove();
+          descModified = true;
+        }
+      });
+      if (descModified) {
+        selectedTicket.description = tempDiv.innerHTML;
+        renderAuthenticatedDescription(selectedTicket.description, selectedTicket.id, descBox, selectedTicket.attachments);
+        window.conciliadorAPI.updateTicket(ticketId, { description: selectedTicket.description }).catch(err => {
+          console.warn('Erro ao atualizar descrição após exclusão de anexo:', err);
+        });
+      }
+    }
+
+    // 6. Se o lightbox estiver aberto com este anexo, fechar o lightbox
+    const lightboxOverlay = document.getElementById('imageLightboxOverlay');
+    if (lightboxOverlay && lightboxOverlay.style.display !== 'none' && currentLightboxAttachment && String(currentLightboxAttachment.attId) === String(attId)) {
+      closeImageLightbox();
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('🗑️ Anexo apagado com sucesso!', 'success', 3000);
+    }
+  } catch (err) {
+    console.error('Erro ao apagar anexo:', err);
+    if (typeof showToast === 'function') {
+      showToast(`❌ Erro ao apagar anexo: ${err.message}`, 'error', 4000);
+    } else {
+      alert(`Erro ao apagar anexo: ${err.message}`);
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.deleteAttachmentFile = deleteAttachmentFile;
+}
+
 let lightboxGallery = [];
 let currentLightboxIndex = 0;
 
@@ -662,6 +759,18 @@ function updateLightboxView() {
       }
     };
   }
+
+  const btnDelete = document.getElementById('btnLightboxDelete');
+  if (btnDelete) {
+    if (current.attId && current.ticketId) {
+      btnDelete.style.display = 'inline-flex';
+      btnDelete.onclick = async () => {
+        await deleteAttachmentFile(current.ticketId, current.attId, current.fileName);
+      };
+    } else {
+      btnDelete.style.display = 'none';
+    }
+  }
 }
 
 function navigateLightbox(dir) {
@@ -712,10 +821,11 @@ async function renderAuthenticatedDescription(descHtml, ticketId, containerEl, t
   const unreferencedImgAttachments = attachments.filter(att => {
     if (!att || !att.id) return false;
     if (referencedAttIds.has(String(att.id))) return false;
-    const fileName = (att.fileName || att.filename || att.name || '').toLowerCase();
+    const fileName = (att.fileName || att.filename || att.originalName || att.name || (att.filePath ? att.filePath.split(/[/\\]/).pop() : '') || (att.url ? att.url.split(/[/\\]/).pop().split('?')[0] : '') || '').toLowerCase();
     const ext = (fileName.split('.').pop() || '').toLowerCase();
     const isImage = att.category === 'image' ||
                     (att.mimeType && att.mimeType.startsWith('image/')) ||
+                    (att.mimetype && att.mimetype.startsWith('image/')) ||
                     ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
     return isImage;
   });
@@ -2646,6 +2756,9 @@ function renderDrawerAttachments(attachments) {
                   <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
                     ⬇️ Baixar
                   </button>
+                  <button type="button" class="quick-action-btn btn-delete-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Apagar anexo do chamado" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">
+                    🗑️ Apagar
+                  </button>
                 </div>
               </div>
             </div>
@@ -2666,6 +2779,9 @@ function renderDrawerAttachments(attachments) {
                   </button>
                   <button type="button" class="quick-action-btn btn-download-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}">
                     ⬇️ Baixar
+                  </button>
+                  <button type="button" class="quick-action-btn btn-delete-attachment" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Apagar anexo do chamado" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">
+                    🗑️ Apagar
                   </button>
                 </div>
               </div>
@@ -2744,6 +2860,17 @@ function renderDrawerAttachments(attachments) {
           }
         });
       });
+
+      list.querySelectorAll('.btn-delete-attachment').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            deleteAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
     }
   }
 
@@ -2790,6 +2917,9 @@ function renderDrawerAttachments(attachments) {
               <button type="button" class="inline-att-btn-view" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="${isImage ? 'Visualizar imagem' : 'Abrir arquivo'}">
                 <span>👁️</span>
               </button>
+              <button type="button" class="inline-att-btn-delete" data-id="${att.id}" data-filename="${escapeHtml(fileName)}" title="Apagar anexo ${escapeHtml(fileName)}">
+                <span>🗑️</span>
+              </button>
             </div>
           </div>
         `;
@@ -2813,6 +2943,17 @@ function renderDrawerAttachments(attachments) {
           const fileName = btn.dataset.filename || 'anexo';
           if (ticketId && attId) {
             openAttachmentFile(ticketId, attId, fileName);
+          }
+        });
+      });
+
+      inlineList.querySelectorAll('.inline-att-btn-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const attId = btn.dataset.id;
+          const fileName = btn.dataset.filename || 'anexo';
+          if (ticketId && attId) {
+            deleteAttachmentFile(ticketId, attId, fileName);
           }
         });
       });

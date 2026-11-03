@@ -3472,6 +3472,32 @@ body.table-col-resizing * {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.inline-att-btn-delete {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.inline-att-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #ff6b6b;
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.inline-att-btn-delete:active {
+  transform: translateY(0);
+}
+
 .drawer-labels-picker {
   display: flex;
   flex-wrap: wrap;
@@ -4245,6 +4271,24 @@ body.table-col-resizing * {
   padding: 4px 10px;
   font-size: 11px;
   height: 26px;
+}
+
+.attachment-actions .btn-delete-attachment {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+.attachment-actions .btn-delete-attachment:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+  color: #ff6b6b !important;
+}
+
+#btnLightboxDelete:hover {
+  background: rgba(239, 68, 68, 0.3) !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  color: #ff8585 !important;
 }
 
 /* ------------------- Image Preview Lightbox ------------------- */

@@ -1177,25 +1177,6 @@ function setupRichTextEditor() {
 
     // Adiciona também aos arquivos anexados do chamado
     addFilesToTicket([namedFile]);
-
-    const reader = new FileReader();
-    reader.onload = (loadEv) => {
-      const dataUrl = loadEv.target?.result;
-      if (dataUrl) {
-        editor.focus();
-        const imgHtml = `<p><img src="${dataUrl}" data-desc-file-name="${escapeHtml(namedFile.name)}" alt="${escapeHtml(namedFile.name)}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
-        document.execCommand('insertHTML', false, imgHtml);
-        if (hiddenTextarea) {
-          hiddenTextarea.value = editor.innerHTML;
-        }
-        editor.dispatchEvent(new Event('input', { bubbles: true }));
-        if (window.appTabs) {
-          window.appTabs.checkCreateTicketDirty();
-        }
-        showToast('📸 Imagem inserida na descrição e adicionada aos anexos!', 'success', 2500);
-      }
-    };
-    reader.readAsDataURL(namedFile);
   };
   if (typeof window !== 'undefined') {
     window.handleNewTicketDescImageInsertion = handleNewTicketDescImageInsertion;
@@ -1559,19 +1540,103 @@ function setupClientCalendar() {
   });
 }
 
+function insertImageFileIntoDescriptionEditor(file) {
+  const editor = document.getElementById('newTicketDescriptionEditor');
+  const hiddenTextarea = document.getElementById('newTicketDescription');
+  if (!editor || !file) return;
+
+  const fileName = file.name || 'imagem.png';
+  // Evita duplicar se já foi inserida no editor de descrição
+  const existingImgs = Array.from(editor.querySelectorAll('img'));
+  const alreadyInDesc = existingImgs.some(img => {
+    const fn = img.getAttribute('data-desc-file-name') || img.getAttribute('alt');
+    return fn === fileName;
+  });
+  if (alreadyInDesc) return;
+
+  const reader = new FileReader();
+  reader.onload = (loadEv) => {
+    const dataUrl = loadEv.target?.result;
+    if (dataUrl) {
+      // Re-verifica se não foi inserida enquanto o FileReader lia
+      const imgsNow = Array.from(editor.querySelectorAll('img'));
+      if (imgsNow.some(img => (img.getAttribute('data-desc-file-name') || img.getAttribute('alt')) === fileName)) {
+        return;
+      }
+
+      const imgHtml = `<p><img src="${dataUrl}" data-desc-file-name="${escapeHtml(fileName)}" alt="${escapeHtml(fileName)}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+      if (document.activeElement === editor) {
+        document.execCommand('insertHTML', false, imgHtml);
+      } else {
+        editor.insertAdjacentHTML('beforeend', imgHtml);
+      }
+      if (hiddenTextarea) {
+        hiddenTextarea.value = editor.innerHTML;
+      }
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+      if (window.appTabs) {
+        window.appTabs.checkCreateTicketDirty();
+      }
+      if (typeof showToast === 'function') {
+        showToast('📸 Imagem inserida na descrição e adicionada aos anexos!', 'success', 2500);
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 function addFilesToTicket(files) {
-  for (const file of files) {
+  for (let file of files) {
+    if (!file) continue;
+    let fileName = file.name || '';
+    const isImage = (file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileName);
+    if (isImage && (!fileName || fileName === 'image.png')) {
+      const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+      const uniqueSuffix = Math.floor(Math.random() * 1000);
+      fileName = `print-${timeTag}-${uniqueSuffix}.png`;
+      file = new File([file], fileName, { type: file.type || 'image/png' });
+    }
+
     const exists = newTicketSelectedFiles.some(f => f.name === file.name && f.size === file.size);
     if (!exists) {
       newTicketSelectedFiles.push(file);
+    }
+
+    // Se o anexo for uma imagem, garante que ela apareça na descrição imediatamente
+    if (isImage) {
+      insertImageFileIntoDescriptionEditor(file);
     }
   }
   renderSelectedFilesList();
 }
 
 function removeSelectedFile(index) {
+  const fileToRemove = newTicketSelectedFiles[index];
   newTicketSelectedFiles.splice(index, 1);
   renderSelectedFilesList();
+
+  // Se o anexo removido for uma imagem inserida na descrição, remove também a tag da descrição
+  if (fileToRemove) {
+    const editor = document.getElementById('newTicketDescriptionEditor');
+    const hiddenTextarea = document.getElementById('newTicketDescription');
+    if (editor) {
+      const imgs = Array.from(editor.querySelectorAll('img'));
+      imgs.forEach(img => {
+        const fn = img.getAttribute('data-desc-file-name') || img.getAttribute('alt');
+        if (fn === fileToRemove.name) {
+          const parentP = img.closest('p') || img;
+          parentP.remove();
+        }
+      });
+      if (hiddenTextarea) {
+        hiddenTextarea.value = editor.innerHTML;
+      }
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+      if (window.appTabs) {
+        window.appTabs.checkCreateTicketDirty();
+      }
+    }
+  }
 }
 
 function formatFileSize(bytes) {
