@@ -292,6 +292,9 @@ function prepareRichContentWithImagePlaceholders(rawHtml, rawContent, ticketId) 
 
   if (!contentHtml) return '';
 
+  // Also convert any markdown images inside contentHtml (whether from rawHtml or rawContent)
+  contentHtml = contentHtml.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+
   // Fix relative /api/v1/ prefix
   contentHtml = contentHtml.replace(
     /src="\/api\/v1\//g,
@@ -675,14 +678,94 @@ function closeImageLightbox() {
   currentLightboxIndex = 0;
 }
 
-async function renderAuthenticatedDescription(descHtml, ticketId, containerEl) {
-  if (!descHtml) {
+async function renderAuthenticatedDescription(descHtml, ticketId, containerEl, ticketAttachments = []) {
+  if (!containerEl) return;
+
+  // Resolve attachments
+  let attachments = Array.isArray(ticketAttachments) ? ticketAttachments : [];
+  if (attachments.length === 0 && typeof selectedTicket !== 'undefined' && selectedTicket && String(selectedTicket.id) === String(ticketId)) {
+    attachments = Array.isArray(selectedTicket.attachments) ? selectedTicket.attachments : [];
+  }
+  if (attachments.length === 0 && window.appStore?.demands) {
+    const dem = window.appStore.demands.find(d => String(d.id) === String(ticketId));
+    if (dem && Array.isArray(dem.attachments)) {
+      attachments = dem.attachments;
+    }
+  }
+
+  const formatted = descHtml ? prepareRichContentWithImagePlaceholders(descHtml, '', ticketId) : '';
+
+  // Detect which attachment IDs or URLs are already rendered in the description HTML
+  const referencedAttIds = new Set();
+  if (formatted) {
+    const attIdMatches = formatted.matchAll(/data-att-id=["']([^"']+)["']/g);
+    for (const m of attIdMatches) {
+      if (m[1]) referencedAttIds.add(String(m[1]));
+    }
+    const urlMatches = formatted.matchAll(/\/attachments\/([a-zA-Z0-9_-]+)/g);
+    for (const m of urlMatches) {
+      if (m[1]) referencedAttIds.add(String(m[1]));
+    }
+  }
+
+  // Find image attachments that belong to this ticket and are NOT yet rendered in the description HTML
+  const unreferencedImgAttachments = attachments.filter(att => {
+    if (!att || !att.id) return false;
+    if (referencedAttIds.has(String(att.id))) return false;
+    const fileName = (att.fileName || att.filename || att.name || '').toLowerCase();
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    const isImage = att.category === 'image' ||
+                    (att.mimeType && att.mimeType.startsWith('image/')) ||
+                    ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
+    return isImage;
+  });
+
+  const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
+                  (typeof window !== 'undefined' && window.API_BASE_URL) ||
+                  'https://api.importer.conciliadorcontabil.com.br/api/v1';
+
+  let extraGalleryHtml = '';
+  if (unreferencedImgAttachments.length > 0) {
+    extraGalleryHtml = `
+      <div class="desc-inline-attachments-container" style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.14);">
+        <div class="desc-inline-attachments-title" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent-primary, #38bdf8); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+          <span>🖼️</span> Imagens / Prints anexados (${unreferencedImgAttachments.length}):
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          ${unreferencedImgAttachments.map(att => {
+            const attUrl = `${apiBase}/support/tickets/${ticketId}/attachments/${att.id}/download`;
+            const fileName = att.fileName || att.filename || att.name || 'print.png';
+            const cacheKey = `${ticketId}_${att.id}`;
+            const cachedSrc = (typeof attachmentBlobCache !== 'undefined' && attachmentBlobCache.get(cacheKey)) ||
+                              (typeof authenticatedImgBlobCache !== 'undefined' && authenticatedImgBlobCache.get(attUrl));
+            const placeholderSvg = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100'><rect width='160' height='100' rx='6' fill='%23131b2e'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2338bdf8' font-size='12' font-family='sans-serif'>🖼️ Carregando...</text></svg>";
+            const srcToUse = cachedSrc || placeholderSvg;
+            const isPending = !cachedSrc;
+            return `
+              <div class="desc-attached-image-wrapper" style="position: relative; max-width: 100%;">
+                <img src="${srcToUse}"
+                     ${isPending ? `data-pending-src="${escapeHtml(attUrl)}"` : `data-original-src="${escapeHtml(attUrl)}"`}
+                     data-att-id="${att.id}"
+                     alt="${escapeHtml(fileName)}"
+                     class="comment-inline-img ${isPending ? 'is-loading' : ''}"
+                     style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 4px 0; border: 1px solid rgba(255,255,255,0.15); cursor: zoom-in;" />
+                <div class="desc-attached-image-caption" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  📎 <strong>${escapeHtml(fileName)}</strong>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  if (!formatted && !extraGalleryHtml) {
     containerEl.innerHTML = '<span style="color: var(--text-muted);">Nenhuma descrição detalhada informada.</span>';
     return;
   }
 
-  const formatted = prepareRichContentWithImagePlaceholders(descHtml, '', ticketId);
-  containerEl.innerHTML = formatted;
+  containerEl.innerHTML = (formatted || '') + extraGalleryHtml;
 
   renderAuthenticatedInlineImages(containerEl, ticketId, 'Imagem da descrição');
 }
@@ -1659,8 +1742,8 @@ async function openDemandDrawer(ticket) {
   // Bloqueia campos para modo de leitura por padrão (menos validador)
   setDrawerFieldsEditable(false);
   const descBox = document.getElementById('drawerDescription');
-  if (ticket.description) {
-    renderAuthenticatedDescription(ticket.description, ticket.id, descBox);
+  if (ticket.description || (Array.isArray(ticket.attachments) && ticket.attachments.length > 0)) {
+    renderAuthenticatedDescription(ticket.description, ticket.id, descBox, ticket.attachments);
   } else {
     descBox.innerHTML = '<span style="color: var(--text-muted);">Carregando descrição completa...</span>';
   }
@@ -1818,15 +1901,37 @@ function syncClosedAtFromDetails(details) {
     }
 
     // Refresh description with authenticated images
-    if (details.description) {
+    if (details.description || (Array.isArray(details.attachments) && details.attachments.length > 0)) {
       try {
-        renderAuthenticatedDescription(details.description, ticket.id, descBox);
+        renderAuthenticatedDescription(details.description, ticket.id, descBox, details.attachments);
       } catch (renderDescErr) {
         console.warn('Erro ao renderizar descrição autenticada:', renderDescErr);
         if (descBox) descBox.innerHTML = sanitizeHtml(details.description);
       }
       const editor = document.getElementById('drawerEditDescEditor');
-      if (editor) editor.innerHTML = sanitizeHtml(details.description);
+      if (editor) {
+        editor.innerHTML = sanitizeHtml(details.description);
+        // Preserva anexos de imagens não referenciados na descrição também no editor
+        if (Array.isArray(details.attachments) && details.attachments.length > 0) {
+          const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
+                          (typeof window !== 'undefined' && window.API_BASE_URL) ||
+                          'https://api.importer.conciliadorcontabil.com.br/api/v1';
+          const existingImgs = editor.querySelectorAll('img');
+          const existingAttIds = new Set(Array.from(existingImgs).map(i => i.dataset.attId).filter(Boolean));
+          details.attachments.forEach(att => {
+            if (!att || !att.id || existingAttIds.has(String(att.id))) return;
+            const fName = (att.fileName || att.filename || att.name || '').toLowerCase();
+            const ext = (fName.split('.').pop() || '').toLowerCase();
+            const isImg = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
+            if (isImg) {
+              const attUrl = `${apiBase}/support/tickets/${ticket.id}/attachments/${att.id}/download`;
+              const imgP = document.createElement('p');
+              imgP.innerHTML = `<img src="${attUrl}" data-original-src="${attUrl}" data-att-id="${att.id}" alt="${escapeHtml(att.fileName || att.filename || att.name || 'print.png')}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" />`;
+              editor.appendChild(imgP);
+            }
+          });
+        }
+      }
     } else {
       descBox.innerHTML = '<span style="color: var(--text-muted);">Nenhuma descrição detalhada informada.</span>';
     }
@@ -4461,7 +4566,7 @@ async function saveDrawerTicketChanges() {
     // Se a descrição foi salva, atualizar visualização com sanitização e imagens autenticadas
     if (payload.description) {
       const descBox = document.getElementById('drawerDescription');
-      if (descBox) renderAuthenticatedDescription(payload.description, selectedTicket.id, descBox);
+      if (descBox) renderAuthenticatedDescription(payload.description, selectedTicket.id, descBox, selectedTicket.attachments);
     }
     setDrawerFieldsEditable(false);
 

@@ -2073,9 +2073,17 @@ async function submitCreateTicket() {
       }
     }
 
+    const attList = Array.isArray(uploadedAttachments)
+      ? uploadedAttachments
+      : (uploadedAttachments?.data || uploadedAttachments?.attachments || []);
+
+    if (attList.length > 0) {
+      createdTicket.attachments = attList;
+    }
+
     // Se haviam imagens na descrição e os anexos foram enviados com sucesso,
     // atualizamos a descrição do chamado para apontar diretamente para os anexos oficiais
-    if (hasBase64Images && Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0) {
+    if (hasBase64Images && attList.length > 0) {
       try {
         const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
                         (typeof window !== 'undefined' && window.API_BASE_URL) ||
@@ -2087,14 +2095,20 @@ async function submitCreateTicket() {
           return s.startsWith('data:image/') && !s.startsWith('data:image/svg');
         });
 
+        const matchedAtts = [];
         descImgs.forEach((img, idx) => {
           const dataUrl = img.getAttribute('src');
           const targetName = img.getAttribute('data-desc-file-name') || img.getAttribute('alt');
-          const att = (targetName && uploadedAttachments.find(a => a && (a.fileName === targetName || a.name === targetName))) ||
-                      uploadedAttachments[idx] ||
-                      uploadedAttachments[uploadedAttachments.length - 1];
+          const att = (targetName && attList.find(a => a && (
+            (a.fileName && a.fileName === targetName) ||
+            (a.filename && a.filename === targetName) ||
+            (a.name && a.name === targetName) ||
+            (a.originalName && a.originalName === targetName) ||
+            (a.originalname && a.originalname === targetName)
+          ))) || attList[idx] || attList[attList.length - 1];
 
           if (att && att.id) {
+            matchedAtts.push(att);
             const attUrl = `${apiBase}/support/tickets/${createdTicket.id}/attachments/${att.id}/download`;
             if (typeof attachmentBlobCache !== 'undefined') {
               attachmentBlobCache.set(`${createdTicket.id}_${att.id}`, dataUrl);
@@ -2109,10 +2123,34 @@ async function submitCreateTicket() {
           }
         });
 
-        const finalDesc = updateDiv.innerHTML;
-        await window.conciliadorAPI.updateTicket(createdTicket.id, { description: finalDesc });
+        let finalDesc = updateDiv.innerHTML;
+
+        // Se o backend sanitizar tags HTML <img>, a notação Markdown também garante sobrevivência
+        const markdownImgs = matchedAtts.map(att => {
+          const attUrl = `${apiBase}/support/tickets/${createdTicket.id}/attachments/${att.id}/download`;
+          const fName = att.fileName || att.filename || att.name || 'print.png';
+          return `\n\n![${fName}](${attUrl})`;
+        }).join('');
+        if (markdownImgs && !finalDesc.includes('![')) {
+          finalDesc = finalDesc + markdownImgs;
+        }
+
+        // Envia payload COMPLETO no PATCH para garantir validação do backend
+        const updPayload = {
+          title: createdTicket.title || title,
+          description: finalDesc,
+          priority: createdTicket.priority || priority
+        };
+        if (productId) updPayload.productId = productId;
+        if (database) updPayload.clientDatabase = database;
+        if (movidesk) {
+          const cleanMovi = sanitizeMovideskId(movidesk);
+          if (cleanMovi) updPayload.movideskTicketId = cleanMovi;
+        }
+
+        await window.conciliadorAPI.updateTicket(createdTicket.id, updPayload);
         createdTicket.description = finalDesc;
-        createdTicket.attachments = uploadedAttachments;
+        createdTicket.attachments = attList;
       } catch (updErr) {
         console.warn('Erro ao atualizar URLs de anexos na descrição:', updErr);
       }
@@ -2133,6 +2171,16 @@ async function submitCreateTicket() {
 
     // Refresh list and open new ticket
     await syncDemands();
+    if (attList.length > 0) {
+      createdTicket.attachments = attList;
+      if (window.appStore && Array.isArray(window.appStore.demands)) {
+        const storeDemand = window.appStore.demands.find(d => String(d.id) === String(createdTicket.id));
+        if (storeDemand) {
+          storeDemand.attachments = attList;
+          if (createdTicket.description) storeDemand.description = createdTicket.description;
+        }
+      }
+    }
     if (window.appTabs) {
       window.appTabs.openTicketTab(createdTicket, true);
     } else {

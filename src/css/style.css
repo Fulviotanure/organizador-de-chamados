@@ -3722,6 +3722,40 @@ body.table-col-resizing * {
   cursor: wait;
 }
 
+/* Anexos de imagem preservados na descrição */
+.desc-inline-attachments-container {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.desc-inline-attachments-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-primary, #38bdf8);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.desc-attached-image-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.desc-attached-image-caption {
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* Mention System (@mentions) */
 .comment-mentions-dropdown {
   position: absolute;

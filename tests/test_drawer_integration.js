@@ -403,6 +403,15 @@ try {
 
     assert.ok(styleCss.includes('.btn-copy-same-dev-date'), 'style.css must have .btn-copy-same-dev-date rule');
     assert.ok(styleCss.includes('.btn-confirm-same-layout'), 'style.css must have .btn-confirm-same-layout rule');
+
+    // Test 24: Preservation of image attachments in ticket description
+    console.log('Integration Test 24: Preservation of image attachments in ticket description');
+    assert.ok(drawerJs.includes('unreferencedImgAttachments'), 'drawer.js must identify image attachments not yet rendered in description HTML');
+    assert.ok(drawerJs.includes('desc-inline-attachments-container'), 'drawer.js must render .desc-inline-attachments-container for attached images');
+    assert.ok(drawerJs.includes('prepareRichContentWithImagePlaceholders(descHtml'), 'drawer.js must prepare rich content for description');
+    assert.ok(styleCss.includes('.desc-inline-attachments-container'), 'style.css must style .desc-inline-attachments-container');
+    assert.ok(calJs.includes('updPayload') && calJs.includes('title: createdTicket.title || title'), 'calendar.js must send full PATCH payload including title and description');
+    assert.ok(calJs.includes('markdownImgs'), 'calendar.js must generate markdown fallback for image attachments');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract
