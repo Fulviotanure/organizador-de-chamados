@@ -381,14 +381,83 @@ ipcMain.handle('open-buffer-temp', async (event, { fileName, buffer }) => {
   }
 });
 
-// Save downloaded attachment directly to Downloads folder (overwrites without prompting)
+/**
+ * Resolves a unique filename in the given directory by auto-incrementing
+ * a version number if an identical/existing file already exists.
+ * E.g.: "anexo.pdf" -> "anexo (1).pdf" -> "anexo (2).pdf"
+ * Or:   "anexo_v1.pdf" -> "anexo_v2.pdf"
+ * Or:   "anexo (v1).pdf" -> "anexo (v2).pdf"
+ */
+function getUniqueVersionedFilePath(dir, fileName) {
+  const safeName = (fileName || 'anexo').replace(/[/\\?%*:|"<>]/g, '_');
+  const initialPath = path.join(dir, safeName);
+
+  if (!fs.existsSync(initialPath)) {
+    return { path: initialPath, fileName: safeName };
+  }
+
+  // File already exists in destination: calculate next unique versioned filename
+  const extMatch = safeName.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = extMatch ? `.${extMatch[1]}` : '';
+  const baseName = extMatch ? safeName.slice(0, -ext.length) : safeName;
+
+  // Detect existing versioning patterns:
+  // 1. (v1), (v2)...
+  const parenVMatch = baseName.match(/^(.*?)\s*\(v(\d+)\)$/i);
+  // 2. _v1, _v2, -v1, -v2...
+  const vMatch = baseName.match(/^(.*?)([_\s-]v)(\d+)$/i);
+  // 3. (1), (2), (3)...
+  const parenMatch = baseName.match(/^(.*?)\s*\((\d+)\)$/);
+
+  let cleanBase = baseName;
+  let version = 1;
+  let formatStyle = 'paren'; // 'paren' | 'parenV' | 'v'
+  let vPrefix = '_v';
+
+  if (parenVMatch) {
+    cleanBase = parenVMatch[1].trim();
+    version = parseInt(parenVMatch[2], 10) + 1;
+    formatStyle = 'parenV';
+  } else if (vMatch) {
+    cleanBase = vMatch[1].trim();
+    version = parseInt(vMatch[3], 10) + 1;
+    formatStyle = 'v';
+    vPrefix = vMatch[2];
+  } else if (parenMatch) {
+    cleanBase = parenMatch[1].trim();
+    version = parseInt(parenMatch[2], 10) + 1;
+    formatStyle = 'paren';
+  } else {
+    cleanBase = baseName;
+    version = 1;
+    formatStyle = 'paren';
+  }
+
+  while (true) {
+    let candidateName = '';
+    if (formatStyle === 'parenV') {
+      candidateName = `${cleanBase} (v${version})${ext}`;
+    } else if (formatStyle === 'v') {
+      candidateName = `${cleanBase}${vPrefix}${version}${ext}`;
+    } else {
+      candidateName = `${cleanBase} (${version})${ext}`;
+    }
+
+    const candidatePath = path.join(dir, candidateName);
+    if (!fs.existsSync(candidatePath)) {
+      return { path: candidatePath, fileName: candidateName };
+    }
+    version++;
+  }
+}
+
+// Save downloaded attachment directly to Downloads folder (renames with version if file already exists)
 ipcMain.handle('save-to-downloads', async (event, { fileName, buffer }) => {
   try {
     const downloadsDir = app.getPath('downloads');
-    const safeName = (fileName || 'anexo').replace(/[/\\?%*:|"<>]/g, '_');
-    const targetPath = path.join(downloadsDir, safeName);
+    const { path: targetPath, fileName: finalFileName } = getUniqueVersionedFilePath(downloadsDir, fileName);
     fs.writeFileSync(targetPath, Buffer.from(buffer));
-    return { success: true, path: targetPath, fileName: safeName };
+    return { success: true, path: targetPath, fileName: finalFileName };
   } catch (err) {
     console.error('Error saving to downloads:', err);
     return { success: false, error: err.message };
@@ -1050,13 +1119,14 @@ app.whenReady().then(() => {
 
   createWindow();
 
-  // Downloads do Chromium direcionados automaticamente para a pasta Downloads sem perguntar
+  // Downloads do Chromium direcionados automaticamente para a pasta Downloads sem perguntar,
+  // renomeando com versão incremental se já existir arquivo igual
   if (session && session.defaultSession) {
     session.defaultSession.on('will-download', (event, item) => {
       const downloadsDir = app.getPath('downloads');
       const filename = item.getFilename();
-      const safeName = (filename || 'anexo').replace(/[/\\?%*:|"<>]/g, '_');
-      item.setSavePath(path.join(downloadsDir, safeName));
+      const { path: targetPath } = getUniqueVersionedFilePath(downloadsDir, filename);
+      item.setSavePath(targetPath);
     });
   }
 

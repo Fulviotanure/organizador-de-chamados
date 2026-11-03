@@ -384,14 +384,21 @@ function setupDrawerLayoutAutocomplete() {
     renderDrawerLayoutField('', null, '');
     const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
     if (btnDrawerLayout) btnDrawerLayout.style.display = 'none';
+    const hiddenId = document.getElementById('drawerEditLayoutId');
+    if (hiddenId) hiddenId.value = '';
     if (selectedTicket) {
-      selectedTicket.layoutId = null;
-      selectedTicket.layout = null;
-      selectedTicket.layoutStatus = null;
-      renderDrawerHeaderMetaAndTitle(selectedTicket, null);
+      selectedTicket.pendingLayout = null;
+      renderDrawerHeaderMetaAndTitle({
+        ...selectedTicket,
+        layout: null,
+        layoutId: null
+      }, null);
     }
     const searchInput = document.getElementById('drawerEditLayoutSearch');
     if (searchInput) searchInput.focus();
+    if (window.appTabs && selectedTicket) {
+      window.appTabs.markDirty(selectedTicket.id, true);
+    }
   });
 
   if (!input || !dropdown) return;
@@ -472,11 +479,16 @@ function setupDrawerLayoutAutocomplete() {
 
             registerLayoutInCache({ id, code, name, status });
             renderDrawerLayoutField(id, code, name, status);
+            const hiddenId = document.getElementById('drawerEditLayoutId');
+            if (hiddenId) hiddenId.value = id;
+
             if (selectedTicket) {
-              selectedTicket.layoutId = id;
-              selectedTicket.layout = { id, code, name, status };
-              selectedTicket.layoutStatus = status;
-              renderDrawerHeaderMetaAndTitle(selectedTicket, status);
+              selectedTicket.pendingLayout = { id, code, name, status };
+              renderDrawerHeaderMetaAndTitle({
+                ...selectedTicket,
+                layout: { id, code, name, status },
+                layoutId: id
+              }, status);
             }
 
             const btnDrawerLayout = document.getElementById('btnDrawerOpenLayout');
@@ -486,6 +498,10 @@ function setupDrawerLayoutAutocomplete() {
               if (btnDrawerLayoutText) {
                 btnDrawerLayoutText.textContent = `Abrir Layout (${code}) ↗`;
               }
+            }
+
+            if (window.appTabs && selectedTicket) {
+              window.appTabs.markDirty(selectedTicket.id, true);
             }
           });
         });
@@ -1941,7 +1957,7 @@ function setupLayoutAutocomplete() {
     }, 250);
   });
 
-  input.addEventListener('keydown', (e) => {
+  input.addEventListener('keydown', async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const firstItem = dropdown.querySelector('.autocomplete-item');
@@ -1955,9 +1971,12 @@ function setupLayoutAutocomplete() {
             : [];
           if (openTickets.length > 0) {
             const ot = openTickets[0];
-            const lId = ot.layoutId || ot.layout?.id || null;
             const lCode = ot.layout?.code || ot.layoutCode || rawQuery;
             const lName = ot.layout?.name || ot.layoutName || '';
+            let lId = ot.layoutId || ot.layout?.id || null;
+            if (!lId && typeof ensureLayoutId === 'function') {
+              lId = await ensureLayoutId(null, lCode);
+            }
             renderNewTicketLayoutField(lId, lCode, lName);
             checkNewTicketLayoutConflicts(lCode, lId);
           }
@@ -1993,13 +2012,17 @@ async function submitCreateTicket() {
   let layoutId = document.getElementById('newTicketLayoutId')?.value;
   const layoutSearchVal = document.getElementById('newTicketLayoutSearch')?.value.trim();
   if (!layoutId && layoutSearchVal) {
-    const openTickets = (typeof getOpenTicketsWithSameLayout === 'function')
-      ? getOpenTicketsWithSameLayout(layoutSearchVal, null, null)
-      : [];
-    if (openTickets.length > 0) {
-      layoutId = openTickets[0].layoutId || openTickets[0].layout?.id || null;
-    } else if (typeof layoutCodeToIdCache !== 'undefined' && layoutCodeToIdCache.has(layoutSearchVal)) {
-      layoutId = layoutCodeToIdCache.get(layoutSearchVal).id;
+    if (typeof ensureLayoutId === 'function') {
+      layoutId = await ensureLayoutId(null, layoutSearchVal);
+    } else {
+      const openTickets = (typeof getOpenTicketsWithSameLayout === 'function')
+        ? getOpenTicketsWithSameLayout(layoutSearchVal, null, null)
+        : [];
+      if (openTickets.length > 0) {
+        layoutId = openTickets[0].layoutId || openTickets[0].layout?.id || null;
+      } else if (typeof layoutCodeToIdCache !== 'undefined' && layoutCodeToIdCache.has(layoutSearchVal)) {
+        layoutId = layoutCodeToIdCache.get(layoutSearchVal).id;
+      }
     }
   }
   const dueDate = document.getElementById('newTicketDueDate')?.value;
@@ -2121,6 +2144,24 @@ async function submitCreateTicket() {
 
     const createdTicket = await window.conciliadorAPI.createTicket(payload);
 
+    // Vínculo explícito de layout via endpoint dedicado PUT /support/tickets/:id/link-layout
+    if (layoutId) {
+      try {
+        await window.conciliadorAPI.linkTicketLayout(createdTicket.id, layoutId);
+      } catch (linkErr) {
+        console.warn('Erro ao vincular layout ao chamado recém-criado:', linkErr);
+      }
+      let layoutMeta = (typeof layoutCodeToIdCache !== 'undefined')
+        ? Array.from(layoutCodeToIdCache.values()).find(l => String(l.id) === String(layoutId))
+        : null;
+      if (layoutMeta) {
+        createdTicket.layoutId = layoutId;
+        createdTicket.layout = { id: layoutId, code: layoutMeta.code, name: layoutMeta.name, status: layoutMeta.status };
+      } else {
+        createdTicket.layoutId = layoutId;
+      }
+    }
+
     // If attachments were added (including images extracted from description), upload them now
     let uploadedAttachments = [];
     if (newTicketSelectedFiles.length > 0) {
@@ -2234,8 +2275,18 @@ async function submitCreateTicket() {
       );
     }
 
+    if (window.appStore && typeof window.appStore.upsertDemand === 'function') {
+      await window.appStore.upsertDemand(createdTicket);
+    }
+
     // Refresh list and open new ticket
     await syncDemands();
+    if (window.appStore && Array.isArray(window.appStore.demands)) {
+      const exists = window.appStore.demands.some(d => String(d.id) === String(createdTicket.id));
+      if (!exists && typeof window.appStore.upsertDemand === 'function') {
+        await window.appStore.upsertDemand(createdTicket);
+      }
+    }
     if (attList.length > 0) {
       createdTicket.attachments = attList;
       if (window.appStore && Array.isArray(window.appStore.demands)) {

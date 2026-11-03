@@ -137,6 +137,87 @@ function stringifySafeValue(val) {
   return '';
 }
 
+function formatStatusLabelClean(st) {
+  if (!st) return 'Fila';
+  let val = st;
+  if (typeof st === 'object') {
+    val = st.name || st.title || st.label || st.status || '';
+  }
+  const s = String(val || '').toLowerCase().trim();
+  switch (s) {
+    case 'triage': return 'Triagem';
+    case 'open':
+    case 'queued':
+    case 'na fila':
+    case 'fila': return 'Fila';
+    case 'in_progress':
+    case 'progress': return 'Em Progresso';
+    case 'review': return 'Em Revisão';
+    case 'waiting':
+    case 'waiting_creator':
+    case 'waiting_requester': return 'Aguardando Resposta do N2';
+    case 'paused': return 'Pausado';
+    case 'closed':
+    case 'done':
+    case 'completed':
+    case 'finished': return 'Concluído';
+    default:
+      return String(val);
+  }
+}
+
+function resolveDeveloperName(val, fallback = 'outro responsável') {
+  if (!val) return fallback;
+  if (typeof val === 'object') {
+    const name = val.name || val.assignedToName || val.assignedTo?.name || val.reviewerName || val.reviewer?.name || val.user?.name;
+    if (name && typeof name === 'string' && name.trim()) return name.trim();
+    val = val.id || val.assignedToId || val.reviewerId || '';
+  }
+  const str = String(val).trim();
+  if (!str) return fallback;
+
+  // If already a human name (not a UUID)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  if (!isUuid && !/^[0-9a-f]{24}$/i.test(str)) {
+    return str;
+  }
+
+  // Exact ID mapped in Importer Ultra web app to 'outro responsável'
+  if (str === '3da6dbd7-17ed-41a0-a896-3cb97dfd0df5') {
+    return fallback;
+  }
+
+  // Check known developers from appStore
+  if (window.appStore && typeof window.appStore.getKnownDevelopers === 'function') {
+    const devs = window.appStore.getKnownDevelopers();
+    const found = devs.find(d => d.id === str);
+    if (found && found.name) return found.name;
+  }
+
+  if (window.appStore?.currentUser && window.appStore.currentUser.id === str) {
+    return window.appStore.currentUser.name || 'Você';
+  }
+
+  // Fallback known mapping by UUID
+  const knownDevMap = {
+    '7ecba183-cd20-41ed-b09c-bd48665e5be9': 'Rodrigo Lopes',
+    '628d9d24-db32-4233-9b32-834e22f471a4': 'Rodrigo Moro (dev)',
+    'ecfbd7dd-a639-43ff-9222-5b750a752bfe': 'Rodrigo Moro',
+    'c4b342d1-959c-4842-9435-fb197cb8179b': 'Rafael',
+    'd7fa1524-9188-42fb-8b9d-7143f8507479': 'Igor Maduro',
+    'a96b76de-88a3-4cb2-a7f8-e9fe6095f9f7': 'Cairo Felipe',
+    '8de70592-b88b-4466-95d0-3d4e8e0cbfc5': 'Helter Simões',
+    'd56608a7-1558-4bd1-9ade-e1447910377e': 'Guilherme',
+    '6ae515a3-b5f7-47c5-976f-cc578aa46c7f': 'Fulvio Tanure',
+    '56e3e7a4-6167-4ee6-8c2c-0055147fdd14': 'Lucas',
+    '3dbafe6c-ef69-444c-8a93-d747d4a5a1a5': 'Hugo',
+    '571f33e0-2247-4529-91e3-950c61b9846e': 'Administrador'
+  };
+  if (knownDevMap[str]) return knownDevMap[str];
+
+  return fallback;
+}
+
 // Robust product dropdown population and auto-selection
 function populateAndSelectProduct(selectEl, item, prods) {
   if (!selectEl) return;
@@ -504,8 +585,9 @@ async function downloadAttachmentFile(ticketId, attId, fileName, customTicket = 
       const buffer = await blob.arrayBuffer();
       const res = await window.electronAPI.saveToDownloads(targetFileName, buffer);
       if (res && res.success) {
+        const savedFileName = res.fileName || targetFileName;
         if (!customList && window.electronAPI.showNotification) {
-          window.electronAPI.showNotification('Download Concluído', `Arquivo ${targetFileName} salvo na pasta Downloads.`);
+          window.electronAPI.showNotification('Download Concluído', `Arquivo ${savedFileName} salvo na pasta Downloads.`);
         }
         return res;
       }
@@ -880,36 +962,80 @@ async function renderAuthenticatedDescription(descHtml, ticketId, containerEl, t
   renderAuthenticatedInlineImages(containerEl, ticketId, 'Imagem da descrição');
 }
 
+const TIMELINE_SVG_ICONS = {
+  inbox: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
+  'user-check': `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>`,
+  'list-checks': `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>`,
+  status: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  return: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  layout: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="9" x2="9" y1="21" y2="9"/></svg>`,
+  calendar: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+  priority: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`
+};
+
 function formatEventContent(ev) {
   const authorName = ev.user?.name || (ev.user?.email ? ev.user.email.split('@')[0] : 'Sistema');
   let title = 'Alteração registrada';
-  let dotIcon = '⚡';
-  let dotColor = '#38bdf8';
+  let dotIcon = TIMELINE_SVG_ICONS.edit;
+  let dotColor = '#cbd5e1';
   let detail = '';
   let subdetail = '';
 
-  const fromVal = ev.fromValue || {};
-  const toVal = ev.toValue || {};
+  const fromVal = ev.fromValue !== undefined ? ev.fromValue : {};
+  const toVal = ev.toValue !== undefined ? ev.toValue : {};
   const reasonText = ev.reason ? String(ev.reason).trim() : '';
+
+  // Check if it's a queue position change event
+  const isQueuePos = 
+    ['queue_position', 'queue_position_changed', 'position_changed', 'position', 'queue', 'queue_order', 'reorder', 'reordered'].includes(ev.kind) ||
+    ev.field === 'queuePosition' || ev.field === 'position' || ev.field === 'queue_position' ||
+    (toVal && typeof toVal === 'object' && toVal.queuePosition !== undefined) ||
+    (fromVal && typeof fromVal === 'object' && fromVal.queuePosition !== undefined) ||
+    (
+      toVal !== null && toVal !== undefined &&
+      !isNaN(Number(toVal)) && Number(toVal) >= 0 && Number(toVal) <= 1000 &&
+      (fromVal === undefined || fromVal === null || (!isNaN(Number(fromVal)) && Number(fromVal) >= 0 && Number(fromVal) <= 1000)) &&
+      (ev.field === 'queuePosition' || ev.field === 'position' || !ev.field || ev.kind === 'updated' || !ev.kind)
+    );
+
+  if (isQueuePos) {
+    title = 'Posição na fila alterada';
+    dotIcon = TIMELINE_SVG_ICONS['list-checks'];
+    dotColor = '#cbd5e1';
+    const rawPos = (toVal && typeof toVal === 'object' && toVal.queuePosition !== undefined)
+      ? toVal.queuePosition
+      : (toVal && typeof toVal === 'object' && toVal.position !== undefined ? toVal.position : toVal);
+    const numPos = Number(rawPos);
+    const displayPos = !isNaN(numPos) ? numPos + 1 : rawPos;
+    detail = `<span class="stream-event-desc-text">Posição na fila: ${escapeHtml(String(displayPos))}</span>`;
+    if (reasonText) {
+      subdetail = escapeHtml(reasonText);
+    }
+    return { title, dotIcon, dotColor, detail, subdetail, authorName };
+  }
 
   switch (ev.kind) {
     case 'created':
     case 'ticket_created':
       title = 'Chamado aberto';
-      dotIcon = '✉';
-      dotColor = '#38bdf8';
+      dotIcon = TIMELINE_SVG_ICONS.inbox;
+      dotColor = '#cbd5e1';
       const createdTitle = toVal.title || ev.ticket?.title || '';
       const createdStatus = toVal.status || 'queued';
-      detail = `<span class="stream-event-desc-text">${createdTitle ? 'Título: ' + escapeHtml(createdTitle) + ' · ' : ''}Situação: ${renderStatusPill(createdStatus)}</span>`;
+      const cleanStatus = formatStatusLabelClean(createdStatus);
+      detail = `<span class="stream-event-desc-text">${createdTitle ? 'Título: ' + escapeHtml(createdTitle) + ' · ' : ''}Situação: ${escapeHtml(cleanStatus)}</span>`;
       break;
 
     case 'status_change':
     case 'status_changed':
     case 'status':
       title = 'Situação alterada';
-      dotIcon = '▶';
-      dotColor = '#10b981';
-      detail = `${renderStatusPill(fromVal)} <span class="stream-pill-arrow">➔</span> ${renderStatusPill(toVal)}`;
+      dotIcon = TIMELINE_SVG_ICONS.status;
+      dotColor = '#cbd5e1';
+      const fromSt = formatStatusLabelClean(fromVal);
+      const toSt = formatStatusLabelClean(toVal);
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromSt)} ➔ ${escapeHtml(toSt)}</span>`;
       if (reasonText) {
         subdetail = escapeHtml(reasonText);
       }
@@ -919,11 +1045,11 @@ function formatEventContent(ev) {
     case 'assignee_changed':
     case 'developer_assigned':
       title = 'Responsável alterado';
-      dotIcon = '👤';
-      dotColor = '#818cf8';
-      const fromDev = fromVal.assignedToName || fromVal.assignedTo?.name || fromVal.name || (fromVal ? stringifySafeValue(fromVal) : 'Sem responsável');
-      const toDev = toVal.assignedToName || toVal.assignedTo?.name || toVal.name || stringifySafeValue(toVal) || 'Desenvolvedor';
-      detail = `<span class="stream-text-pill">${escapeHtml(String(fromDev || 'ninguém'))}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(String(toDev))}</span>`;
+      dotIcon = TIMELINE_SVG_ICONS['user-check'];
+      dotColor = '#cbd5e1';
+      const fromDev = resolveDeveloperName(fromVal, 'outro responsável');
+      const toDev = resolveDeveloperName(toVal, 'outro responsável');
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromDev)} ➔ ${escapeHtml(toDev)}</span>`;
       if (reasonText) {
         subdetail = escapeHtml(reasonText);
       }
@@ -932,11 +1058,11 @@ function formatEventContent(ev) {
     case 'reviewer_assigned':
     case 'reviewer_changed':
       title = 'Validador alterado';
-      dotIcon = '👤';
-      dotColor = '#a855f7';
-      const fromRev = fromVal.reviewerName || fromVal.reviewer?.name || fromVal.name || (fromVal ? stringifySafeValue(fromVal) : 'ninguém');
-      const toRev = toVal.reviewerName || toVal.reviewer?.name || toVal.name || stringifySafeValue(toVal) || 'Validador';
-      detail = `<span class="stream-text-pill">${escapeHtml(String(fromRev || 'ninguém'))}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(String(toRev))}</span>`;
+      dotIcon = TIMELINE_SVG_ICONS['user-check'];
+      dotColor = '#cbd5e1';
+      const fromRev = resolveDeveloperName(fromVal, 'nenhum');
+      const toRev = resolveDeveloperName(toVal, 'Validador');
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromRev)} ➔ ${escapeHtml(toRev)}</span>`;
       if (reasonText) {
         subdetail = escapeHtml(reasonText);
       }
@@ -946,8 +1072,8 @@ function formatEventContent(ev) {
     case 'return':
     case 'rejected':
       title = 'Chamado retornado para ajustes';
-      dotIcon = '↩';
-      dotColor = '#ef4444';
+      dotIcon = TIMELINE_SVG_ICONS.return;
+      dotColor = '#cbd5e1';
       if (reasonText) {
         subdetail = `Motivo: ${escapeHtml(reasonText)}`;
       }
@@ -957,14 +1083,14 @@ function formatEventContent(ev) {
     case 'layout_changed':
     case 'layout':
       title = 'Layout apontado';
-      dotIcon = '📐';
-      dotColor = '#06b6d4';
+      dotIcon = TIMELINE_SVG_ICONS.layout;
+      dotColor = '#cbd5e1';
       const lCode = toVal.layoutCode || toVal.code || toVal.layout?.code || (typeof toVal === 'number' ? toVal : '');
       const lName = toVal.layoutName || toVal.name || toVal.layout?.name || '';
       if (lCode) {
-        detail = `<span class="stream-layout-pill">📐 ${escapeHtml(String(lCode))}${lName ? ' · ' + escapeHtml(lName) : ''}</span>`;
+        detail = `<span class="stream-event-desc-text">📐 ${escapeHtml(String(lCode))}${lName ? ' · ' + escapeHtml(lName) : ''}</span>`;
       } else {
-        detail = `<span class="stream-layout-pill">Layout desvinculado</span>`;
+        detail = `<span class="stream-event-desc-text">Layout desvinculado</span>`;
       }
       if (reasonText) {
         subdetail = escapeHtml(reasonText);
@@ -974,38 +1100,47 @@ function formatEventContent(ev) {
     case 'client_due_changed':
     case 'client_due_date_changed':
       title = 'Prazo do cliente alterado';
-      dotIcon = '📅';
-      dotColor = '#6366f1';
+      dotIcon = TIMELINE_SVG_ICONS.calendar;
+      dotColor = '#cbd5e1';
       const fromDue = fromVal.clientDueDate ? formatDisplayDate(fromVal.clientDueDate) : stringifySafeValue(fromVal);
       const toDue = toVal.clientDueDate ? formatDisplayDate(toVal.clientDueDate) : stringifySafeValue(toVal);
-      detail = `<span class="stream-text-pill">${fromDue ? escapeHtml(fromDue) : '-'}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toDue || '-')}</span>`;
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromDue || '-')} ➔ ${escapeHtml(toDue || '-')}</span>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'delivery_due_changed':
     case 'delivery_due_date_changed':
       title = 'Prazo de entrega alterado';
-      dotIcon = '📅';
-      dotColor = '#6366f1';
+      dotIcon = TIMELINE_SVG_ICONS.calendar;
+      dotColor = '#cbd5e1';
       const fromDel = fromVal.deliveryDueDate ? formatDisplayDate(fromVal.deliveryDueDate) : stringifySafeValue(fromVal);
       const toDel = toVal.deliveryDueDate ? formatDisplayDate(toVal.deliveryDueDate) : stringifySafeValue(toVal);
-      detail = `<span class="stream-text-pill">${fromDel ? escapeHtml(fromDel) : '-'}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toDel || '-')}</span>`;
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromDel || '-')} ➔ ${escapeHtml(toDel || '-')}</span>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'priority_change':
     case 'priority_changed':
     case 'priority':
       title = 'Prioridade alterada';
-      dotIcon = '⚡';
-      dotColor = '#f59e0b';
+      dotIcon = TIMELINE_SVG_ICONS.priority;
+      dotColor = '#cbd5e1';
       const fromPri = formatPriorityLabel(fromVal.priority !== undefined ? fromVal.priority : fromVal);
       const toPri = formatPriorityLabel(toVal.priority !== undefined ? toVal.priority : toVal);
-      detail = `<span class="stream-text-pill">${escapeHtml(fromPri)}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(toPri)}</span>`;
+      detail = `<span class="stream-event-desc-text">${escapeHtml(fromPri)} ➔ ${escapeHtml(toPri)}</span>`;
+      if (reasonText) {
+        subdetail = escapeHtml(reasonText);
+      }
       break;
 
     case 'updated':
       title = 'Chamado editado';
-      dotIcon = '📝';
-      dotColor = '#94a3b8';
+      dotIcon = TIMELINE_SVG_ICONS.edit;
+      dotColor = '#cbd5e1';
       if (toVal.description !== undefined || fromVal.description !== undefined) {
         const descStr = String(toVal.description || '');
         const hadImg = String(fromVal.description || '').includes('<img');
@@ -1031,14 +1166,14 @@ function formatEventContent(ev) {
 
     default:
       title = 'Chamado editado';
-      dotIcon = '📝';
-      dotColor = '#94a3b8';
+      dotIcon = TIMELINE_SVG_ICONS.edit;
+      dotColor = '#cbd5e1';
       const fallbackFrom = stringifySafeValue(fromVal);
       const fallbackTo = stringifySafeValue(toVal);
       if (fallbackFrom && fallbackTo) {
-        detail = `<span class="stream-text-pill">${escapeHtml(fallbackFrom)}</span> <span class="stream-pill-arrow">➔</span> <span class="stream-text-pill pill-highlight">${escapeHtml(fallbackTo)}</span>`;
+        detail = `<span class="stream-event-desc-text">${escapeHtml(fallbackFrom)} ➔ ${escapeHtml(fallbackTo)}</span>`;
       } else if (fallbackTo) {
-        detail = `<span class="stream-text-pill pill-highlight">${escapeHtml(fallbackTo)}</span>`;
+        detail = `<span class="stream-event-desc-text">${escapeHtml(fallbackTo)}</span>`;
       }
       if (reasonText) {
         subdetail = escapeHtml(reasonText);
@@ -1731,6 +1866,12 @@ async function openDemandDrawer(ticket) {
   const currentLayoutId = resolveLayoutId(layoutInfo.id, layoutCode);
   const currentLayoutStatus = layoutInfo.status || (layoutCode ? layoutCodeToIdCache.get(String(layoutCode).trim())?.status : null);
 
+  const hiddenLayoutInput = document.getElementById('drawerEditLayoutId');
+  if (hiddenLayoutInput) {
+    hiddenLayoutInput.value = currentLayoutId || '';
+    hiddenLayoutInput.dataset.originalLayoutId = currentLayoutId || '';
+  }
+
   renderDrawerHeaderMetaAndTitle(ticket, currentLayoutStatus);
 
   // Action buttons
@@ -1934,6 +2075,14 @@ function syncClosedAtFromDetails(details) {
       return;
     }
 
+    // Preservar dados de layout caso a resposta de detalhes venha sem eles ou nula
+    if (!details.layout && ticket.layout) {
+      details.layout = ticket.layout;
+    }
+    if (!details.layoutId && (ticket.layoutId || ticket.layout?.id || currentLayoutId)) {
+      details.layoutId = ticket.layoutId || ticket.layout?.id || currentLayoutId;
+    }
+
     selectedTicket = { ...ticket, ...details };
     window.selectedTicket = selectedTicket;
 
@@ -1942,11 +2091,11 @@ function syncClosedAtFromDetails(details) {
     renderSameLayoutTickets(selectedTicket);
 
     // Update layout title, status and button if full details have layout info
-    const freshLayoutInfo = getTicketLayoutInfo(details);
+    const freshLayoutInfo = getTicketLayoutInfo(selectedTicket);
     const finalLayoutCode = freshLayoutInfo.code || layoutCode;
     const finalLayoutName = freshLayoutInfo.name ? ` - ${freshLayoutInfo.name}` : layoutName;
     const finalLayoutId = resolveLayoutId(freshLayoutInfo.id, finalLayoutCode) || currentLayoutId;
-    let finalLayoutStatus = freshLayoutInfo.status || details.layout?.status || currentLayoutStatus || null;
+    let finalLayoutStatus = freshLayoutInfo.status || selectedTicket.layout?.status || currentLayoutStatus || null;
 
     if (finalLayoutCode && !finalLayoutStatus) {
       const cached = layoutCodeToIdCache.get(String(finalLayoutCode).trim());
@@ -1955,6 +2104,11 @@ function syncClosedAtFromDetails(details) {
 
     if (finalLayoutId && finalLayoutCode) {
       registerLayoutInCache({ id: finalLayoutId, code: finalLayoutCode, name: freshLayoutInfo.name, status: finalLayoutStatus });
+    }
+
+    if (hiddenLayoutInput) {
+      hiddenLayoutInput.value = finalLayoutId || '';
+      hiddenLayoutInput.dataset.originalLayoutId = finalLayoutId || '';
     }
 
     renderDrawerHeaderMetaAndTitle(selectedTicket, finalLayoutStatus);
@@ -2222,7 +2376,7 @@ function renderDrawerActivityStream() {
       // Timeline Event
       const ev = it.raw;
       const { title, dotIcon, dotColor, detail, subdetail, authorName } = formatEventContent(ev);
-      const dateFormatted = `${escapeHtml(authorName)} · ${dayMonth} às ${timeStr}`;
+      const dateFormatted = `${escapeHtml(authorName)} · ${timeStr}`;
 
       return `
         ${dateHeaderHtml}
@@ -4407,7 +4561,9 @@ async function saveDrawerTicketChanges() {
   const clientDatabase = document.getElementById('drawerEditDatabase')?.value.trim() || null;
   const movideskRaw = document.getElementById('drawerEditMovidesk')?.value;
   const movideskTicketId = sanitizeMovideskId(movideskRaw);
-  const newLayoutId = document.getElementById('drawerEditLayoutId')?.value || null;
+  const hiddenLayoutInput = document.getElementById('drawerEditLayoutId');
+  const newLayoutId = hiddenLayoutInput ? (hiddenLayoutInput.value ? String(hiddenLayoutInput.value).trim() : null) : null;
+  const originalLayoutId = hiddenLayoutInput?.dataset?.originalLayoutId || (selectedTicket.layoutId || selectedTicket.layout?.id || null);
   const ticketTypeId = document.getElementById('drawerEditType')?.value || null;
   const productId = document.getElementById('drawerEditProduct')?.value || null;
 
@@ -4582,10 +4738,10 @@ async function saveDrawerTicketChanges() {
     }
 
     // 2. Se o layout foi alterado, vincular layout pelo endpoint dedicado
-    const currentLayoutId = selectedTicket.layoutId || selectedTicket.layout?.id || null;
-    if (newLayoutId && newLayoutId !== currentLayoutId) {
+    if (newLayoutId && newLayoutId !== originalLayoutId) {
       try {
         await window.conciliadorAPI.linkTicketLayout(selectedTicket.id, newLayoutId);
+        if (hiddenLayoutInput) hiddenLayoutInput.dataset.originalLayoutId = newLayoutId;
       } catch (layoutErr) {
         console.warn('Erro ao vincular layout:', layoutErr);
         throw new Error('Falha ao vincular layout à demanda: ' + layoutErr.message);
@@ -4644,6 +4800,20 @@ async function saveDrawerTicketChanges() {
 
     // Atualizar no cache local de demandas
     const idx = window.appStore.demands.findIndex(d => d.id === selectedTicket.id);
+    let updatedLayoutObj = (idx !== -1 ? window.appStore.demands[idx].layout : null) || selectedTicket.layout || null;
+    if (newLayoutId) {
+      const cachedL = (typeof layoutCodeToIdCache !== 'undefined')
+        ? Array.from(layoutCodeToIdCache.values()).find(l => String(l.id) === String(newLayoutId))
+        : null;
+      if (cachedL) {
+        updatedLayoutObj = { id: newLayoutId, code: cachedL.code, name: cachedL.name, status: cachedL.status };
+      } else if (selectedTicket.pendingLayout) {
+        updatedLayoutObj = { ...selectedTicket.pendingLayout };
+      }
+    } else if (hiddenLayoutInput && hiddenLayoutInput.value === '') {
+      updatedLayoutObj = null;
+    }
+
     if (idx !== -1) {
       const existing = window.appStore.demands[idx];
       const merged = {
@@ -4652,7 +4822,8 @@ async function saveDrawerTicketChanges() {
         ...payload,
         status: newStatus || existing.status,
         closedAt: (newStatus === 'done' || newStatus === 'closed') ? (existing.closedAt || new Date().toISOString()) : existing.closedAt,
-        layoutId: newLayoutId || existing.layoutId,
+        layoutId: newLayoutId || (hiddenLayoutInput && hiddenLayoutInput.value === '' ? null : existing.layoutId),
+        layout: updatedLayoutObj,
         deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : existing.deliveryDueDate,
         clientDueDate: clientDueDate !== undefined ? clientDueDate : existing.clientDueDate
       };
@@ -4687,10 +4858,12 @@ async function saveDrawerTicketChanges() {
       ...payload,
       status: newStatus || selectedTicket.status,
       closedAt: (newStatus === 'done' || newStatus === 'closed') ? (selectedTicket.closedAt || new Date().toISOString()) : selectedTicket.closedAt,
-      layoutId: newLayoutId || selectedTicket.layoutId,
+      layoutId: newLayoutId || (hiddenLayoutInput && hiddenLayoutInput.value === '' ? null : selectedTicket.layoutId),
+      layout: updatedLayoutObj,
       deliveryDueDate: deliveryDueDate !== undefined ? deliveryDueDate : selectedTicket.deliveryDueDate,
       clientDueDate: clientDueDate !== undefined ? clientDueDate : selectedTicket.clientDueDate
     };
+    selectedTicket.pendingLayout = null;
     if (assignedToId) {
       const devObj = window.appStore.getKnownDevelopers().find(d => d.id === assignedToId);
       selectedTicket.assignedTo = devObj || { id: assignedToId };
@@ -4703,6 +4876,12 @@ async function saveDrawerTicketChanges() {
 
     // Atualizar cabeçalho, título clicável e badges do painel lateral
     renderDrawerHeaderMetaAndTitle(selectedTicket);
+    renderDrawerLayoutField(
+      newLayoutId || selectedTicket.layoutId,
+      selectedTicket.layout?.code,
+      selectedTicket.layout?.name,
+      selectedTicket.layout?.status
+    );
 
     // Se a descrição foi salva, atualizar visualização com sanitização e imagens autenticadas
     if (payload.description) {
@@ -4736,10 +4915,22 @@ async function saveDrawerTicketChanges() {
     try {
       const refreshed = await window.conciliadorAPI.fetchDemandDetails(selectedTicket.id);
       syncClosedAtFromDetails(refreshed);
+      if (!refreshed.layout && (selectedTicket.layout || updatedLayoutObj)) {
+        refreshed.layout = selectedTicket.layout || updatedLayoutObj;
+      }
+      if (!refreshed.layoutId && (selectedTicket.layoutId || newLayoutId)) {
+        refreshed.layoutId = selectedTicket.layoutId || newLayoutId;
+      }
       selectedTicket = { ...selectedTicket, ...refreshed };
       drawerCurrentComments = refreshed.comments || [];
       drawerCurrentEvents = (refreshed.events || []).filter(e => e.kind !== 'comment');
       renderDrawerActivityStream();
+      renderDrawerLayoutField(
+        selectedTicket.layoutId,
+        selectedTicket.layout?.code,
+        selectedTicket.layout?.name,
+        selectedTicket.layout?.status
+      );
     } catch (e) {
       console.warn('Could not refresh timeline events after save:', e);
     }

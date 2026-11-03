@@ -431,6 +431,73 @@ try {
     assert.ok(storeJs.includes("this.activeFilterId === 'all' ? 'number_desc'"), 'store.js must initialize sortBy to number_desc for all filter');
     assert.ok(storeJs.includes("if (filterId === 'all')") && storeJs.includes("this.sortBy = 'number_desc'"), 'setActiveFilterId must switch to number_desc when selecting all');
     assert.ok(storeJs.includes("effectiveSortBy = (this.activeFilterId === 'all'"), 'getFilteredDemands must prioritize number_desc on all filter');
+
+    // Test 27: Layout association persistence on create and edit (linkTicketLayout & preservation)
+    console.log('Integration Test 27: Layout association persistence on create and edit');
+    assert.ok(calJs.includes('linkTicketLayout(createdTicket.id, layoutId)'), 'calendar.js must call linkTicketLayout after ticket creation');
+    assert.ok(drawerJs.includes('newLayoutId !== originalLayoutId'), 'drawer.js must compare newLayoutId with originalLayoutId before linking layout');
+    assert.ok(drawerJs.includes('dataset.originalLayoutId'), 'drawer.js must track originalLayoutId in DOM dataset');
+    assert.ok(drawerJs.includes('if (!refreshed.layout && (selectedTicket.layout || updatedLayoutObj))'), 'drawer.js must preserve layout after details refresh');
+    assert.ok(drawerJs.includes('if (!details.layout && ticket.layout)'), 'openDemandDrawer must preserve ticket.layout if details returns without it');
+    assert.ok(layoutsBrowserJs.includes('ensureLayoutId'), 'layouts-browser.js must define ensureLayoutId');
+
+    // Test 28: Activity stream timeline matching Importer Ultra styling and formatting
+    console.log('Integration Test 28: Activity stream timeline matching Importer Ultra styling & formatting');
+    assert.ok(drawerJs.includes('Posição na fila alterada'), 'drawer.js must format queue position changes as "Posição na fila alterada"');
+    assert.ok(drawerJs.includes('Posição na fila:'), 'drawer.js must format queue detail as "Posição na fila: "');
+    assert.ok(drawerJs.includes('TIMELINE_SVG_ICONS'), 'drawer.js must define TIMELINE_SVG_ICONS');
+    assert.ok(drawerJs.includes('formatStatusLabelClean'), 'drawer.js must define formatStatusLabelClean');
+    assert.ok(drawerJs.includes('resolveDeveloperName'), 'drawer.js must define resolveDeveloperName');
+    assert.ok(drawerJs.includes("dateFormatted = `${escapeHtml(authorName)} · ${timeStr}`"), 'drawer.js must format timeline event timestamp with time only');
+    assert.ok(styleCss.includes('.stream-event-desc-text'), 'style.css must style .stream-event-desc-text');
+    assert.ok(styleCss.includes('.stream-event-icon svg'), 'style.css must style .stream-event-icon svg');
+
+    // Test 29: Auto-increment versioning on download when identical/existing file exists
+    console.log('Integration Test 29: Auto-increment versioning on download when file exists');
+    const mainJs = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+    assert.ok(mainJs.includes('getUniqueVersionedFilePath'), 'main.js must define getUniqueVersionedFilePath');
+    assert.ok(mainJs.includes('getUniqueVersionedFilePath(downloadsDir, fileName)'), 'save-to-downloads must call getUniqueVersionedFilePath');
+    assert.ok(mainJs.includes('getUniqueVersionedFilePath(downloadsDir, filename)'), 'will-download must call getUniqueVersionedFilePath');
+    assert.ok(drawerJs.includes('const savedFileName = res.fileName || targetFileName;'), 'drawer.js must use saved versioned filename in download notification');
+
+    // Functional test of the versioning algorithm using a temp directory
+    const testTempDir = path.join(__dirname, '..', 'tmp_version_test');
+    if (!fs.existsSync(testTempDir)) fs.mkdirSync(testTempDir, { recursive: true });
+    try {
+      // Simulate getUniqueVersionedFilePath logic from main.js
+      const vm = require('vm');
+      const sandbox = { fs, path, dir: testTempDir, getUniqueVersionedFilePath: null };
+      const fnCode = mainJs.match(/function getUniqueVersionedFilePath[\s\S]*?\n\}/)[0];
+      vm.createContext(sandbox);
+      vm.runInContext(fnCode, sandbox);
+
+      // 1. Initial file does not exist -> uses original name
+      const res1 = sandbox.getUniqueVersionedFilePath(testTempDir, '13-doc-1.pdf');
+      assert.strictEqual(res1.fileName, '13-doc-1.pdf', 'Should keep original name when file does not exist');
+      fs.writeFileSync(res1.path, 'content 1');
+
+      // 2. Duplicate file exists -> renames with version (1)
+      const res2 = sandbox.getUniqueVersionedFilePath(testTempDir, '13-doc-1.pdf');
+      assert.strictEqual(res2.fileName, '13-doc-1 (1).pdf', 'Should rename to (1) when original exists');
+      fs.writeFileSync(res2.path, 'content 2');
+
+      // 3. Second duplicate -> renames with version (2)
+      const res3 = sandbox.getUniqueVersionedFilePath(testTempDir, '13-doc-1.pdf');
+      assert.strictEqual(res3.fileName, '13-doc-1 (2).pdf', 'Should rename to (2) when (1) exists');
+      fs.writeFileSync(res3.path, 'content 3');
+
+      // 4. File already with version tag _v1 -> increments to _v2
+      fs.writeFileSync(path.join(testTempDir, 'manual_v1.docx'), 'v1');
+      const resV = sandbox.getUniqueVersionedFilePath(testTempDir, 'manual_v1.docx');
+      assert.strictEqual(resV.fileName, 'manual_v2.docx', 'Should increment _v1 to _v2');
+
+      console.log('   ✓ getUniqueVersionedFilePath algorithm verified with real filesystem simulation');
+    } finally {
+      // Cleanup temp test directory
+      try {
+        fs.rmSync(testTempDir, { recursive: true, force: true });
+      } catch (e) {}
+    }
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

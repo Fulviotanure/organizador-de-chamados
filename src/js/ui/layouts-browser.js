@@ -350,7 +350,8 @@ function resolveLayoutId(layoutId, layoutCode) {
   const codeStr = String(layoutCode).trim();
   
   if (layoutCodeToIdCache.has(codeStr)) {
-    return layoutCodeToIdCache.get(codeStr).id;
+    const cached = layoutCodeToIdCache.get(codeStr);
+    if (cached && cached.id) return String(cached.id);
   }
   
   const allDemands = window.appStore?.demands || [];
@@ -363,6 +364,25 @@ function resolveLayoutId(layoutId, layoutCode) {
   }
   return null;
 }
+
+// Resolução assíncrona garantida de UUID do Layout caso não esteja no cache em memória
+async function ensureLayoutId(layoutId, layoutCode) {
+  const resolved = resolveLayoutId(layoutId, layoutCode);
+  if (resolved) return resolved;
+  if (!layoutCode || !window.conciliadorAPI?.searchLayouts) return null;
+  try {
+    const codeStr = String(layoutCode).trim();
+    const res = await window.conciliadorAPI.searchLayouts(codeStr, 5);
+    const list = res?.data || (Array.isArray(res) ? res : []);
+    const exact = list.find(l => String(l.code != null ? l.code : '').trim() === codeStr);
+    if (exact && exact.id) {
+      registerLayoutInCache(exact);
+      return String(exact.id);
+    }
+  } catch (e) {}
+  return null;
+}
+window.ensureLayoutId = ensureLayoutId;
 
 // Abre a página do Layout no Importer Ultra (https://importer.conciliadorcontabil.com.br/support/layouts/:id)
 async function openLayoutInImporter(layoutId, layoutCode) {
@@ -613,13 +633,18 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
   // Botão para apenas incluir o layout
   const btnConfirmHeader = alertBox.querySelector('#btnConfirmSameLayoutHeader');
   if (btnConfirmHeader) {
-    btnConfirmHeader.addEventListener('click', (e) => {
+    btnConfirmHeader.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const ot = openTickets[0];
-      const lId = (ot && (ot.layoutId || ot.layout?.id)) || targetLayoutId || null;
       const lCode = (ot && (ot.layout?.code || ot.layoutCode)) || targetLayoutCode;
       const lName = (ot && (ot.layout?.name || ot.layoutName)) || '';
+      let lId = (ot && (ot.layoutId || ot.layout?.id)) || targetLayoutId || null;
+
+      if (!lId && lCode) {
+        lId = await ensureLayoutId(null, lCode);
+      }
+
       if (lCode && typeof renderNewTicketLayoutField === 'function') {
         renderNewTicketLayoutField(lId, lCode, lName);
         checkNewTicketLayoutConflicts(lCode, lId);
@@ -632,7 +657,7 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
 
   // Botões para usar o mesmo Dev e Data do chamado anterior
   alertBox.querySelectorAll('.btn-copy-same-dev-date').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const tId = btn.dataset.ticketId;
@@ -640,9 +665,14 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
       if (!ot) return;
 
       // 1. Incluir/Vincular o Layout no formulário
-      const lId = ot.layoutId || ot.layout?.id || targetLayoutId || null;
       const lCode = ot.layout?.code || ot.layoutCode || targetLayoutCode;
       const lName = ot.layout?.name || ot.layoutName || '';
+      let lId = ot.layoutId || ot.layout?.id || targetLayoutId || null;
+
+      if (!lId && lCode) {
+        lId = await ensureLayoutId(null, lCode);
+      }
+
       if (lCode && typeof renderNewTicketLayoutField === 'function') {
         renderNewTicketLayoutField(lId, lCode, lName);
       }
