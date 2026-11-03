@@ -376,6 +376,7 @@ function setupEventListeners() {
       await window.appStore.setActiveFilterId('all');
     } else {
       window.appStore.activeFilterId = 'all';
+      window.appStore.sortBy = 'number_desc';
     }
 
     const searchInput = document.getElementById('inputSearch');

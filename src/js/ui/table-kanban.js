@@ -138,6 +138,9 @@ function renderFixedFiltersList() {
         await window.appStore.setActiveFilterId(f.id);
       } else {
         window.appStore.activeFilterId = f.id;
+        if (f.id === 'all') {
+          window.appStore.sortBy = 'number_desc';
+        }
       }
       renderFixedFiltersList();
       renderDemands();
@@ -174,6 +177,11 @@ function renderFixedFiltersList() {
 function renderDemands() {
   const activePreset = window.appStore.fixedFilters.find(f => f.id === window.appStore.activeFilterId) || window.appStore.fixedFilters[0];
   const filteredDemands = window.appStore.getFilteredDemands();
+
+  const sortSelect = document.getElementById('quickSelectSort');
+  if (sortSelect && sortSelect.value !== window.appStore.sortBy) {
+    sortSelect.value = window.appStore.sortBy;
+  }
 
   // Header update
   const titleEl = document.getElementById('activeFilterTitle');

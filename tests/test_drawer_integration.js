@@ -425,6 +425,12 @@ try {
     assert.ok(styleCss.includes('.inline-att-btn-delete'), 'style.css must style .inline-att-btn-delete');
     assert.ok(styleCss.includes('.btn-delete-attachment'), 'style.css must style .btn-delete-attachment');
     assert.ok(indexHtml.includes('id="btnLightboxDelete"'), 'index.html must have btnLightboxDelete button in lightbox');
+
+    // Test 26: "Todos" tab defaults to highest ticket number at top (number_desc)
+    console.log('Integration Test 26: "Todos" tab defaults to highest ticket number at top');
+    assert.ok(storeJs.includes("this.activeFilterId === 'all' ? 'number_desc'"), 'store.js must initialize sortBy to number_desc for all filter');
+    assert.ok(storeJs.includes("if (filterId === 'all')") && storeJs.includes("this.sortBy = 'number_desc'"), 'setActiveFilterId must switch to number_desc when selecting all');
+    assert.ok(storeJs.includes("effectiveSortBy = (this.activeFilterId === 'all'"), 'getFilteredDemands must prioritize number_desc on all filter');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

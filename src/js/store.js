@@ -20,7 +20,7 @@ class AppStore {
     };
 
     // Sorting state: 'deliveryDueDate_asc' | 'deliveryDueDate_desc' | 'createdAt_desc' | 'createdAt_asc' | 'number_desc' | 'number_asc'
-    this.sortBy = 'deliveryDueDate_asc';
+    this.sortBy = this.activeFilterId === 'all' ? 'number_desc' : 'deliveryDueDate_asc';
 
 
     // User session
@@ -265,10 +265,14 @@ class AppStore {
         } else {
           this.activeFilterId = 'all';
         }
+        if (this.activeFilterId === 'all') {
+          this.sortBy = 'number_desc';
+        }
       } catch (err) {
         console.warn('Storage init fallback to defaults:', err);
         this.fixedFilters = this.getDefaultFixedFilters();
         this.activeFilterId = 'all';
+        this.sortBy = 'number_desc';
       }
     } else {
       this.fixedFilters = this.getDefaultFixedFilters();
@@ -283,13 +287,26 @@ class AppStore {
       } else {
         this.activeFilterId = 'all';
       }
+      if (this.activeFilterId === 'all') {
+        this.sortBy = 'number_desc';
+      }
     }
   }
 
   // Define e persiste a fila/filtro selecionado por último
   async setActiveFilterId(filterId) {
     if (!filterId) return;
+    const prevFilterId = this.activeFilterId;
     this.activeFilterId = filterId;
+
+    // Na aba "Todos", organizar por padrão o maior chamado no topo (número decrescente)
+    if (filterId === 'all') {
+      this.sortBy = 'number_desc';
+    } else if (prevFilterId === 'all' && this.sortBy === 'number_desc') {
+      // Ao sair do "Todos" para filas com prazos (Na Fila, Em Progresso, etc), restaura o padrão de prazos
+      this.sortBy = 'deliveryDueDate_asc';
+    }
+
     if (window.electronAPI && typeof window.electronAPI.saveStorage === 'function') {
       try {
         await window.electronAPI.saveStorage('activeFilterId', filterId);
@@ -302,6 +319,11 @@ class AppStore {
         localStorage.setItem('cc_activeFilterId', filterId);
       }
     } catch (e) {}
+
+    const sortSelect = document.getElementById('quickSelectSort');
+    if (sortSelect) {
+      sortSelect.value = this.sortBy;
+    }
   }
 
   getDefaultFixedFilters() {
@@ -1331,34 +1353,38 @@ class AppStore {
       return true;
     });
 
-    // 2. Sort by selected criteria
+    // 2. Sort by selected criteria (na aba "Todos", o padrão é o maior chamado no topo: number_desc)
+    const effectiveSortBy = (this.activeFilterId === 'all' && this.sortBy === 'deliveryDueDate_asc')
+      ? 'number_desc'
+      : this.sortBy;
+
     return filtered.sort((a, b) => {
-      if (this.sortBy === 'deliveryDueDate_asc') {
+      if (effectiveSortBy === 'deliveryDueDate_asc') {
         const dueA = a.deliveryDueDate || a.clientDueDate;
         const dueB = b.deliveryDueDate || b.clientDueDate;
-        if (!dueA && !dueB) return b.number - a.number;
+        if (!dueA && !dueB) return (b.number || 0) - (a.number || 0);
         if (!dueA) return 1; // null due dates at the bottom
         if (!dueB) return -1;
         return new Date(dueA) - new Date(dueB);
       }
-      if (this.sortBy === 'deliveryDueDate_desc') {
+      if (effectiveSortBy === 'deliveryDueDate_desc') {
         const dueA = a.deliveryDueDate || a.clientDueDate;
         const dueB = b.deliveryDueDate || b.clientDueDate;
-        if (!dueA && !dueB) return b.number - a.number;
+        if (!dueA && !dueB) return (b.number || 0) - (a.number || 0);
         if (!dueA) return 1;
         if (!dueB) return -1;
         return new Date(dueB) - new Date(dueA);
       }
-      if (this.sortBy === 'createdAt_desc') {
+      if (effectiveSortBy === 'createdAt_desc') {
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       }
-      if (this.sortBy === 'createdAt_asc') {
+      if (effectiveSortBy === 'createdAt_asc') {
         return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
       }
-      if (this.sortBy === 'number_desc') {
+      if (effectiveSortBy === 'number_desc') {
         return (b.number || 0) - (a.number || 0);
       }
-      if (this.sortBy === 'number_asc') {
+      if (effectiveSortBy === 'number_asc') {
         return (a.number || 0) - (b.number || 0);
       }
       return 0;
