@@ -2285,59 +2285,205 @@ function toggleDrawerDescEdit(forceState) {
   setDrawerFieldsEditable(shouldOpen);
 }
 
-// Permite colar imagens/prints diretamente na descrição detalhada (modo edição ou ativando edição se em leitura)
+// Permite colar e arrastar imagens/prints diretamente na descrição detalhada,
+// exibindo-as imediatamente no editor rico e enviando como anexo oficial do chamado
+async function handleImageFilesIntoDesc(files) {
+  if (!files || files.length === 0) return;
+  if (!selectedTicket || !selectedTicket.id) {
+    if (typeof showToast === 'function') {
+      showToast('⚠️ Abra uma demanda para anexar a imagem à descrição.', 'warning', 3000);
+    }
+    return;
+  }
+
+  // Se estiver em modo de leitura, habilita o modo de edição primeiro
+  if (typeof isDrawerEditable !== 'undefined' && !isDrawerEditable) {
+    setDrawerFieldsEditable(true);
+  } else if (typeof window.setDrawerFieldsEditable === 'function' && window.isDrawerFieldsEditable && !window.isDrawerFieldsEditable()) {
+    window.setDrawerFieldsEditable(true);
+  }
+
+  const targetEditor = document.getElementById('drawerEditDescEditor');
+  if (!targetEditor) return;
+
+  const validFiles = Array.from(files).filter(f => {
+    return f && ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''));
+  });
+
+  if (validFiles.length === 0) return;
+
+  for (let idx = 0; idx < validFiles.length; idx++) {
+    const rawFile = validFiles[idx];
+    let fileName = rawFile.name || '';
+    if (!fileName || fileName === 'image.png') {
+      const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+      fileName = `print-${timeTag}${idx > 0 ? `-${idx + 1}` : ''}.png`;
+    }
+    const file = new File([rawFile], fileName, { type: rawFile.type || 'image/png' });
+    const uploadId = 'desc_up_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+
+    // 1. Gera DataURL para visualização instantânea
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (loadEv) => resolve(loadEv.target?.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    if (!dataUrl) continue;
+
+    // 2. Insere no editor visual imediatamente
+    targetEditor.focus();
+    const imgHtml = `<p><img src="${dataUrl}" data-desc-upload-id="${uploadId}" class="comment-inline-img is-loading" alt="${escapeHtml(file.name)}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+    document.execCommand('insertHTML', false, imgHtml);
+    targetEditor.dispatchEvent(new Event('input', { bubbles: true }));
+
+    if (typeof showToast === 'function') {
+      showToast('📸 Enviando imagem como anexo...', 'info', 2000);
+    }
+
+    // 3. Envia o anexo para o chamado na API
+    try {
+      const existingAttIds = new Set((selectedTicket.attachments || []).map(a => a.id));
+      const uploadedAttachments = await window.conciliadorAPI.uploadTicketAttachments(selectedTicket.id, [file]);
+
+      let newAtt = null;
+      if (Array.isArray(uploadedAttachments)) {
+        const newItems = uploadedAttachments.filter(a => a && a.id && !existingAttIds.has(a.id));
+        newAtt = newItems[newItems.length - 1] || uploadedAttachments[uploadedAttachments.length - 1];
+      }
+
+      if (newAtt && newAtt.id) {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
+                        (typeof window !== 'undefined' && window.API_BASE_URL) ||
+                        'https://api.importer.conciliadorcontabil.com.br/api/v1';
+        const attUrl = `${apiBase}/support/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
+
+        // Previne flash mantendo a imagem em cache local com a nova chave e URL
+        if (typeof attachmentBlobCache !== 'undefined') {
+          attachmentBlobCache.set(`${selectedTicket.id}_${newAtt.id}`, dataUrl);
+        }
+        if (typeof authenticatedImgBlobCache !== 'undefined') {
+          authenticatedImgBlobCache.set(attUrl, dataUrl);
+        }
+
+        // Atualiza a imagem dentro do editor de descrição com o anexo definitivo
+        const currentEditor = document.getElementById('drawerEditDescEditor');
+        if (currentEditor) {
+          const imgEl = currentEditor.querySelector(`img[data-desc-upload-id="${uploadId}"]`);
+          if (imgEl) {
+            imgEl.src = attUrl;
+            imgEl.setAttribute('data-original-src', attUrl);
+            imgEl.setAttribute('data-att-id', newAtt.id);
+            imgEl.removeAttribute('data-desc-upload-id');
+            imgEl.classList.remove('is-loading');
+          }
+          currentEditor.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Atualiza a lista de anexos do chamado na memória e na interface
+        if (!Array.isArray(selectedTicket.attachments)) {
+          selectedTicket.attachments = [];
+        }
+        if (!selectedTicket.attachments.some(a => a.id === newAtt.id)) {
+          selectedTicket.attachments.push(newAtt);
+        }
+        if (typeof renderDrawerAttachments === 'function') {
+          renderDrawerAttachments(selectedTicket.attachments);
+        }
+
+        if (window.appTabs && selectedTicket) {
+          window.appTabs.markDirty(selectedTicket.id, true);
+        }
+
+        if (typeof showToast === 'function') {
+          showToast('📸 Imagem salva como anexo e vinculada à descrição!', 'success', 2500);
+        }
+      }
+    } catch (uploadErr) {
+      console.error('Erro ao enviar imagem da descrição como anexo:', uploadErr);
+      const currentEditor = document.getElementById('drawerEditDescEditor');
+      if (currentEditor) {
+        const imgEl = currentEditor.querySelector(`img[data-desc-upload-id="${uploadId}"]`);
+        if (imgEl) {
+          imgEl.classList.remove('is-loading');
+        }
+      }
+      if (typeof showToast === 'function') {
+        showToast('⚠️ Erro ao enviar anexo da imagem: ' + uploadErr.message, 'warning', 4000);
+      }
+    }
+  }
+}
+
+// Permite colar e arrastar imagens/prints diretamente na descrição detalhada (modo edição ou ativando edição se em leitura)
 function setupDrawerDescriptionImagePaste() {
   const editor = document.getElementById('drawerEditDescEditor');
   const descView = document.getElementById('drawerDescription');
 
-  const handleImagePasteIntoDesc = (e) => {
+  const extractImageFilesFromEvent = (e) => {
+    const files = [];
     const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
+    const dataTransfer = e.dataTransfer;
 
-    const items = Array.from(clipboardData.items || []);
-    const imgItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'));
-    if (!imgItem) return;
+    if (clipboardData) {
+      const items = Array.from(clipboardData.items || []);
+      for (const it of items) {
+        if (it.kind === 'file') {
+          const f = it.getAsFile();
+          if (f && ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''))) {
+            files.push(f);
+          }
+        }
+      }
+      if (files.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+        for (const f of Array.from(clipboardData.files)) {
+          if ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || '')) {
+            files.push(f);
+          }
+        }
+      }
+    } else if (dataTransfer && dataTransfer.files && dataTransfer.files.length > 0) {
+      for (const f of Array.from(dataTransfer.files)) {
+        if ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || '')) {
+          files.push(f);
+        }
+      }
+    }
 
-    const file = imgItem.getAsFile();
-    if (!file) return;
+    return files;
+  };
+
+  const handleImagePasteIntoDesc = (e) => {
+    const files = extractImageFilesFromEvent(e);
+    if (files.length === 0) return;
 
     e.preventDefault();
     e.stopPropagation();
+    handleImageFilesIntoDesc(files);
+  };
 
-    // Se estiver em modo de leitura, habilita o modo de edição primeiro
-    if (typeof isDrawerEditable !== 'undefined' && !isDrawerEditable) {
-      setDrawerFieldsEditable(true);
-    } else if (typeof window.setDrawerFieldsEditable === 'function' && window.isDrawerFieldsEditable && !window.isDrawerFieldsEditable()) {
-      window.setDrawerFieldsEditable(true);
-    }
+  const handleImageDropIntoDesc = (e) => {
+    const files = extractImageFilesFromEvent(e);
+    if (files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (loadEv) => {
-      const dataUrl = loadEv.target?.result;
-      if (!dataUrl) return;
-
-      const targetEditor = document.getElementById('drawerEditDescEditor');
-      if (targetEditor) {
-        targetEditor.focus();
-        const imgHtml = `<p><img src="${dataUrl}" alt="Print colado" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
-        document.execCommand('insertHTML', false, imgHtml);
-        targetEditor.dispatchEvent(new Event('input', { bubbles: true }));
-        if (typeof showToast === 'function') {
-          showToast('📸 Imagem colada na descrição detalhada!', 'success', 2500);
-        }
-      }
-    };
-    reader.readAsDataURL(file);
+    e.preventDefault();
+    e.stopPropagation();
+    handleImageFilesIntoDesc(files);
   };
 
   if (editor && !editor.dataset.descPasteBound) {
     editor.dataset.descPasteBound = 'true';
     editor.addEventListener('paste', handleImagePasteIntoDesc);
+    editor.addEventListener('dragover', (e) => { e.preventDefault(); });
+    editor.addEventListener('drop', handleImageDropIntoDesc);
   }
 
   if (descView && !descView.dataset.descPasteBound) {
     descView.dataset.descPasteBound = 'true';
     descView.addEventListener('paste', handleImagePasteIntoDesc);
+    descView.addEventListener('dragover', (e) => { e.preventDefault(); });
+    descView.addEventListener('drop', handleImageDropIntoDesc);
   }
 }
 
@@ -4097,6 +4243,64 @@ async function saveDrawerTicketChanges() {
   if (editWrapper && editWrapper.style.display !== 'none') {
     const editor = document.getElementById('drawerEditDescEditor');
     if (editor) {
+      // Processar quaisquer imagens base64 restantes na descrição e enviá-las como anexos oficiais
+      const base64Imgs = Array.from(editor.querySelectorAll('img')).filter(img => {
+        const s = img.getAttribute('src') || '';
+        return s.startsWith('data:image/') && !s.startsWith('data:image/svg');
+      });
+
+      if (base64Imgs.length > 0) {
+        if (statusText) {
+          statusText.style.color = 'var(--accent-primary)';
+          statusText.textContent = `Enviando ${base64Imgs.length} anexo(s) de imagem da descrição...`;
+        }
+        const toFileFn = (typeof dataUrlToFile === 'function') ? dataUrlToFile : (window.dataUrlToFile || null);
+        for (let bIdx = 0; bIdx < base64Imgs.length; bIdx++) {
+          const img = base64Imgs[bIdx];
+          const dataUrl = img.getAttribute('src');
+          const file = toFileFn ? toFileFn(dataUrl, `descricao-anexo-${Date.now().toString(36)}-${bIdx + 1}.png`) : null;
+          if (file) {
+            try {
+              const existingAttIds = new Set((selectedTicket.attachments || []).map(a => a.id));
+              const uploaded = await window.conciliadorAPI.uploadTicketAttachments(selectedTicket.id, [file]);
+              let newAtt = null;
+              if (Array.isArray(uploaded)) {
+                const newItems = uploaded.filter(a => a && a.id && !existingAttIds.has(a.id));
+                newAtt = newItems[newItems.length - 1] || uploaded[uploaded.length - 1];
+              }
+              if (newAtt && newAtt.id) {
+                const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
+                                (typeof window !== 'undefined' && window.API_BASE_URL) ||
+                                'https://api.importer.conciliadorcontabil.com.br/api/v1';
+                const attUrl = `${apiBase}/support/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
+                if (typeof attachmentBlobCache !== 'undefined') {
+                  attachmentBlobCache.set(`${selectedTicket.id}_${newAtt.id}`, dataUrl);
+                }
+                if (typeof authenticatedImgBlobCache !== 'undefined') {
+                  authenticatedImgBlobCache.set(attUrl, dataUrl);
+                }
+                img.src = attUrl;
+                img.setAttribute('data-original-src', attUrl);
+                img.setAttribute('data-att-id', newAtt.id);
+                img.removeAttribute('data-desc-upload-id');
+                img.classList.remove('is-loading');
+                if (!Array.isArray(selectedTicket.attachments)) {
+                  selectedTicket.attachments = [];
+                }
+                if (!selectedTicket.attachments.some(a => a.id === newAtt.id)) {
+                  selectedTicket.attachments.push(newAtt);
+                }
+              }
+            } catch (attErr) {
+              console.warn('Erro ao enviar imagem base64 restante como anexo:', attErr);
+            }
+          }
+        }
+        if (typeof renderDrawerAttachments === 'function') {
+          renderDrawerAttachments(selectedTicket.attachments);
+        }
+      }
+
       payload.description = editor.innerHTML;
     }
   }
@@ -4387,6 +4591,7 @@ window.renderDrawerActivityStream = renderDrawerActivityStream;
 window.renderDrawerAttachments = renderDrawerAttachments;
 window.renderDrawerHeaderMetaAndTitle = renderDrawerHeaderMetaAndTitle;
 window.setupDrawerDescriptionImagePaste = setupDrawerDescriptionImagePaste;
+window.handleImageFilesIntoDesc = handleImageFilesIntoDesc;
 window.initCommentMentionsSystem = initCommentMentionsSystem;
 window.getTeamMembersForMentions = getTeamMembersForMentions;
 

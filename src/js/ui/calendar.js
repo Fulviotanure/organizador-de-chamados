@@ -1166,39 +1166,90 @@ function setupRichTextEditor() {
 
   if (!editor || !toolbar) return;
 
-  // Permite colar imagens diretamente com Ctrl+V dentro do próprio editor de descrição
+  const handleNewTicketDescImageInsertion = (file) => {
+    if (!file) return;
+    let fileName = file.name || '';
+    if (!fileName || fileName === 'image.png') {
+      const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+      fileName = `print-${timeTag}.png`;
+    }
+    const namedFile = new File([file], fileName, { type: file.type || 'image/png' });
+
+    // Adiciona também aos arquivos anexados do chamado
+    addFilesToTicket([namedFile]);
+
+    const reader = new FileReader();
+    reader.onload = (loadEv) => {
+      const dataUrl = loadEv.target?.result;
+      if (dataUrl) {
+        editor.focus();
+        const imgHtml = `<p><img src="${dataUrl}" data-desc-file-name="${escapeHtml(namedFile.name)}" alt="${escapeHtml(namedFile.name)}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
+        document.execCommand('insertHTML', false, imgHtml);
+        if (hiddenTextarea) {
+          hiddenTextarea.value = editor.innerHTML;
+        }
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        if (window.appTabs) {
+          window.appTabs.checkCreateTicketDirty();
+        }
+        showToast('📸 Imagem inserida na descrição e adicionada aos anexos!', 'success', 2500);
+      }
+    };
+    reader.readAsDataURL(namedFile);
+  };
+  if (typeof window !== 'undefined') {
+    window.handleNewTicketDescImageInsertion = handleNewTicketDescImageInsertion;
+  }
+
+  // Permite colar e arrastar imagens diretamente dentro do editor de descrição
   if (!editor.dataset.pasteBound) {
     editor.dataset.pasteBound = 'true';
     editor.addEventListener('paste', (e) => {
       const clipboardItems = e.clipboardData ? Array.from(e.clipboardData.items || []) : [];
-      const imageItem = clipboardItems.find(it => it.kind === 'file' && it.type.startsWith('image/'));
+      let foundImage = false;
+      for (const it of clipboardItems) {
+        if (it.kind === 'file') {
+          const file = it.getAsFile();
+          if (file && ((file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file.name || ''))) {
+            e.preventDefault();
+            e.stopPropagation();
+            foundImage = true;
+            handleNewTicketDescImageInsertion(file);
+          }
+        }
+      }
+      if (!foundImage && e.clipboardData?.files && e.clipboardData.files.length > 0) {
+        for (const file of Array.from(e.clipboardData.files)) {
+          if ((file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file.name || '')) {
+            e.preventDefault();
+            e.stopPropagation();
+            foundImage = true;
+            handleNewTicketDescImageInsertion(file);
+          }
+        }
+      }
+    });
 
-      if (imageItem) {
-        const file = imageItem.getAsFile();
-        if (file) {
+    editor.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      editor.classList.add('dragover');
+    });
+    editor.addEventListener('dragleave', () => {
+      editor.classList.remove('dragover');
+    });
+    editor.addEventListener('drop', (e) => {
+      editor.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files);
+        const imgFiles = files.filter(f => (f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''));
+        const otherFiles = files.filter(f => !imgFiles.includes(f));
+        if (otherFiles.length > 0) {
+          addFilesToTicket(otherFiles);
+        }
+        if (imgFiles.length > 0) {
           e.preventDefault();
           e.stopPropagation();
-
-          const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
-          const newFile = new File([file], `screenshot-${timeTag}.png`, { type: file.type });
-          // Adiciona também aos arquivos anexados
-          addFilesToTicket([newFile]);
-
-          const reader = new FileReader();
-          reader.onload = (loadEv) => {
-            const dataUrl = loadEv.target?.result;
-            if (dataUrl) {
-              editor.focus();
-              const imgHtml = `<p><img src="${dataUrl}" alt="Print colado" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" /></p><p><br></p>`;
-              document.execCommand('insertHTML', false, imgHtml);
-              if (hiddenTextarea) {
-                hiddenTextarea.value = editor.innerHTML;
-              }
-              editor.dispatchEvent(new Event('input', { bubbles: true }));
-              showToast('📸 Imagem colada e aberta na descrição!', 'success', 2500);
-            }
-          };
-          reader.readAsDataURL(newFile);
+          imgFiles.forEach(handleNewTicketDescImageInsertion);
         }
       }
     });
@@ -1853,11 +1904,41 @@ async function submitCreateTicket() {
   const dueDate = document.getElementById('newTicketDueDate')?.value;
 
   const descEditor = document.getElementById('newTicketDescriptionEditor');
-  const descriptionHtml = descEditor ? descEditor.innerHTML.trim() : '';
+  let descriptionHtml = descEditor ? descEditor.innerHTML.trim() : '';
   const descriptionText = descEditor ? descEditor.innerText.trim() : '';
   const fallbackDesc = document.getElementById('newTicketDescription')?.value.trim() || '';
   const hasContent = !!(descriptionText || descriptionHtml.includes('<img'));
-  const description = hasContent ? descriptionHtml : fallbackDesc;
+  let description = hasContent ? descriptionHtml : fallbackDesc;
+
+  // Garante que todas as imagens coladas/arrastadas na descrição estejam incluídas na fila de anexos
+  const toFileFn = (typeof dataUrlToFile === 'function') ? dataUrlToFile : (window.dataUrlToFile || null);
+  const hasBase64Images = description.includes('data:image/');
+  if (hasBase64Images && toFileFn) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = description;
+    const base64Imgs = Array.from(tempDiv.querySelectorAll('img')).filter(img => {
+      const s = img.getAttribute('src') || '';
+      return s.startsWith('data:image/') && !s.startsWith('data:image/svg');
+    });
+
+    base64Imgs.forEach((img, idx) => {
+      const dataUrl = img.getAttribute('src');
+      let fName = img.getAttribute('data-desc-file-name') || img.getAttribute('alt') || '';
+      if (!fName || fName.startsWith('data:') || fName === 'Print colado') {
+        const timeTag = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+        fName = `print-${timeTag}-${idx + 1}.png`;
+        img.setAttribute('data-desc-file-name', fName);
+      }
+      const alreadyExists = newTicketSelectedFiles.some(f => f.name === fName);
+      if (!alreadyExists) {
+        const fileObj = toFileFn(dataUrl, fName);
+        if (fileObj) {
+          newTicketSelectedFiles.push(fileObj);
+        }
+      }
+    });
+    description = tempDiv.innerHTML;
+  }
 
   const errBox = document.getElementById('createTicketError');
   const btnSubmit = document.getElementById('btnSubmitCreateTicket');
@@ -1891,9 +1972,21 @@ async function submitCreateTicket() {
   }
 
   try {
+    // Para evitar erro 413 (Payload Too Large) ou truncamento na API durante o POST inicial,
+    // substituímos temporariamente as strings base64 pesadas por um placeholder leve mantendo os identificadores
+    let initialDescToSend = description;
+    if (hasBase64Images) {
+      initialDescToSend = description.replace(
+        /<img\s+([^>]*?)src=["']data:image\/[^"']+["']([^>]*?)>/gi,
+        (m, before, after) => {
+          return `<img ${before}src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='100' viewBox='0 0 160 100'><rect width='160' height='100' rx='6' fill='%23131b2e'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2338bdf8' font-size='12' font-family='sans-serif'>🖼️ Enviando anexo...</text></svg>" ${after}>`;
+        }
+      );
+    }
+
     const payload = {
       title,
-      description,
+      description: initialDescToSend,
       typeId: typeId || undefined,
       productId: productId || undefined,
       priority
@@ -1927,11 +2020,12 @@ async function submitCreateTicket() {
 
     const createdTicket = await window.conciliadorAPI.createTicket(payload);
 
-    // If attachments were added, upload them now
+    // If attachments were added (including images extracted from description), upload them now
+    let uploadedAttachments = [];
     if (newTicketSelectedFiles.length > 0) {
       btnSubmit.innerHTML = `<span>📎</span> Enviando ${newTicketSelectedFiles.length} anexo(s)...`;
       try {
-        await window.conciliadorAPI.uploadTicketAttachments(createdTicket.id, newTicketSelectedFiles);
+        uploadedAttachments = await window.conciliadorAPI.uploadTicketAttachments(createdTicket.id, newTicketSelectedFiles);
       } catch (attErr) {
         console.warn('Erro ao enviar anexos:', attErr);
         if (window.electronAPI) {
@@ -1940,6 +2034,51 @@ async function submitCreateTicket() {
             `O chamado #${createdTicket.number} foi criado, mas houve falha no envio de anexos: ${attErr.message}`
           );
         }
+      }
+    }
+
+    // Se haviam imagens na descrição e os anexos foram enviados com sucesso,
+    // atualizamos a descrição do chamado para apontar diretamente para os anexos oficiais
+    if (hasBase64Images && Array.isArray(uploadedAttachments) && uploadedAttachments.length > 0) {
+      try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
+                        (typeof window !== 'undefined' && window.API_BASE_URL) ||
+                        'https://api.importer.conciliadorcontabil.com.br/api/v1';
+        const updateDiv = document.createElement('div');
+        updateDiv.innerHTML = description;
+        const descImgs = Array.from(updateDiv.querySelectorAll('img')).filter(img => {
+          const s = img.getAttribute('src') || '';
+          return s.startsWith('data:image/') && !s.startsWith('data:image/svg');
+        });
+
+        descImgs.forEach((img, idx) => {
+          const dataUrl = img.getAttribute('src');
+          const targetName = img.getAttribute('data-desc-file-name') || img.getAttribute('alt');
+          const att = (targetName && uploadedAttachments.find(a => a && (a.fileName === targetName || a.name === targetName))) ||
+                      uploadedAttachments[idx] ||
+                      uploadedAttachments[uploadedAttachments.length - 1];
+
+          if (att && att.id) {
+            const attUrl = `${apiBase}/support/tickets/${createdTicket.id}/attachments/${att.id}/download`;
+            if (typeof attachmentBlobCache !== 'undefined') {
+              attachmentBlobCache.set(`${createdTicket.id}_${att.id}`, dataUrl);
+            }
+            if (typeof authenticatedImgBlobCache !== 'undefined') {
+              authenticatedImgBlobCache.set(attUrl, dataUrl);
+            }
+            img.src = attUrl;
+            img.setAttribute('data-original-src', attUrl);
+            img.setAttribute('data-att-id', att.id);
+            img.removeAttribute('data-desc-file-name');
+          }
+        });
+
+        const finalDesc = updateDiv.innerHTML;
+        await window.conciliadorAPI.updateTicket(createdTicket.id, { description: finalDesc });
+        createdTicket.description = finalDesc;
+        createdTicket.attachments = uploadedAttachments;
+      } catch (updErr) {
+        console.warn('Erro ao atualizar URLs de anexos na descrição:', updErr);
       }
     }
 

@@ -366,6 +366,32 @@ try {
         execSync(`node -c "${fullPath}"`);
       }
     });
+
+    // Test 22: Description image attachment upload and persistence
+    console.log('Integration Test 22: Description image attachment upload and persistence');
+    const tableKanbanJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'table-kanban.js'), 'utf8');
+    assert.ok(tableKanbanJs.includes('function dataUrlToFile'), 'dataUrlToFile function must exist in table-kanban.js');
+    assert.ok(drawerJs.includes('handleImageFilesIntoDesc'), 'handleImageFilesIntoDesc must exist in drawer.js');
+    assert.ok(drawerJs.includes('uploadTicketAttachments'), 'drawer.js must call uploadTicketAttachments for description images');
+    assert.ok(drawerJs.includes('data-desc-upload-id'), 'drawer.js must track description image upload with data-desc-upload-id');
+    
+    const calJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'calendar.js'), 'utf8');
+    assert.ok(calJs.includes('handleNewTicketDescImageInsertion'), 'calendar.js must define handleNewTicketDescImageInsertion');
+    assert.ok(calJs.includes('addFilesToTicket([namedFile])'), 'calendar.js must add pasted/dropped description images to ticket attachments');
+    assert.ok(calJs.includes('updateTicket') && calJs.includes('uploadedAttachments'), 'calendar.js must update ticket description with uploaded attachment URLs');
+    
+    assert.ok(indexHtml.includes('id="btnDrawerDescAddImg"'), 'Drawer toolbar must have btnDrawerDescAddImg button');
+    assert.ok(indexHtml.includes('id="btnNewTicketDescAddImg"'), 'New ticket toolbar must have btnNewTicketDescAddImg button');
+
+    // Test dataUrlToFile conversion in Node
+    const vmContext = { atob, File, Uint8Array, console };
+    vm.createContext(vmContext);
+    vm.runInContext(tableKanbanJs + '\nthis.dataUrlToFile = dataUrlToFile;', vmContext);
+    const sampleDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const convertedFile = vmContext.dataUrlToFile(sampleDataUrl, 'teste-print.png');
+    assert.ok(convertedFile, 'File object should be successfully generated');
+    assert.strictEqual(convertedFile.name, 'teste-print.png', 'File name should match');
+    assert.strictEqual(convertedFile.type, 'image/png', 'MIME type should be image/png');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

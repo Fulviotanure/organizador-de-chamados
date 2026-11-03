@@ -536,10 +536,43 @@ function setupEventListeners() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       const cmd = btn.dataset.cmd;
+      if (!cmd) return;
       const val = btn.dataset.val || null;
       document.execCommand(cmd, false, val);
       document.getElementById('drawerEditDescEditor')?.focus();
     });
+  });
+
+  // Botão Inserir Imagem na Descrição do Drawer
+  document.getElementById('btnDrawerDescAddImg')?.addEventListener('click', () => {
+    document.getElementById('inputDrawerDescFile')?.click();
+  });
+  document.getElementById('inputDrawerDescFile')?.addEventListener('change', (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      if (typeof handleImageFilesIntoDesc === 'function') {
+        handleImageFilesIntoDesc(Array.from(files));
+      } else if (typeof window.handleImageFilesIntoDesc === 'function') {
+        window.handleImageFilesIntoDesc(Array.from(files));
+      }
+      e.target.value = '';
+    }
+  });
+
+  // Botão Inserir Imagem na Descrição de Novo Chamado
+  document.getElementById('btnNewTicketDescAddImg')?.addEventListener('click', () => {
+    document.getElementById('inputNewTicketDescFile')?.click();
+  });
+  document.getElementById('inputNewTicketDescFile')?.addEventListener('change', (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      if (typeof handleNewTicketDescImageInsertion === 'function') {
+        Array.from(files).forEach(f => handleNewTicketDescImageInsertion(f));
+      } else if (typeof window.handleNewTicketDescImageInsertion === 'function') {
+        Array.from(files).forEach(f => window.handleNewTicketDescImageInsertion(f));
+      }
+      e.target.value = '';
+    }
   });
 
   // Submit Comment & Keyboard Shortcut (Ctrl+Enter)

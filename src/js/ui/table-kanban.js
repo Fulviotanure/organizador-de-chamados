@@ -1024,6 +1024,33 @@ function sanitizeHtml(dirtyHtml) {
   }
 }
 
+// Converte uma string base64 / data URL em objeto File nativo para upload como anexo
+function dataUrlToFile(dataUrl, defaultName = 'imagem.png') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
+  try {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return null;
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    const ext = mime.split('/')[1] || 'png';
+    let filename = defaultName || `print-${Date.now().toString(36)}.png`;
+    if (!filename.includes('.')) filename += `.${ext}`;
+    return new File([u8arr], filename, { type: mime });
+  } catch (err) {
+    console.error('Erro em dataUrlToFile:', err);
+    return null;
+  }
+}
+if (typeof window !== 'undefined') {
+  window.dataUrlToFile = dataUrlToFile;
+}
+
 // Priority Helper & Badges (low, medium, high, urgent matching API enum)
 function normalizePriorityToApi(val) {
   if (!val) return 'medium';

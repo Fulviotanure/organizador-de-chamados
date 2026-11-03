@@ -128,7 +128,7 @@
           </select>
         </div>
         <div class="sidebar-stats-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px;">
-          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.54</span>
+          <span id="appVersionLabel" style="color: var(--text-muted); font-size: 11px;">Versão v1.0.55</span>
           <button type="button" id="btnCheckUpdates" title="Verificar novas versões no GitHub" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
             <span>🔄</span> Atualizar
           </button>
@@ -557,6 +557,8 @@
                   <span class="toolbar-separator"></span>
                   <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre" title="Bloco de código / SQL">&lt;/&gt; Código</button>
                   <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="blockquote" title="Citação">❝ Citação</button>
+                  <button type="button" class="toolbar-btn" id="btnDrawerDescAddImg" title="Inserir Imagem / Print na Descrição">🖼️ Imagem</button>
+                  <input type="file" id="inputDrawerDescFile" accept="image/*" style="display: none;" multiple>
                   <button type="button" class="toolbar-btn" data-cmd="removeFormat" title="Limpar formatação">🧹 Limpar</button>
                 </div>
                 
@@ -1231,6 +1233,8 @@
                 <span class="toolbar-separator"></span>
                 <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="pre" title="Bloco de código / SQL">&lt;/&gt; Código</button>
                 <button type="button" class="toolbar-btn" data-cmd="formatBlock" data-val="blockquote" title="Citação">❝ Citação</button>
+                <button type="button" class="toolbar-btn" id="btnNewTicketDescAddImg" title="Inserir Imagem / Print na Descrição">🖼️ Imagem</button>
+                <input type="file" id="inputNewTicketDescFile" accept="image/*" style="display: none;" multiple>
                 <button type="button" class="toolbar-btn" data-cmd="removeFormat" title="Limpar formatação">🧹 Limpar</button>
               </div>
               <div class="rich-editor-content" id="newTicketDescriptionEditor" contenteditable="true" data-placeholder="Informe todas as orientações para o desenvolvimento, regras contábeis, campos, selects ou particularidades..."></div>
