@@ -548,34 +548,176 @@ function checkNewTicketLayoutConflicts(targetLayoutCode, targetLayoutId) {
     return;
   }
 
+  const currentSelectedLayoutId = document.getElementById('newTicketLayoutId')?.value;
+  const selectedBox = document.getElementById('newTicketSelectedLayoutBox');
+  const isLayoutAlreadySelected = !!currentSelectedLayoutId && selectedBox && selectedBox.style.display !== 'none';
+
   alertBox.style.display = 'block';
   alertBox.style.background = 'rgba(245, 158, 11, 0.12)';
   alertBox.style.borderColor = 'rgba(245, 158, 11, 0.45)';
   alertBox.innerHTML = `
-    <div class="new-ticket-alert-header">
-      <span>⚠️</span>
-      <span>Atenção: Já existe(m) ${openTickets.length} chamado(s) aberto(s) com este Layout!</span>
+    <div class="new-ticket-alert-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span>⚠️</span>
+        <span>Atenção: Já existe(m) ${openTickets.length} chamado(s) aberto(s) com este Layout!</span>
+      </div>
+      ${!isLayoutAlreadySelected ? `
+        <button type="button" class="btn-confirm-same-layout" id="btnConfirmSameLayoutHeader" title="Confirmar e incluir este layout no chamado">
+          <span>➕</span> Incluir Layout ${escapeHtml(String(targetLayoutCode || ''))}
+        </button>
+      ` : `
+        <span style="font-size: 11px; color: #34d399; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 2px 8px;">
+          ✓ Layout Vinculado
+        </span>
+      `}
     </div>
     <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px;">
       Quem está com chamado aberto deste layout:
     </div>
-    <div style="display: flex; flex-direction: column; gap: 5px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
       ${openTickets.map(ot => {
         const devName = ot.assignedTo?.name || 'Não atribuído';
+        let formattedDate = '';
+        const dueSource = ot.deliveryDueDate || ot.dueDate;
+        if (dueSource) {
+          try {
+            const dObj = new Date(dueSource);
+            if (!isNaN(dObj.getTime())) {
+              const dy = dObj.getUTCFullYear();
+              const dm = String(dObj.getUTCMonth() + 1).padStart(2, '0');
+              const dd = String(dObj.getUTCDate()).padStart(2, '0');
+              formattedDate = `${dd}/${dm}/${dy}`;
+            }
+          } catch (e) {}
+        }
         return `
-          <div class="new-ticket-alert-item">
-            <div>
+          <div class="new-ticket-alert-item" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
               <strong style="color: #38bdf8;">#${ot.number}</strong>
-              <span style="margin-left: 6px; color: #f3f4f6;">${escapeHtml(ot.title)}</span>
+              <span style="color: #f3f4f6;">${escapeHtml(ot.title)}</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span style="color: #a5b4fc; font-weight: 600;">Dev: ${escapeHtml(devName)}</span>
+              ${formattedDate ? `<span style="color: #38bdf8; font-size: 11px; background: rgba(56, 189, 248, 0.1); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.2);" title="Prazo de entrega do chamado anterior">📅 ${formattedDate}</span>` : ''}
               ${getStatusBadgeHtml(ot.status)}
+              <button type="button" class="btn-copy-same-dev-date" data-ticket-id="${ot.id}" title="Selecionar automaticamente o mesmo desenvolvedor (${escapeHtml(devName)}) e prazo (${formattedDate || 'sem data'}) para este chamado">
+                <span>⚡</span> Usar mesmo Dev e Data
+              </button>
             </div>
           </div>
         `;
       }).join('')}
     </div>
   `;
+
+  // Botão para apenas incluir o layout
+  const btnConfirmHeader = alertBox.querySelector('#btnConfirmSameLayoutHeader');
+  if (btnConfirmHeader) {
+    btnConfirmHeader.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const ot = openTickets[0];
+      const lId = (ot && (ot.layoutId || ot.layout?.id)) || targetLayoutId || null;
+      const lCode = (ot && (ot.layout?.code || ot.layoutCode)) || targetLayoutCode;
+      const lName = (ot && (ot.layout?.name || ot.layoutName)) || '';
+      if (lCode && typeof renderNewTicketLayoutField === 'function') {
+        renderNewTicketLayoutField(lId, lCode, lName);
+        checkNewTicketLayoutConflicts(lCode, lId);
+        if (typeof showToast === 'function') {
+          showToast(`✅ Layout ${lCode} incluído com sucesso!`, 'success', 2500);
+        }
+      }
+    });
+  }
+
+  // Botões para usar o mesmo Dev e Data do chamado anterior
+  alertBox.querySelectorAll('.btn-copy-same-dev-date').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const tId = btn.dataset.ticketId;
+      const ot = openTickets.find(t => String(t.id) === String(tId));
+      if (!ot) return;
+
+      // 1. Incluir/Vincular o Layout no formulário
+      const lId = ot.layoutId || ot.layout?.id || targetLayoutId || null;
+      const lCode = ot.layout?.code || ot.layoutCode || targetLayoutCode;
+      const lName = ot.layout?.name || ot.layoutName || '';
+      if (lCode && typeof renderNewTicketLayoutField === 'function') {
+        renderNewTicketLayoutField(lId, lCode, lName);
+      }
+
+      // 2. Selecionar o mesmo Desenvolvedor (Dev)
+      const devId = ot.assignedTo?.id || ot.assignedToId || null;
+      const devName = ot.assignedTo?.name || ot.assignedToName || '';
+      if (devId) {
+        const devSelect = document.getElementById('newTicketAssignedTo');
+        if (devSelect) {
+          if (!Array.from(devSelect.options).some(o => o.value === devId)) {
+            const opt = document.createElement('option');
+            opt.value = devId;
+            opt.textContent = devName || 'Desenvolvedor';
+            devSelect.appendChild(opt);
+          }
+          devSelect.value = devId;
+          if (typeof renderDeveloperCalendar === 'function') {
+            renderDeveloperCalendar(devId);
+          }
+        }
+      }
+
+      // 3. Selecionar a mesma Data de Entrega
+      let dateFormatted = '';
+      const dueSource = ot.deliveryDueDate || ot.dueDate;
+      if (dueSource) {
+        try {
+          const dObj = new Date(dueSource);
+          if (!isNaN(dObj.getTime())) {
+            const y = dObj.getUTCFullYear();
+            const m = String(dObj.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(dObj.getUTCDate()).padStart(2, '0');
+            const dayStr = `${y}-${m}-${day}`;
+            dateFormatted = `${day}/${m}/${y}`;
+            if (typeof selectCalendarDate === 'function') {
+              selectCalendarDate(dayStr);
+            } else {
+              const hid = document.getElementById('newTicketDueDate');
+              if (hid) hid.value = dayStr;
+              const vis = document.getElementById('newTicketDeliveryDateInput');
+              if (vis) vis.value = dateFormatted;
+            }
+          }
+        } catch (dErr) {}
+      }
+
+      // Prazo do cliente (se existente no chamado anterior)
+      if (ot.clientDueDate) {
+        try {
+          const cd = new Date(ot.clientDueDate);
+          if (!isNaN(cd.getTime())) {
+            const cy = cd.getUTCFullYear();
+            const cm = String(cd.getUTCMonth() + 1).padStart(2, '0');
+            const cday = String(cd.getUTCDate()).padStart(2, '0');
+            const cInput = document.getElementById('newTicketClientDueDate');
+            if (cInput) cInput.value = `${cday}/${cm}/${cy}`;
+          }
+        } catch (cdErr) {}
+      }
+
+      // 4. Marca aba como alterada (dirty) se em sistema multi-abas
+      if (window.appTabs && typeof window.appTabs.checkCreateTicketDirty === 'function') {
+        window.appTabs.checkCreateTicketDirty();
+      }
+
+      // 5. Feedback visual ao usuário
+      const msg = `⚡ Chamado #${ot.number}: Layout ${lCode || ''}, Dev ${devName || 'atribuído'} e data ${dateFormatted || 'definida'} aplicados com sucesso!`;
+      if (typeof showToast === 'function') {
+        showToast(msg, 'success', 3500);
+      }
+
+      // 6. Atualizar o alerta para refletir o layout selecionado
+      checkNewTicketLayoutConflicts(lCode, lId);
+    });
+  });
 }
 

@@ -1876,6 +1876,31 @@ function setupLayoutAutocomplete() {
     }, 250);
   });
 
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const firstItem = dropdown.querySelector('.autocomplete-item');
+      if (firstItem && dropdown.style.display !== 'none') {
+        firstItem.click();
+      } else {
+        const rawQuery = input.value.trim();
+        if (rawQuery) {
+          const openTickets = (typeof getOpenTicketsWithSameLayout === 'function')
+            ? getOpenTicketsWithSameLayout(rawQuery, null, null)
+            : [];
+          if (openTickets.length > 0) {
+            const ot = openTickets[0];
+            const lId = ot.layoutId || ot.layout?.id || null;
+            const lCode = ot.layout?.code || ot.layoutCode || rawQuery;
+            const lName = ot.layout?.name || ot.layoutName || '';
+            renderNewTicketLayoutField(lId, lCode, lName);
+            checkNewTicketLayoutConflicts(lCode, lId);
+          }
+        }
+      }
+    }
+  });
+
   document.getElementById('btnNewTicketClearLayoutField')?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1900,7 +1925,18 @@ async function submitCreateTicket() {
   const priority = normalizePriorityToApi(document.getElementById('newTicketPriority')?.value);
   const database = document.getElementById('newTicketDatabase')?.value.trim();
   const movidesk = document.getElementById('newTicketMovidesk')?.value.trim();
-  const layoutId = document.getElementById('newTicketLayoutId')?.value;
+  let layoutId = document.getElementById('newTicketLayoutId')?.value;
+  const layoutSearchVal = document.getElementById('newTicketLayoutSearch')?.value.trim();
+  if (!layoutId && layoutSearchVal) {
+    const openTickets = (typeof getOpenTicketsWithSameLayout === 'function')
+      ? getOpenTicketsWithSameLayout(layoutSearchVal, null, null)
+      : [];
+    if (openTickets.length > 0) {
+      layoutId = openTickets[0].layoutId || openTickets[0].layout?.id || null;
+    } else if (typeof layoutCodeToIdCache !== 'undefined' && layoutCodeToIdCache.has(layoutSearchVal)) {
+      layoutId = layoutCodeToIdCache.get(layoutSearchVal).id;
+    }
+  }
   const dueDate = document.getElementById('newTicketDueDate')?.value;
 
   const descEditor = document.getElementById('newTicketDescriptionEditor');

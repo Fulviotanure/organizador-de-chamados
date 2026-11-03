@@ -392,6 +392,17 @@ try {
     assert.ok(convertedFile, 'File object should be successfully generated');
     assert.strictEqual(convertedFile.name, 'teste-print.png', 'File name should match');
     assert.strictEqual(convertedFile.type, 'image/png', 'MIME type should be image/png');
+
+    // Test 23: Include layout & copy dev and date from same layout open tickets
+    console.log('Integration Test 23: Include layout & copy dev and date from same layout open tickets');
+    const layoutsBrowserJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'layouts-browser.js'), 'utf8');
+    assert.ok(layoutsBrowserJs.includes('btn-copy-same-dev-date'), 'layouts-browser.js must render btn-copy-same-dev-date');
+    assert.ok(layoutsBrowserJs.includes('btnConfirmSameLayoutHeader'), 'layouts-browser.js must render btnConfirmSameLayoutHeader');
+    assert.ok(layoutsBrowserJs.includes('selectCalendarDate'), 'layouts-browser.js must copy delivery date via selectCalendarDate');
+    assert.ok(calJs.includes('getOpenTicketsWithSameLayout'), 'calendar.js must resolve layout from openTickets when typed');
+
+    assert.ok(styleCss.includes('.btn-copy-same-dev-date'), 'style.css must have .btn-copy-same-dev-date rule');
+    assert.ok(styleCss.includes('.btn-confirm-same-layout'), 'style.css must have .btn-confirm-same-layout rule');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract
