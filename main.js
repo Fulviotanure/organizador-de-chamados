@@ -1006,11 +1006,43 @@ app.on('before-quit', () => {
   flushStorageSync();
 });
 
+// Garante que os arquivos de dicionários pré-empacotados (.bdic) estejam disponíveis no perfil do usuário
+function ensureSpellcheckerDictionaries() {
+  try {
+    const userDictDir = path.join(app.getPath('userData'), 'Dictionaries');
+    if (!fs.existsSync(userDictDir)) {
+      fs.mkdirSync(userDictDir, { recursive: true });
+    }
+
+    const assetDictDir = path.join(__dirname, 'src', 'assets', 'dictionaries');
+    if (fs.existsSync(assetDictDir)) {
+      const files = fs.readdirSync(assetDictDir);
+      for (const file of files) {
+        if (file.endsWith('.bdic')) {
+          const dest = path.join(userDictDir, file);
+          if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) {
+            try {
+              fs.copyFileSync(path.join(assetDictDir, file), dest);
+            } catch (copyErr) {
+              console.warn(`Aviso ao copiar dicionário ${file}:`, copyErr.message);
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao inicializar dicionários ortográficos:', err.message);
+  }
+}
+
 app.whenReady().then(() => {
-  // Configuração do corretor ortográfico para Português (Brasil) e Inglês
+  // Inicializa dicionários locais antes de configurar o corretor ortográfico
+  ensureSpellcheckerDictionaries();
+
+  // Configuração do corretor ortográfico para Português do Brasil (pt-BR)
   if (session && session.defaultSession) {
     try {
-      session.defaultSession.setSpellCheckerLanguages(['pt-BR', 'en-US']);
+      session.defaultSession.setSpellCheckerLanguages(['pt-BR']);
     } catch (e) {
       console.warn('Erro ao configurar idiomas do corretor ortográfico:', e.message);
     }

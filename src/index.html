@@ -569,7 +569,7 @@
 
                 <!-- Modo Edição com Rich Editor (Visível ao clicar em Editar Demanda) -->
                 <div class="rich-editor-wrapper" id="drawerDescEditWrapper" style="display: none; border: none; background: transparent;">
-                  <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" style="min-height: 180px; max-height: 380px; overflow-y: auto;"></div>
+                  <div class="rich-editor-content" id="drawerEditDescEditor" contenteditable="true" spellcheck="true" lang="pt-BR" style="min-height: 180px; max-height: 380px; overflow-y: auto;"></div>
                 </div>
               </div>
             </div>
@@ -668,7 +668,7 @@
                 <!-- Dropdown de menções (@) -->
                 <div id="commentMentionsDropdown" class="comment-mentions-dropdown" style="display: none;"></div>
 
-                <textarea class="comment-textarea" id="drawerNewCommentText" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V... (use @ para citar alguém)"></textarea>
+                <textarea class="comment-textarea" id="drawerNewCommentText" spellcheck="true" lang="pt-BR" placeholder="Escreva aqui uma mensagem, parecer ou cole uma imagem/print diretamente com Ctrl+V... (use @ para citar alguém)"></textarea>
                 
                 <!-- Imagens/prints colados ou selecionados para a mensagem -->
                 <div id="drawerCommentPendingAttachments" class="comment-pending-attachments" style="display: none;"></div>
@@ -980,7 +980,7 @@
             <span>📝 Anotações Pessoais Salvas no seu Computador</span>
             <span style="font-size: 11px; color: var(--status-progress);" id="noteSaveStatus">Salvo automaticamente</span>
           </span>
-          <textarea class="notes-textarea" id="drawerLocalNotes" style="height: 200px;" placeholder="Escreva aqui anotações pessoais, pendências com o cliente, consultas SQL ou lembretes sobre este chamado..."></textarea>
+          <textarea class="notes-textarea" id="drawerLocalNotes" spellcheck="true" lang="pt-BR" style="height: 200px;" placeholder="Escreva aqui anotações pessoais, pendências com o cliente, consultas SQL ou lembretes sobre este chamado..."></textarea>
         </div>
       </div>
 
@@ -1237,7 +1237,7 @@
                 <input type="file" id="inputNewTicketDescFile" accept="image/*" style="display: none;" multiple>
                 <button type="button" class="toolbar-btn" data-cmd="removeFormat" title="Limpar formatação">🧹 Limpar</button>
               </div>
-              <div class="rich-editor-content" id="newTicketDescriptionEditor" contenteditable="true" data-placeholder="Informe todas as orientações para o desenvolvimento, regras contábeis, campos, selects ou particularidades..."></div>
+              <div class="rich-editor-content" id="newTicketDescriptionEditor" contenteditable="true" spellcheck="true" lang="pt-BR" data-placeholder="Informe todas as orientações para o desenvolvimento, regras contábeis, campos, selects ou particularidades..."></div>
               <textarea id="newTicketDescription" style="display: none;"></textarea>
             </div>
           </div>
