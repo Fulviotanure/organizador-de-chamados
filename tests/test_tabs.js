@@ -473,7 +473,57 @@ console.log('Test 5: Pinned tab close protection');
   const createTabWithImg = appTabs.tabs.find(t => t.id === 'new-ticket');
   assert.strictEqual(createTabWithImg.isDirty, true, 'Tab must be dirty when image is in description');
 
-  console.log('\n✅ All 27 TabManager unit tests passed successfully!');
+  // 28. Closed ticket without comment draft closes cleanly without confirmation prompt
+  console.log('Test 28: Closed ticket tab closes cleanly without false dirty prompt');
+  const tClosed = { id: 8888, number: '8888', title: 'Chamado Concluído', status: 'done', closedAt: '2026-11-05T12:00:00Z' };
+  context.window.appStore.demands.push(tClosed);
+  appTabs.openTicketTab(tClosed, true);
+  getOrCreateEl('drawerNewCommentText').value = '';
+  getOrCreateEl('drawerEditReviewer').value = 'usr_different';
+  let closedPromptShown = false;
+  context.window.showAppConfirm = () => { closedPromptShown = true; return Promise.resolve(true); };
+  const closedTabClose = await appTabs.closeTab('ticket-8888');
+  assert.strictEqual(closedTabClose, true, 'Closed ticket tab must close successfully');
+  assert.strictEqual(closedPromptShown, false, 'Closed ticket without comment must not trigger confirmation prompt');
+
+  // 29. Closed ticket with typed comment draft prompts for confirmation
+  console.log('Test 29: Closed ticket with comment draft requires confirmation');
+  const tClosedWithDraft = { id: 9999, number: '9999', title: 'Chamado com Rascunho', status: 'done', closedAt: '2026-11-05T12:00:00Z' };
+  context.window.appStore.demands.push(tClosedWithDraft);
+  appTabs.openTicketTab(tClosedWithDraft, true);
+  getOrCreateEl('drawerNewCommentText').value = 'Mensagem de rascunho não enviada';
+  let draftPromptShown = false;
+  context.window.showAppConfirm = () => { draftPromptShown = true; return Promise.resolve(false); };
+  const rejectedDraftClose = await appTabs.closeTab('ticket-9999');
+  assert.strictEqual(rejectedDraftClose, false, 'Closed ticket with unposted draft should protect against accidental close');
+  assert.strictEqual(draftPromptShown, true, 'Confirmation prompt must be shown when comment draft exists');
+
+  // 30. Auto-save notes on close prevents false dirty warning
+  console.log('Test 30: Auto-save notes on closeTab flushes notes and avoids false dirty warning');
+  const tNotesClose = { id: 7777, number: '7777', title: 'Chamado Nota Close', status: 'queued' };
+  context.window.appStore.demands.push(tNotesClose);
+  appTabs.openTicketTab(tNotesClose, true);
+  getOrCreateEl('drawerNewCommentText').value = '';
+  getOrCreateEl('drawerEditTitle').value = 'Chamado Nota Close';
+  getOrCreateEl('drawerLocalNotes').value = 'Nova anotação pessoal';
+  let savedNotesId = null, savedNotesContent = null;
+  const mockNotesMap = {};
+  context.window.appStore.saveNote = (id, val) => {
+    savedNotesId = id;
+    savedNotesContent = val;
+    mockNotesMap[id] = val;
+    return Promise.resolve();
+  };
+  context.window.appStore.getNote = (id) => mockNotesMap[id] || '';
+  let notesPromptShown = false;
+  context.window.showAppConfirm = () => { notesPromptShown = true; return Promise.resolve(true); };
+  const noteCloseResult = await appTabs.closeTab('ticket-7777');
+  assert.strictEqual(noteCloseResult, true, 'Tab with notes must close cleanly');
+  assert.strictEqual(savedNotesId, 7777, 'Notes must be saved on close');
+  assert.strictEqual(savedNotesContent, 'Nova anotação pessoal', 'Note content must match');
+  assert.strictEqual(notesPromptShown, false, 'Notes auto-save must not trigger false dirty confirmation');
+
+  console.log('\n✅ All 30 TabManager unit tests passed successfully!');
 })().catch(err => {
   console.error('\n❌ Test failed:', err);
   process.exit(1);

@@ -318,12 +318,71 @@ class TabManager {
       return false;
     }
 
-    // Se estiver ativa agora, faz check de dirty fresco
+    // 1. Desfoca o elemento ativo para garantir que qualquer edição em andamento dispare eventos e saia do foco
+    if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+
+    // 2. Auto-salva notas locais pendentes da aba ativa para não gerar falso aviso
+    if (tab.id === this.activeTabId) {
+      const notesEl = document.getElementById('drawerLocalNotes');
+      if (notesEl && window.appStore?.saveNote && window.appStore?.getNote) {
+        const currentNotes = notesEl.value;
+        const origNotes = window.appStore.getNote(tab.ticketId) || '';
+        if (currentNotes !== origNotes) {
+          try {
+            await window.appStore.saveNote(tab.ticketId, currentNotes);
+            const session = this.ticketSessions.get(tab.ticketId);
+            if (session) session.notes = currentNotes;
+          } catch (e) {
+            console.warn('Erro ao auto-salvar nota antes de fechar aba:', e);
+          }
+        }
+      }
+    }
+
+    // 3. Atualiza os dados da demanda com as informações mais frescas da store / backend
+    const storeTicket = window.appStore?.demands?.find(d => String(d.id) === String(tab.ticketId));
+    if (storeTicket) {
+      tab.ticket = { ...tab.ticket, ...storeTicket };
+      if (storeTicket.status) tab.status = storeTicket.status;
+    }
+    const activeSelected = (window.selectedTicket && String(window.selectedTicket.id) === String(tab.ticketId)) ? window.selectedTicket : null;
+    if (activeSelected) {
+      tab.ticket = { ...tab.ticket, ...activeSelected };
+      if (activeSelected.status) tab.status = activeSelected.status;
+    }
+
+    // 4. Se o chamado estiver encerrado/concluído e não tiver rascunho de comentário ou anexos, garante isDirty = false
+    let stNorm = (tab.status || tab.ticket?.status || '').toLowerCase().trim();
+    if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
+    if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
+    const isClosed = stNorm === 'done' || Boolean(tab.ticket?.closedAt) || Boolean(storeTicket?.closedAt);
+
+    if (isClosed) {
+      let hasPendingComment = false;
+      if (tab.id === this.activeTabId) {
+        const commentVal = (document.getElementById('drawerNewCommentText')?.value || '').trim();
+        const pendingFiles = window.getTimelinePendingAttachments ? window.getTimelinePendingAttachments() : [];
+        hasPendingComment = commentVal.length > 0 || (pendingFiles && pendingFiles.length > 0);
+      } else {
+        const session = this.ticketSessions.get(tab.ticketId);
+        const commentVal = (session?.commentDraft || '').trim();
+        const pendingFiles = session?.pendingAttachments || [];
+        hasPendingComment = commentVal.length > 0 || (pendingFiles && pendingFiles.length > 0);
+      }
+
+      if (!hasPendingComment) {
+        tab.isDirty = false;
+      }
+    }
+
+    // 5. Se estiver ativa agora, faz check de dirty fresco atualizado
     if (tab.id === this.activeTabId) {
       this.checkDirty(tab.ticketId);
     }
 
-    // Verificação de segurança: confirmar descarte se houver alterações não salvas
+    // 6. Verificação de segurança: confirmar descarte se REALMENTE houver alterações não salvas
     if (!force && (tab.isDirty || this.isTicketDirty(tab.ticketId))) {
       tab.isClosing = true;
       try {
@@ -429,9 +488,26 @@ class TabManager {
       return this.checkDirty(ticketId);
     }
 
-    if (tab.isDirty) return true;
-
     const session = this.ticketSessions.get(ticketId);
+    const storeTicket = window.appStore?.demands?.find(d => String(d.id) === String(ticketId));
+    const t = storeTicket || session?.ticket || tab.ticket || {};
+    let stNorm = (t.status || tab.status || 'queued').toLowerCase().trim();
+    if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
+    if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
+    const isClosed = stNorm === 'done' || Boolean(t.closedAt) || Boolean(tab.ticket?.closedAt) || Boolean(storeTicket?.closedAt);
+
+    // Se o chamado estiver encerrado/concluído: apenas rascunho de comentário ou anexos contam como dirty
+    if (isClosed) {
+      const commentDraft = (session?.commentDraft || '').trim();
+      const hasPendingAtt = Array.isArray(session?.pendingAttachments) && session.pendingAttachments.length > 0;
+      if (commentDraft.length > 0 || hasPendingAtt) {
+        return true;
+      }
+      tab.isDirty = false;
+      return false;
+    }
+
+    if (tab.isDirty) return true;
     if (!session) return false;
 
     // 1. Rascunho de comentário ou anexos pendentes
@@ -492,6 +568,11 @@ class TabManager {
     if (storeTicket) tab.ticket = { ...tab.ticket, ...storeTicket };
     else if (activeSelected) tab.ticket = { ...tab.ticket, ...activeSelected };
 
+    let stNorm = (ticket.status || tab.status || 'queued').toLowerCase().trim();
+    if (stNorm === 'open' || stNorm === 'aberto' || stNorm === 'fila') stNorm = 'queued';
+    if (stNorm === 'closed' || stNorm === 'completed' || stNorm === 'finished') stNorm = 'done';
+    const isClosed = stNorm === 'done' || Boolean(ticket.closedAt) || Boolean(tab.ticket?.closedAt) || Boolean(storeTicket?.closedAt);
+
     let isDirty = false;
 
     // 1. Rascunho de comentário
@@ -501,6 +582,13 @@ class TabManager {
     // 2. Anexos temporários pendentes
     const pendingFiles = window.getTimelinePendingAttachments ? window.getTimelinePendingAttachments() : [];
     if (pendingFiles && pendingFiles.length > 0) isDirty = true;
+
+    // Se o chamado estiver encerrado/concluído, os campos de ficha técnica são imutáveis e notas são salvas automaticamente.
+    // Apenas rascunho de comentário ou anexos pendentes contam como dirty.
+    if (isClosed) {
+      this.markDirty(currentTicketId, isDirty);
+      return isDirty;
+    }
 
     // 3. Notas locais
     const notesVal = document.getElementById('drawerLocalNotes')?.value;

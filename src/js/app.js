@@ -804,6 +804,24 @@ function setupEventListeners() {
     }, 600);
   });
 
+  notesTextarea?.addEventListener('blur', async () => {
+    const curTicket = getActiveTicket();
+    if (!curTicket) return;
+    clearTimeout(noteDebounceTimer);
+    try {
+      await window.appStore.saveNote(curTicket.id, notesTextarea.value);
+      const statusEl = document.getElementById('noteSaveStatus');
+      if (statusEl) statusEl.textContent = 'Salvo automaticamente';
+      if (window.appTabs) {
+        const session = window.appTabs.ticketSessions.get(curTicket.id);
+        if (session) session.notes = notesTextarea.value;
+        window.appTabs.checkDirty(curTicket.id);
+      }
+    } catch (e) {
+      console.warn('Erro ao salvar nota no blur:', e);
+    }
+  });
+
   // Fixed Filter Modal
   document.getElementById('btnOpenNewFilterModal')?.addEventListener('click', openNewFilterModal);
   document.getElementById('btnCloseFilterModal')?.addEventListener('click', closeFilterModal);

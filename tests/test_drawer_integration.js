@@ -316,6 +316,9 @@ try {
     assert.ok(storeJs.includes('extractClosedAtFromEvents'), 'extractClosedAtFromEvents must exist in store.js');
     assert.ok(storeJs.includes('resolveClosedTodayDemands'), 'resolveClosedTodayDemands must exist in store.js');
     assert.ok(drawerJs.includes('syncClosedAtFromDetails'), 'syncClosedAtFromDetails must exist in drawer.js');
+    const openDrawerIdx = drawerJs.indexOf('async function openDemandDrawer');
+    const syncFuncIdx = drawerJs.indexOf('function syncClosedAtFromDetails');
+    assert.ok(syncFuncIdx !== -1 && syncFuncIdx < openDrawerIdx, 'syncClosedAtFromDetails must be defined in module scope before openDemandDrawer');
 
     // Test 16: Comment inline image resolution and authenticated rendering
     console.log('Integration Test 16: Comment inline image resolution & authentication');
@@ -515,6 +518,14 @@ try {
     await context.window.copyDrawerTicketLink(mockTicket);
     assert.strictEqual(lastCopiedText, 'https://importer.conciliadorcontabil.com.br/developer/tickets/dem-abc-987', 'Developer role must generate /developer/ URL');
     context.window.conciliadorAPI.getRolePrefix = () => 'support';
+
+    // Test 32: Finalizing ticket has only single confirmation dialog without success OK modal
+    console.log('Integration Test 32: Single confirmation dialog without OK modal on finalizing ticket');
+    const finalizeFnCode = drawerJs.match(/async function handleFinalizeTicket[\s\S]*?\n\}/)[0];
+    assert.ok(finalizeFnCode.includes('showAppConfirm'), 'handleFinalizeTicket must retain confirmation dialog');
+    // Success path must not call showAppAlert modal ('Demanda finalizada com sucesso!')
+    assert.ok(!finalizeFnCode.includes("showAppAlert('Demanda finalizada com sucesso!'"), 'handleFinalizeTicket must not display success OK alert modal');
+    assert.ok(finalizeFnCode.includes('showToast'), 'handleFinalizeTicket must use non-blocking toast for success feedback');
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

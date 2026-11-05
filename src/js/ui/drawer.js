@@ -1848,6 +1848,27 @@ function renderDrawerHeaderMetaAndTitle(ticket, customLayoutStatus = null) {
   if (btnDrawerConciliador) btnDrawerConciliador.style.display = 'none';
 }
 
+function syncClosedAtFromDetails(details) {
+  if (!details || !Array.isArray(details.events) || !window.appStore) return;
+  const closedAt = window.appStore.extractClosedAtFromEvents?.(details.events);
+  if (closedAt) {
+    details.closedAt = closedAt;
+    if (Array.isArray(window.appStore.demands)) {
+      const idx = window.appStore.demands.findIndex(d => d.id === details.id);
+      if (idx !== -1 && !window.appStore.demands[idx].closedAt) {
+        window.appStore.demands[idx].closedAt = closedAt;
+        window.appStore.saveDemandsCache?.();
+        if (typeof window.renderFixedFiltersList === 'function') {
+          window.renderFixedFiltersList();
+        }
+      }
+    }
+  }
+}
+if (typeof window !== 'undefined') {
+  window.syncClosedAtFromDetails = syncClosedAtFromDetails;
+}
+
 async function openDemandDrawer(ticket) {
   if (!ticket || !ticket.id) return;
 
@@ -2048,24 +2069,6 @@ async function openDemandDrawer(ticket) {
 
   overlay?.classList.add('open');
   drawer?.classList.add('open');
-
-function syncClosedAtFromDetails(details) {
-  if (!details || !Array.isArray(details.events) || !window.appStore) return;
-  const closedAt = window.appStore.extractClosedAtFromEvents?.(details.events);
-  if (closedAt) {
-    details.closedAt = closedAt;
-    if (Array.isArray(window.appStore.demands)) {
-      const idx = window.appStore.demands.findIndex(d => d.id === details.id);
-      if (idx !== -1 && !window.appStore.demands[idx].closedAt) {
-        window.appStore.demands[idx].closedAt = closedAt;
-        window.appStore.saveDemandsCache?.();
-        if (typeof window.renderFixedFiltersList === 'function') {
-          window.renderFixedFiltersList();
-        }
-      }
-    }
-  }
-}
 
   // Fetch full ticket details asynchronously
   try {
@@ -3846,7 +3849,9 @@ async function handleFinalizeTicket(targetTicket = null) {
     if (typeof window.triggerActionResync === 'function') {
       window.triggerActionResync(ticket.id);
     }
-    showAppAlert('Demanda finalizada com sucesso!', 'Concluído', 'success');
+    if (typeof showToast === 'function') {
+      showToast('✅ Demanda finalizada com sucesso!', 'success');
+    }
   } catch (err) {
     if (statusText && ticket === selectedTicket) statusText.textContent = '';
     showAppAlert('Erro ao finalizar chamado: ' + err.message, 'Erro', 'error');
