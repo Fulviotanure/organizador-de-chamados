@@ -408,7 +408,8 @@ async function openLayoutInImporter(layoutId, layoutCode) {
   }
 
   if (targetId) {
-    const url = `https://importer.conciliadorcontabil.com.br/support/layouts/${targetId}`;
+    const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+    const url = `https://importer.conciliadorcontabil.com.br/${rolePrefix}/layouts/${targetId}`;
     if (window.electronAPI && window.electronAPI.openExternal) {
       window.electronAPI.openExternal(url);
     } else {

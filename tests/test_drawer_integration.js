@@ -507,6 +507,14 @@ try {
     assert.ok(!approveFnCode.includes('showAppConfirm'), 'handleApproveLayout must not call showAppConfirm');
     assert.ok(!approveFnCode.includes('showAppAlert'), 'handleApproveLayout must not call showAppAlert modal');
     assert.ok(approveFnCode.includes("status: 'published'"), 'handleApproveLayout must update status to published');
+
+    // Test 31: Developer role scoping in drawer URLs and image regex
+    console.log('Integration Test 31: Developer role scoping in drawer URLs and image regex');
+    assert.ok(drawerJs.includes('(?:support|developer)'), 'drawer.js regex must match both support and developer attachment URLs');
+    context.window.conciliadorAPI.getRolePrefix = () => 'developer';
+    await context.window.copyDrawerTicketLink(mockTicket);
+    assert.strictEqual(lastCopiedText, 'https://importer.conciliadorcontabil.com.br/developer/tickets/dem-abc-987', 'Developer role must generate /developer/ URL');
+    context.window.conciliadorAPI.getRolePrefix = () => 'support';
   }
 } catch (e) {
   // If drawer.js has external UI deps not mocked, assert we still test the pure contract

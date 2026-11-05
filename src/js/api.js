@@ -16,6 +16,19 @@ class ConciliadorAPI {
     this.user = user;
   }
 
+  getRolePrefix() {
+    const role = String(this.user?.role || window.appStore?.currentUser?.role || '').toLowerCase().trim();
+    if (role === 'developer' || role === 'dev') {
+      return 'developer';
+    }
+    return 'support';
+  }
+
+  getAttachmentDownloadUrl(ticketId, attachmentId) {
+    const prefix = this.getRolePrefix();
+    return `${API_BASE_URL}/${prefix}/tickets/${ticketId}/attachments/${attachmentId}/download`;
+  }
+
   getHeaders() {
     const headers = {
       'Accept': 'application/json',
@@ -54,7 +67,7 @@ class ConciliadorAPI {
       ...this.getHeaders(),
       ...(options.headers || {})
     };
-    if (options.body instanceof FormData) {
+    if (typeof FormData !== 'undefined' && options.body instanceof FormData) {
       delete headers['Content-Type'];
       delete headers['content-type'];
     }
@@ -102,6 +115,35 @@ class ConciliadorAPI {
     return data;
   }
 
+  // Executa requisições de acordo com a role do usuário ('developer' ou 'support'),
+  // aplicando fallback automático caso retorne HTTP 403 (Forbidden) ou HTTP 404 (Not Found).
+  async fetchWithRoleFallback(pathSuffix, options = {}) {
+    const primaryPrefix = this.getRolePrefix();
+    const fallbackPrefix = primaryPrefix === 'developer' ? 'support' : 'developer';
+
+    const primaryUrl = `${API_BASE_URL}/${primaryPrefix}${pathSuffix}`;
+    let response = await this.fetchWithAuth(primaryUrl, options);
+
+    // Se receber HTTP 403 (Forbidden) ou HTTP 404 (Not Found), tenta o fallback com o outro perfil
+    if ((response.status === 403 || response.status === 404) && primaryPrefix !== fallbackPrefix) {
+      console.warn(`[ConciliadorAPI] Rota ${primaryUrl} retornou HTTP ${response.status}. Tentando fallback com /${fallbackPrefix}${pathSuffix}...`);
+      const fallbackUrl = `${API_BASE_URL}/${fallbackPrefix}${pathSuffix}`;
+      const fallbackResp = await this.fetchWithAuth(fallbackUrl, options);
+      if (fallbackResp.ok || (fallbackResp.status !== 403 && fallbackResp.status !== 404)) {
+        if (fallbackResp.ok) {
+          if (!this.user) this.user = {};
+          this.user.role = fallbackPrefix;
+          if (window.appStore?.currentUser) {
+            window.appStore.currentUser.role = fallbackPrefix;
+          }
+        }
+        return fallbackResp;
+      }
+    }
+
+    return response;
+  }
+
   async fetchAllDemands(limit = 500) {
     if (!this.token) throw new Error('Não autenticado');
 
@@ -128,7 +170,7 @@ class ConciliadorAPI {
   async fetchDemandDetails(ticketId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}`, {
       method: 'GET'
     });
 
@@ -156,11 +198,11 @@ class ConciliadorAPI {
   async searchLayouts(query = '', limit = 15) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const url = query
-      ? `${API_BASE_URL}/support/layouts?search=${encodeURIComponent(query)}&limit=${limit}`
-      : `${API_BASE_URL}/support/layouts?limit=${limit}`;
+    const path = query
+      ? `/layouts?search=${encodeURIComponent(query)}&limit=${limit}`
+      : `/layouts?limit=${limit}`;
 
-    const response = await this.fetchWithAuth(url, {
+    const response = await this.fetchWithRoleFallback(path, {
       method: 'GET'
     });
 
@@ -174,7 +216,7 @@ class ConciliadorAPI {
   async fetchRecentLayouts(limit = 4000) {
     if (!this.token) return [];
     try {
-      const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts?page=1&limit=${limit}`, {
+      const response = await this.fetchWithRoleFallback(`/layouts?page=1&limit=${limit}`, {
         method: 'GET'
       });
       if (!response.ok) return [];
@@ -188,7 +230,7 @@ class ConciliadorAPI {
 
   async fetchLayoutDetails(layoutId) {
     if (!this.token) throw new Error('Não autenticado');
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}`, {
+    const response = await this.fetchWithRoleFallback(`/layouts/${layoutId}`, {
       method: 'GET'
     });
     if (!response.ok) {
@@ -199,7 +241,7 @@ class ConciliadorAPI {
 
   async approveLayout(layoutId) {
     if (!this.token) throw new Error('Não autenticado');
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}/approve`, {
+    const response = await this.fetchWithRoleFallback(`/layouts/${layoutId}/approve`, {
       method: 'POST'
     });
     if (!response.ok) {
@@ -212,7 +254,7 @@ class ConciliadorAPI {
 
   async rejectLayout(layoutId, reason = '') {
     if (!this.token) throw new Error('Não autenticado');
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/layouts/${layoutId}/reject`, {
+    const response = await this.fetchWithRoleFallback(`/layouts/${layoutId}/reject`, {
       method: 'POST',
       body: JSON.stringify(reason ? { reason } : {})
     });
@@ -227,7 +269,7 @@ class ConciliadorAPI {
   async createTicket(ticketData) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets`, {
+    const response = await this.fetchWithRoleFallback('/tickets', {
       method: 'POST',
       body: JSON.stringify(ticketData)
     });
@@ -249,7 +291,7 @@ class ConciliadorAPI {
       payload.attachmentIds = attachmentIds;
     }
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/comments`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/comments`, {
       method: 'POST',
       body: JSON.stringify(payload)
     });
@@ -266,7 +308,7 @@ class ConciliadorAPI {
   async updateTicket(ticketId, payload) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload)
     });
@@ -298,7 +340,7 @@ class ConciliadorAPI {
     const body = { status: normalizedStatus };
     if (reason) body.reason = reason;
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/status`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/status`, {
       method: 'POST',
       body: JSON.stringify(body)
     });
@@ -315,7 +357,7 @@ class ConciliadorAPI {
   async linkTicketLayout(ticketId, layoutId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/link-layout`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/link-layout`, {
       method: 'PUT',
       body: JSON.stringify({ layoutId })
     });
@@ -337,10 +379,18 @@ class ConciliadorAPI {
       reason: reason || 'Atribuição de responsável'
     };
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/assignee`, {
+    let response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/assignee`, {
       method: 'PUT',
       body: JSON.stringify(body)
     });
+
+    // Se a rota específica /assignee retornar 404 ou 403, tenta fallback via PATCH /tickets/:id
+    if (!response.ok && (response.status === 403 || response.status === 404)) {
+      response = await this.fetchWithRoleFallback(`/tickets/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assignedToId: assignedToId || null })
+      });
+    }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({ message: 'Erro ao atribuir responsável ao chamado' }));
@@ -358,10 +408,18 @@ class ConciliadorAPI {
       throw new Error('A API do Importer Ultra não permite deixar o chamado sem validador depois de já atribuído. Selecione outro membro da equipe para transferir a validação.');
     }
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/reviewer`, {
+    let response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/reviewer`, {
       method: 'PUT',
       body: JSON.stringify({ reviewerId, reason })
     });
+
+    // Se a rota específica /reviewer retornar 404 ou 403, tenta fallback via PATCH /tickets/:id
+    if (!response.ok && (response.status === 403 || response.status === 404)) {
+      response = await this.fetchWithRoleFallback(`/tickets/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reviewerId })
+      });
+    }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({ message: 'Erro ao atribuir validador ao chamado' }));
@@ -381,10 +439,21 @@ class ConciliadorAPI {
       reason: reason || 'Atualização de prazos'
     };
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/dates`, {
+    let response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/dates`, {
       method: 'PUT',
       body: JSON.stringify(body)
     });
+
+    // Se a rota específica /dates retornar 404 ou 403, tenta fallback via PATCH /tickets/:id
+    if (!response.ok && (response.status === 403 || response.status === 404)) {
+      response = await this.fetchWithRoleFallback(`/tickets/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          deliveryDueDate: deliveryDueDate || null,
+          clientDueDate: clientDueDate || null
+        })
+      });
+    }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({ message: 'Erro ao atualizar prazos do chamado' }));
@@ -398,7 +467,7 @@ class ConciliadorAPI {
   async archiveTicket(ticketId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/archive`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/archive`, {
       method: 'POST'
     });
 
@@ -419,7 +488,7 @@ class ConciliadorAPI {
       formData.append('files', file);
     }
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/attachments`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/attachments`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json'
@@ -440,7 +509,7 @@ class ConciliadorAPI {
   async deleteTicketAttachment(ticketId, attachmentId) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/support/tickets/${ticketId}/attachments/${attachmentId}`, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/attachments/${attachmentId}`, {
       method: 'DELETE'
     });
 
@@ -455,8 +524,7 @@ class ConciliadorAPI {
 
   async fetchAttachmentBlob(ticketId, attachmentId) {
     if (!this.token) throw new Error('Não autenticado');
-    const url = `${API_BASE_URL}/support/tickets/${ticketId}/attachments/${attachmentId}/download`;
-    const response = await this.fetchWithAuth(url, {
+    const response = await this.fetchWithRoleFallback(`/tickets/${ticketId}/attachments/${attachmentId}/download`, {
       method: 'GET'
     });
 

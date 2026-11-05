@@ -310,8 +310,8 @@ async function resolveAuthenticatedImageBlob(src, ticketId) {
     return authenticatedImgBlobCache.get(src);
   }
 
-  // 1. Check if src contains /support/tickets/:ticketId/attachments/:attId
-  const ticketAttMatch = src.match(/\/support\/tickets\/([a-zA-Z0-9_-]+)\/attachments\/([a-zA-Z0-9_-]+)/);
+  // 1. Check if src contains /(support|developer)/tickets/:ticketId/attachments/:attId
+  const ticketAttMatch = src.match(/\/(?:support|developer)\/tickets\/([a-zA-Z0-9_-]+)\/attachments\/([a-zA-Z0-9_-]+)/);
   const targetTicketId = (ticketAttMatch && ticketAttMatch[1]) ? ticketAttMatch[1] : ticketId;
   let attId = (ticketAttMatch && ticketAttMatch[2]) ? ticketAttMatch[2] : null;
 
@@ -341,7 +341,22 @@ async function resolveAuthenticatedImageBlob(src, ticketId) {
   if (fullUrl.includes('conciliadorcontabil.com.br') || fullUrl.startsWith('/')) {
     try {
       if (window.conciliadorAPI && typeof window.conciliadorAPI.fetchWithAuth === 'function') {
-        const resp = await window.conciliadorAPI.fetchWithAuth(fullUrl);
+        let resp = await window.conciliadorAPI.fetchWithAuth(fullUrl);
+        // Se retornar 403 (Forbidden) ou 404 (Not Found), tenta alternar entre os perfis /support/ e /developer/
+        if (!resp.ok && (resp.status === 403 || resp.status === 404)) {
+          let swappedUrl = fullUrl;
+          if (fullUrl.includes('/support/')) {
+            swappedUrl = fullUrl.replace('/support/', '/developer/');
+          } else if (fullUrl.includes('/developer/')) {
+            swappedUrl = fullUrl.replace('/developer/', '/support/');
+          }
+          if (swappedUrl !== fullUrl) {
+            const fallbackResp = await window.conciliadorAPI.fetchWithAuth(swappedUrl);
+            if (fallbackResp.ok) {
+              resp = fallbackResp;
+            }
+          }
+        }
         if (resp && resp.ok) {
           const blob = await resp.blob();
           const blobUrl = URL.createObjectURL(blob);
@@ -925,7 +940,8 @@ async function renderAuthenticatedDescription(descHtml, ticketId, containerEl, t
         </div>
         <div style="display: flex; flex-direction: column; gap: 12px;">
           ${unreferencedImgAttachments.map(att => {
-            const attUrl = `${apiBase}/support/tickets/${ticketId}/attachments/${att.id}/download`;
+            const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+            const attUrl = `${apiBase}/${rolePrefix}/tickets/${ticketId}/attachments/${att.id}/download`;
             const fileName = att.fileName || att.filename || att.name || 'print.png';
             const cacheKey = `${ticketId}_${att.id}`;
             const cachedSrc = (typeof attachmentBlobCache !== 'undefined' && attachmentBlobCache.get(cacheKey)) ||
@@ -1646,12 +1662,13 @@ function renderNewTicketLayoutField(layoutId, layoutCode, layoutName) {
   }
 }
 
-// Abre a página do Chamado no Importer Ultra (https://importer.conciliadorcontabil.com.br/support/tickets/:id)
+// Abre a página do Chamado no Importer Ultra (https://importer.conciliadorcontabil.com.br/support/tickets/:id ou /developer/tickets/:id)
 function openTicketInImporter(ticketOrId) {
   const target = ticketOrId || selectedTicket;
   const targetId = (typeof target === 'object' && target !== null) ? target.id : target;
   if (targetId) {
-    const url = `https://importer.conciliadorcontabil.com.br/support/tickets/${targetId}`;
+    const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+    const url = `https://importer.conciliadorcontabil.com.br/${rolePrefix}/tickets/${targetId}`;
     if (window.electronAPI && window.electronAPI.openExternal) {
       window.electronAPI.openExternal(url);
     } else {
@@ -1674,7 +1691,8 @@ async function copyDrawerTicketLink(ticketOrId) {
     return false;
   }
 
-  const url = `https://importer.conciliadorcontabil.com.br/support/tickets/${targetId}`;
+  const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+  const url = `https://importer.conciliadorcontabil.com.br/${rolePrefix}/tickets/${targetId}`;
   let copied = false;
 
   try {
@@ -2174,7 +2192,8 @@ function syncClosedAtFromDetails(details) {
             const ext = (fName.split('.').pop() || '').toLowerCase();
             const isImg = att.category === 'image' || (att.mimeType && att.mimeType.startsWith('image/')) || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
             if (isImg) {
-              const attUrl = `${apiBase}/support/tickets/${ticket.id}/attachments/${att.id}/download`;
+              const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+              const attUrl = `${apiBase}/${rolePrefix}/tickets/${ticket.id}/attachments/${att.id}/download`;
               const imgP = document.createElement('p');
               imgP.innerHTML = `<img src="${attUrl}" data-original-src="${attUrl}" data-att-id="${att.id}" alt="${escapeHtml(att.fileName || att.filename || att.name || 'print.png')}" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; border: 1px solid rgba(255,255,255,0.15);" />`;
               editor.appendChild(imgP);
@@ -2712,7 +2731,8 @@ async function handleImageFilesIntoDesc(files) {
         const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
                         (typeof window !== 'undefined' && window.API_BASE_URL) ||
                         'https://api.importer.conciliadorcontabil.com.br/api/v1';
-        const attUrl = `${apiBase}/support/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
+        const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+        const attUrl = `${apiBase}/${rolePrefix}/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
 
         // Previne flash mantendo a imagem em cache local com a nova chave e URL
         if (typeof attachmentBlobCache !== 'undefined') {
@@ -4660,7 +4680,8 @@ async function saveDrawerTicketChanges() {
                 const apiBase = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : null) ||
                                 (typeof window !== 'undefined' && window.API_BASE_URL) ||
                                 'https://api.importer.conciliadorcontabil.com.br/api/v1';
-                const attUrl = `${apiBase}/support/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
+                const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+        const attUrl = `${apiBase}/${rolePrefix}/tickets/${selectedTicket.id}/attachments/${newAtt.id}/download`;
                 if (typeof attachmentBlobCache !== 'undefined') {
                   attachmentBlobCache.set(`${selectedTicket.id}_${newAtt.id}`, dataUrl);
                 }

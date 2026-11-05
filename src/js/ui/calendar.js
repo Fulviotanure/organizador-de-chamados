@@ -2215,7 +2215,8 @@ async function submitCreateTicket() {
 
           if (att && att.id) {
             matchedAtts.push(att);
-            const attUrl = `${apiBase}/support/tickets/${createdTicket.id}/attachments/${att.id}/download`;
+            const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+            const attUrl = `${apiBase}/${rolePrefix}/tickets/${createdTicket.id}/attachments/${att.id}/download`;
             if (typeof attachmentBlobCache !== 'undefined') {
               attachmentBlobCache.set(`${createdTicket.id}_${att.id}`, dataUrl);
             }
@@ -2233,7 +2234,8 @@ async function submitCreateTicket() {
 
         // Se o backend sanitizar tags HTML <img>, a notação Markdown também garante sobrevivência
         const markdownImgs = matchedAtts.map(att => {
-          const attUrl = `${apiBase}/support/tickets/${createdTicket.id}/attachments/${att.id}/download`;
+          const rolePrefix = (window.conciliadorAPI?.getRolePrefix?.() || 'support');
+          const attUrl = `${apiBase}/${rolePrefix}/tickets/${createdTicket.id}/attachments/${att.id}/download`;
           const fName = att.fileName || att.filename || att.name || 'print.png';
           return `\n\n![${fName}](${attUrl})`;
         }).join('');
