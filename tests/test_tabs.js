@@ -523,7 +523,45 @@ console.log('Test 5: Pinned tab close protection');
   assert.strictEqual(savedNotesContent, 'Nova anotação pessoal', 'Note content must match');
   assert.strictEqual(notesPromptShown, false, 'Notes auto-save must not trigger false dirty confirmation');
 
-  console.log('\n✅ All 30 TabManager unit tests passed successfully!');
+  // 31. Open Dashboard Tab, idempotency, workspace visibility & render hook
+  console.log('Test 31: Open Dashboard Tab and workspace state');
+  let dashRenderCount = 0;
+  context.window.renderDashboardWorkspace = () => { dashRenderCount++; };
+  const dashTab = appTabs.openDashboardTab(true);
+  assert(dashTab, 'Dashboard tab should be returned');
+  assert.strictEqual(dashTab.id, 'dashboard');
+  assert.strictEqual(dashTab.type, 'dashboard');
+  assert.strictEqual(appTabs.activeTabId, 'dashboard');
+  assert.strictEqual(appTabs.getActiveTicketId(), null);
+  assert(context.document.body.classList.contains('dashboard-workspace-active'), 'body must have dashboard-workspace-active');
+  assert(!context.document.body.classList.contains('ticket-workspace-active'), 'body must not have ticket-workspace-active');
+  assert(!context.document.body.classList.contains('create-ticket-workspace-active'), 'body must not have create-ticket-workspace-active');
+  assert(getOrCreateEl('dashboardWorkspace').classList.contains('open'), 'dashboardWorkspace must have open class');
+  assert(dashRenderCount >= 1, 'renderDashboardWorkspace must be called when switching to dashboard tab');
+
+  const tabsCountBeforeDashDup = appTabs.tabs.length;
+  const sameDashTab = appTabs.openDashboardTab(true);
+  assert.strictEqual(appTabs.tabs.length, tabsCountBeforeDashDup, 'Should not duplicate dashboard tab');
+  assert.strictEqual(sameDashTab.id, 'dashboard');
+
+  // 32. Persist, restore and close Dashboard tab
+  console.log('Test 32: Persist, restore and close Dashboard tab');
+  appTabs.persistOpenTabs();
+  const savedAfterDash = JSON.parse(mockStorage.get(appTabs.STORAGE_KEY) || '{}');
+  assert.strictEqual(savedAfterDash.hasDashboardTab, true, 'hasDashboardTab must be persisted');
+  assert.strictEqual(savedAfterDash.activeTabId, 'dashboard', 'activeTabId must be persisted as dashboard');
+
+  const restoredDashManager = new context.window.appTabs.constructor();
+  restoredDashManager.restorePersistedTabs();
+  assert(restoredDashManager.tabs.some(t => t.id === 'dashboard' && t.type === 'dashboard'), 'Restored TabManager must include dashboard tab');
+  assert.strictEqual(restoredDashManager.activeTabId, 'dashboard', 'Restored TabManager must activate dashboard tab');
+
+  const closedDash = await appTabs.closeTab('dashboard');
+  assert.strictEqual(closedDash, true, 'Dashboard tab must close cleanly');
+  assert(!appTabs.tabs.some(t => t.id === 'dashboard'), 'Dashboard tab must be removed after close');
+  assert(!context.document.body.classList.contains('dashboard-workspace-active'), 'dashboard-workspace-active class must be removed after close');
+
+  console.log('\n✅ All 32 TabManager unit tests passed successfully!');
 })().catch(err => {
   console.error('\n❌ Test failed:', err);
   process.exit(1);

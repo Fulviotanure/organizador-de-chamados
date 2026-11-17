@@ -2,6 +2,7 @@
 class AppStore {
   constructor() {
     this.demands = [];
+    this.importerTotal = 0;
     this.lastSync = null;
     this.activeFilterId = 'all';
     this.activeView = 'table'; // 'table' | 'kanban'
@@ -31,11 +32,12 @@ class AppStore {
     // Fixed filters definition
     this.fixedFilters = [];
 
-    // Local enhancements (favorites, notes, ignored tickets)
+    // Local enhancements (favorites, notes, ignored tickets, returned tickets)
     this.localNotes = {};
     this.favorites = {};
     this.ignoredTickets = {};
     this.ignoredTicketsCache = {};
+    this.returnedTickets = {};
 
     // Auto-refresh interval (in minutes, 0 = disabled)
     this.autoRefreshMinutes = 3;
@@ -62,7 +64,9 @@ class AppStore {
         const storedFavorites = await window.electronAPI.loadStorage('favorites', {});
         const storedIgnored = await window.electronAPI.loadStorage('ignoredTickets', {});
         const storedIgnoredCache = await window.electronAPI.loadStorage('ignoredTicketsCache', {});
+        const storedReturned = await window.electronAPI.loadStorage('returnedTickets', {});
         const storedDemands = await window.electronAPI.loadStorage('cachedDemands', []);
+        const storedImporterTotal = await window.electronAPI.loadStorage('importerTotal', 0);
         const storedLastSync = await window.electronAPI.loadStorage('lastSync', null);
         const storedAutoRefresh = await window.electronAPI.loadStorage('autoRefreshMinutes', 3);
         const storedColWidths = await window.electronAPI.loadStorage('tableColumnWidths', {});
@@ -73,6 +77,7 @@ class AppStore {
         // Fallback redundante com localStorage para máxima resiliência entre reinicializações
         let localIgnored = {};
         let localIgnoredCache = {};
+        let localReturned = {};
         let localActiveFilter = null;
         let localLastSeenWhatsNew = null;
         try {
@@ -80,6 +85,8 @@ class AppStore {
           if (rawIgnored) localIgnored = JSON.parse(rawIgnored);
           const rawCache = localStorage.getItem('cc_ignoredTicketsCache');
           if (rawCache) localIgnoredCache = JSON.parse(rawCache);
+          const rawReturned = localStorage.getItem('cc_returnedTickets');
+          if (rawReturned) localReturned = JSON.parse(rawReturned);
           localActiveFilter = localStorage.getItem('cc_activeFilterId');
           localLastSeenWhatsNew = localStorage.getItem('cc_lastSeenWhatsNewVersion');
         } catch (e) {}
@@ -91,7 +98,9 @@ class AppStore {
         this.favorites = storedFavorites || {};
         this.ignoredTickets = { ...(localIgnored || {}), ...(storedIgnored || {}) };
         this.ignoredTicketsCache = { ...(localIgnoredCache || {}), ...(storedIgnoredCache || {}) };
+        this.returnedTickets = { ...(localReturned || {}), ...(storedReturned || {}) };
         this.demands = storedDemands || [];
+        this.importerTotal = Number(storedImporterTotal || 0) || this.demands.length;
         this.tableColumnWidths = storedColWidths || {};
         this.layoutCache = storedLayoutCache || {};
         this.lastSeenWhatsNewVersion = storedLastSeenWhatsNew || localLastSeenWhatsNew || null;
@@ -283,12 +292,16 @@ class AppStore {
       this.fixedFilters = this.getDefaultFixedFilters();
       let localActiveFilter = null;
       let localLastSeenWhatsNew = null;
+      let localReturned = {};
       try {
         if (typeof localStorage !== 'undefined') {
           localActiveFilter = localStorage.getItem('cc_activeFilterId');
           localLastSeenWhatsNew = localStorage.getItem('cc_lastSeenWhatsNewVersion');
+          const rawReturned = localStorage.getItem('cc_returnedTickets');
+          if (rawReturned) localReturned = JSON.parse(rawReturned);
         }
       } catch (e) {}
+      this.returnedTickets = localReturned || {};
       this.lastSeenWhatsNewVersion = localLastSeenWhatsNew || null;
       if (localActiveFilter && this.fixedFilters.some(f => f.id === localActiveFilter)) {
         this.activeFilterId = localActiveFilter;
@@ -583,7 +596,7 @@ class AppStore {
   }
 
   // Cache Demands (Mantém preservados chamados ignorados, favoritos ou com notas locais)
-  async setDemands(demandsList) {
+  async setDemands(demandsList, totalFromApi = null) {
     const existingMap = new Map((this.demands || []).map(d => [d.id, d]));
     const incomingMap = new Map((demandsList || []).map(d => [d.id, d]));
 
@@ -630,9 +643,11 @@ class AppStore {
     }
 
     this.demands = [...(demandsList || []), ...preserved];
+    this.importerTotal = Number(totalFromApi) > 0 ? Number(totalFromApi) : (demandsList || []).length;
     this.lastSync = new Date().toISOString();
     if (window.electronAPI) {
       await window.electronAPI.saveStorage('cachedDemands', this.demands);
+      await window.electronAPI.saveStorage('importerTotal', this.importerTotal);
       await window.electronAPI.saveStorage('lastSync', this.lastSync);
       await window.electronAPI.saveStorage('ignoredTicketsCache', this.ignoredTicketsCache || {});
     }
@@ -1436,6 +1451,409 @@ class AppStore {
       }
     }
     return count;
+  }
+
+  async markTicketReturned(ticketId, reason = '') {
+    if (!ticketId) return;
+    if (!this.returnedTickets || typeof this.returnedTickets !== 'object') {
+      this.returnedTickets = {};
+    }
+    const existing = this.returnedTickets[ticketId] || {};
+    if (existing.returnedAt && !reason) {
+      return;
+    }
+    this.returnedTickets[ticketId] = {
+      returnedAt: existing.returnedAt || new Date().toISOString(),
+      lastReturnedAt: new Date().toISOString(),
+      reason: reason || existing.reason || ''
+    };
+    if (window.electronAPI && typeof window.electronAPI.saveStorage === 'function') {
+      try {
+        await window.electronAPI.saveStorage('returnedTickets', this.returnedTickets);
+      } catch (e) {}
+    }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('cc_returnedTickets', JSON.stringify(this.returnedTickets));
+      }
+    } catch (e) {}
+  }
+
+  _extractEventStatusValue(val) {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') {
+      return String(val.status || val.name || val.value || val.title || '').toLowerCase().trim();
+    }
+    return String(val).toLowerCase().trim();
+  }
+
+  _classifyTicketStatus(ticket) {
+    const s = String(ticket?.status || '').toLowerCase().trim();
+    if (['done', 'closed', 'finished', 'completed', 'concluido', 'finalizado'].includes(s)) {
+      return 'done';
+    }
+    if (s === 'review' || s === 'waiting_review') {
+      return 'review';
+    }
+    if (s === 'in_progress' || s === 'progress') {
+      return 'inProgress';
+    }
+    if (s === 'paused' || s.includes('waiting') || s.includes('requester') || s.includes('creator')) {
+      return 'pausedWaiting';
+    }
+    return 'queued';
+  }
+
+  _isTicketClosedOnDate(ticket, now = new Date()) {
+    if (!ticket || this._classifyTicketStatus(ticket) !== 'done') return false;
+    let closeDateStr = ticket.closedAt || ticket.completedAt || ticket.finishedAt || ticket.resolvedAt;
+    if (!closeDateStr && Array.isArray(ticket.events)) {
+      closeDateStr = this.extractClosedAtFromEvents(ticket.events);
+    }
+    if (!closeDateStr) return false;
+    const d = new Date(closeDateStr);
+    if (isNaN(d.getTime())) return false;
+    return d.getFullYear() === now.getFullYear() &&
+           d.getMonth() === now.getMonth() &&
+           d.getDate() === now.getDate();
+  }
+
+  isTicketReturned(ticket, ignoreCheck = false) {
+    if (!ticket || (!ignoreCheck && this.isIgnored(ticket.id))) return false;
+
+    if ((this.returnedTickets && this.returnedTickets[ticket.id]) || ticket.wasReturned === true) {
+      return true;
+    }
+
+    if (Array.isArray(ticket.events)) {
+      const hasReturnEvent = ticket.events.some(ev => {
+        if (!ev) return false;
+        const kind = String(ev.kind || ev.type || '').toLowerCase().trim();
+        if (kind === 'returned' || kind === 'return' || kind === 'rejected') {
+          return true;
+        }
+        if (kind === 'status_change' || kind === 'status_changed' || kind === 'status') {
+          const fromSt = this._extractEventStatusValue(ev.fromValue !== undefined ? ev.fromValue : ev.from);
+          const toSt = this._extractEventStatusValue(ev.toValue !== undefined ? ev.toValue : ev.to);
+          const fromIsReview = fromSt === 'review' || fromSt === 'waiting_review' || fromSt === 'em revisão' || fromSt === 'em revisao';
+          const toIsDev = ['queued', 'fila', 'na fila', 'open', 'in_progress', 'progress', 'em progresso'].includes(toSt);
+          if (fromIsReview && toIsDev) return true;
+        }
+        return false;
+      });
+      if (hasReturnEvent) return true;
+    }
+
+    const st = String(ticket.status || '').toLowerCase().trim();
+    const hasDevActivity = Boolean(ticket.developmentStartedAt) || Number(ticket.activeTimeMs) > 0;
+    if ((st === 'queued' || st === 'open' || st === 'fila') && hasDevActivity) {
+      return true;
+    }
+
+    const hasReviewer = Boolean(
+      ticket.reviewerId ||
+      ticket.reviewer?.id ||
+      (ticket.reviewer?.name && ticket.reviewer.name !== '-') ||
+      (typeof ticket.reviewer === 'string' && ticket.reviewer.trim() && ticket.reviewer !== '-')
+    );
+    if (['queued', 'open', 'fila', 'in_progress', 'progress', 'paused'].includes(st) && hasDevActivity && hasReviewer) {
+      return true;
+    }
+
+    if (this.ticketHasLabel(ticket, 'ajust')) {
+      return true;
+    }
+
+    const layoutCode = ticket.layout?.code != null
+      ? String(ticket.layout.code).trim()
+      : (typeof ticket.layout === 'number' || typeof ticket.layout === 'string' ? String(ticket.layout).trim() : '');
+    const cachedLayout = (layoutCode && this.layoutCache && this.layoutCache[layoutCode]) ? this.layoutCache[layoutCode] : null;
+    const layoutStatus = String(ticket.layout?.status || ticket.layoutStatus || cachedLayout?.status || '').toLowerCase().trim();
+    if (layoutStatus === 'rejected' || layoutStatus === 'rejeitado') {
+      return true;
+    }
+
+    return false;
+  }
+
+  isTicketOverdue(ticket, includeReview = false, now = new Date(), ignoreCheck = false) {
+    if (!ticket || (!ignoreCheck && this.isIgnored(ticket.id))) return false;
+    const cat = this._classifyTicketStatus(ticket);
+    if (cat === 'done') return false;
+    if (!includeReview && cat === 'review') return false;
+
+    const dueStr = ticket.deliveryDueDate || ticket.clientDueDate;
+    if (!dueStr || typeof dueStr !== 'string') return false;
+    const dueDay = dueStr.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDay)) return false;
+
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return dueDay < todayStr;
+  }
+
+  _matchesDashboardPeriod(ticket, period, now = new Date()) {
+    if (!period || period === 'all') return true;
+    const dates = [ticket.createdAt, ticket.closedAt, ticket.developmentStartedAt]
+      .filter(Boolean)
+      .map(d => new Date(d))
+      .filter(d => !isNaN(d.getTime()));
+
+    if (dates.length === 0) return false;
+
+    if (period === 'today') {
+      return dates.some(d =>
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }
+
+    if (period === 'month') {
+      return dates.some(d =>
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth()
+      );
+    }
+
+    const days = period === '7d' ? 7 : (period === '30d' ? 30 : 0);
+    if (days > 0) {
+      const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1), 0, 0, 0, 0);
+      return dates.some(d => d >= cutoff);
+    }
+
+    return true;
+  }
+
+  getDashboardStats(filters = {}) {
+    const now = new Date();
+    const period = filters.period || 'all';
+    const excludeIgnored = Boolean(filters.excludeIgnored);
+    const devFilter = (filters.developer && filters.developer !== 'all') ? String(filters.developer).toLowerCase().trim() : '';
+    const prodFilter = (filters.product && filters.product !== 'all') ? String(filters.product).toLowerCase().trim() : '';
+    const typeFilter = (filters.type && filters.type !== 'all') ? String(filters.type).toLowerCase().trim() : '';
+    const searchFilter = filters.search ? String(filters.search).toLowerCase().trim() : '';
+
+    let ignoredCount = 0;
+    let minNumber = null;
+    let maxNumber = null;
+
+    const filtered = (this.demands || []).filter(t => {
+      if (!t) return false;
+      if (!this._matchesDashboardPeriod(t, period, now)) return false;
+
+      const devName = (t.assignedTo?.name && t.assignedTo.name.trim()) ? t.assignedTo.name.trim() : 'Não atribuído';
+      if (devFilter && devName.toLowerCase() !== devFilter) return false;
+
+      const prodName = String(t.product?.name || t.productName || '').trim();
+      if (prodFilter && prodName.toLowerCase() !== prodFilter) return false;
+
+      const typeName = String(t.ticketType?.name || 'Outro').trim();
+      if (typeFilter && typeName.toLowerCase() !== typeFilter) return false;
+
+      if (searchFilter) {
+        const numStr = String(t.number || '');
+        const titleStr = String(t.title || '').toLowerCase();
+        const dbStr = String(t.clientDatabase || '').toLowerCase();
+        const revStr = String(t.reviewer?.name || t.reviewerName || '').toLowerCase();
+        const layoutCode = String(t.layout?.code || t.layoutCode || '').toLowerCase();
+        const matches = numStr.includes(searchFilter) ||
+                        titleStr.includes(searchFilter) ||
+                        devName.toLowerCase().includes(searchFilter) ||
+                        dbStr.includes(searchFilter) ||
+                        revStr.includes(searchFilter) ||
+                        layoutCode.includes(searchFilter);
+        if (!matches) return false;
+      }
+
+      const isIgn = this.isIgnored(t.id);
+      if (isIgn) ignoredCount++;
+      if (excludeIgnored && isIgn) return false;
+
+      return true;
+    });
+
+    const totals = {
+      total: 0,
+      openTotal: 0,
+      activeTotal: 0,
+      queued: 0,
+      inProgress: 0,
+      pausedWaiting: 0,
+      review: 0,
+      done: 0,
+      doneToday: 0,
+      overdueDev: 0,
+      overdueReview: 0,
+      overdueAll: 0,
+      returned: 0,
+      completionRate: 0,
+      returnRate: 0,
+      ignoredCount,
+      minNumber: null,
+      maxNumber: null,
+      importerTotal: this.importerTotal || (this.demands || []).length
+    };
+
+    const devMap = new Map();
+    const typeMap = new Map();
+    const byHealth = { onTime: 0, overdueDev: 0, returned: 0, inReview: 0 };
+    const returnedTickets = [];
+    const overdueTickets = [];
+    const overdueReviewTickets = [];
+    const reviewTickets = [];
+
+    const typeColorFallbacks = {
+      'Novo Layout': '#a855f7',
+      'Inclusao': '#22c55e',
+      'Erro': '#ef4444',
+      'Migração': '#eab308',
+      'Melhoria': '#0ea5e9',
+      'Outro': '#64748b'
+    };
+
+    filtered.forEach(t => {
+      const cat = this._classifyTicketStatus(t);
+      const ignoreCheck = !excludeIgnored;
+      const isReturned = this.isTicketReturned(t, ignoreCheck);
+      const isOverdueDev = this.isTicketOverdue(t, false, now, ignoreCheck);
+      const isOverdueReview = cat === 'review' && this.isTicketOverdue(t, true, now, ignoreCheck);
+      const isClosedToday = this._isTicketClosedOnDate(t, now);
+
+      const ticketNum = Number(t.number);
+      if (Number.isFinite(ticketNum) && ticketNum > 0) {
+        if (minNumber === null || ticketNum < minNumber) minNumber = ticketNum;
+        if (maxNumber === null || ticketNum > maxNumber) maxNumber = ticketNum;
+      }
+
+      totals.total++;
+      totals[cat]++;
+      if (cat === 'queued' || cat === 'inProgress' || cat === 'pausedWaiting') {
+        totals.openTotal++;
+      }
+      if (cat !== 'done') {
+        totals.activeTotal++;
+      }
+      if (isClosedToday) totals.doneToday++;
+      if (isOverdueDev) totals.overdueDev++;
+      if (isOverdueReview) totals.overdueReview++;
+      if (isOverdueDev || isOverdueReview) totals.overdueAll++;
+      if (isReturned) totals.returned++;
+
+      if (cat !== 'done') {
+        if (isOverdueDev) {
+          byHealth.overdueDev++;
+        } else if (isReturned) {
+          byHealth.returned++;
+        } else if (cat === 'review') {
+          byHealth.inReview++;
+        } else {
+          byHealth.onTime++;
+        }
+      }
+
+      if (isReturned) returnedTickets.push(t);
+      if (isOverdueDev) overdueTickets.push(t);
+      if (isOverdueReview) overdueReviewTickets.push(t);
+      if (cat === 'review') reviewTickets.push(t);
+
+      // By developer
+      const devName = (t.assignedTo?.name && t.assignedTo.name.trim()) ? t.assignedTo.name.trim() : 'Não atribuído';
+      const devId = t.assignedToId || t.assignedTo?.id || devName;
+      if (!devMap.has(devName)) {
+        devMap.set(devName, {
+          name: devName,
+          id: devId,
+          total: 0,
+          openTotal: 0,
+          queued: 0,
+          inProgress: 0,
+          pausedWaiting: 0,
+          review: 0,
+          returned: 0,
+          overdue: 0,
+          overdueReview: 0,
+          done: 0,
+          doneToday: 0,
+          completionRate: 0,
+          returnRate: 0,
+          activeTimeMs: 0
+        });
+      }
+      const dStats = devMap.get(devName);
+      dStats.total++;
+      dStats[cat]++;
+      if (cat === 'queued' || cat === 'inProgress' || cat === 'pausedWaiting') {
+        dStats.openTotal++;
+      }
+      if (isReturned) dStats.returned++;
+      if (isOverdueDev) dStats.overdue++;
+      if (isOverdueReview) dStats.overdueReview++;
+      if (isClosedToday) dStats.doneToday++;
+      if (Number(t.activeTimeMs) > 0) {
+        dStats.activeTimeMs += Number(t.activeTimeMs);
+      }
+
+      // By type
+      const typeName = (t.ticketType?.name && t.ticketType.name.trim()) ? t.ticketType.name.trim() : 'Outro';
+      const typeColor = t.ticketType?.color || typeColorFallbacks[typeName] || '#6366f1';
+      if (!typeMap.has(typeName)) {
+        typeMap.set(typeName, { name: typeName, count: 0, color: typeColor });
+      }
+      typeMap.get(typeName).count++;
+    });
+
+    totals.completionRate = totals.total > 0 ? Math.round((totals.done / totals.total) * 100) : 0;
+    totals.returnRate = totals.total > 0 ? Math.round((totals.returned / totals.total) * 100) : 0;
+    totals.minNumber = minNumber;
+    totals.maxNumber = maxNumber;
+
+    const byDeveloper = Array.from(devMap.values()).map(d => ({
+      ...d,
+      completionRate: d.total > 0 ? Math.round((d.done / d.total) * 100) : 0,
+      returnRate: d.total > 0 ? Math.round((d.returned / d.total) * 100) : 0
+    })).sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.name.localeCompare(b.name);
+    });
+
+    const byStatus = {
+      queued: totals.queued,
+      inProgress: totals.inProgress,
+      review: totals.review,
+      pausedWaiting: totals.pausedWaiting,
+      done: totals.done
+    };
+
+    const byType = Array.from(typeMap.values()).sort((a, b) => b.count - a.count);
+
+    returnedTickets.sort((a, b) => (b.number || 0) - (a.number || 0));
+    overdueTickets.sort((a, b) => {
+      const da = new Date(a.deliveryDueDate || a.clientDueDate || 0).getTime();
+      const db = new Date(b.deliveryDueDate || b.clientDueDate || 0).getTime();
+      if (da !== db) return da - db;
+      return (a.number || 0) - (b.number || 0);
+    });
+    overdueReviewTickets.sort((a, b) => {
+      const da = new Date(a.deliveryDueDate || a.clientDueDate || 0).getTime();
+      const db = new Date(b.deliveryDueDate || b.clientDueDate || 0).getTime();
+      if (da !== db) return da - db;
+      return (a.number || 0) - (b.number || 0);
+    });
+    reviewTickets.sort((a, b) => (b.number || 0) - (a.number || 0));
+
+    return {
+      totals,
+      byDeveloper,
+      byStatus,
+      byHealth,
+      byType,
+      lists: {
+        returnedTickets,
+        overdueTickets,
+        overdueReviewTickets,
+        reviewTickets
+      }
+    };
   }
 }
 

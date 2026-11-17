@@ -1869,6 +1869,22 @@ if (typeof window !== 'undefined') {
   window.syncClosedAtFromDetails = syncClosedAtFromDetails;
 }
 
+function syncReturnedFromDetails(details) {
+  if (!details || !details.id || !Array.isArray(details.events) || !window.appStore) return;
+  const hasReturnEvent = window.appStore.isTicketReturned?.(details);
+  if (hasReturnEvent) {
+    details.wasReturned = true;
+    window.appStore.markTicketReturned?.(details.id);
+    if (Array.isArray(window.appStore.demands)) {
+      const idx = window.appStore.demands.findIndex(d => d.id === details.id);
+      if (idx !== -1 && !window.appStore.demands[idx].wasReturned) {
+        window.appStore.demands[idx].wasReturned = true;
+        window.appStore.saveDemandsCache?.();
+      }
+    }
+  }
+}
+
 async function openDemandDrawer(ticket) {
   if (!ticket || !ticket.id) return;
 
@@ -2074,6 +2090,7 @@ async function openDemandDrawer(ticket) {
   try {
     const details = await window.conciliadorAPI.fetchDemandDetails(ticket.id);
     syncClosedAtFromDetails(details);
+    syncReturnedFromDetails(details);
 
     // Race condition guard: se o usuário já navegou para outra aba ou voltou para a lista enquanto a rede respondia,
     // apenas atualiza o cache da sessão desse chamado sem sobrescrever a tela do chamado visível.
@@ -3908,15 +3925,20 @@ async function handleReturnTicketToDev(targetTicket = null) {
 
     // 3. Atualizar localmente
     ticket.status = 'queued';
+    ticket.wasReturned = true;
     const statusSelect = document.getElementById('drawerEditStatus');
     if (statusSelect && ticket === selectedTicket) statusSelect.value = 'queued';
 
     const idx = window.appStore.demands.findIndex(d => d.id === ticket.id);
     if (idx !== -1) {
       window.appStore.demands[idx].status = 'queued';
+      window.appStore.demands[idx].wasReturned = true;
       if (typeof window.appStore.saveDemandsCache === 'function') {
         await window.appStore.saveDemandsCache();
       }
+    }
+    if (typeof window.appStore.markTicketReturned === 'function') {
+      await window.appStore.markTicketReturned(ticket.id, reason);
     }
 
     syncTicketToTabManager(ticket);

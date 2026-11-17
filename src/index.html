@@ -52,6 +52,7 @@
       <!-- As abas são geradas dinamicamente via TabManager (js/ui/tabs.js) -->
     </div>
     <div class="tab-bar-controls" id="tabBarControls">
+      <button type="button" class="tab-dashboard-btn" id="btnTabBarDashboard" title="Abrir Dashboard de Estatísticas (Ctrl+D)">📊</button>
       <button type="button" class="tab-new-btn" id="btnNewTab" title="Abrir Novo Chamado (Ctrl+N)">➕</button>
       <button type="button" class="tab-scroll-btn" id="btnScrollTabsLeft" title="Rolar abas para a esquerda">‹</button>
       <button type="button" class="tab-scroll-btn" id="btnScrollTabsRight" title="Rolar abas para a direita">›</button>
@@ -83,6 +84,15 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           </button>
         </div>
+      </div>
+
+      <!-- Dashboard Quick Shortcut -->
+      <div class="sidebar-dashboard-cta-wrap">
+        <button type="button" class="sidebar-dashboard-btn" id="btnSidebarDashboard" title="Abrir aba de Dashboard e Estatísticas dos Desenvolvedores (Ctrl+D)">
+          <span class="sidebar-dash-icon">📊</span>
+          <span class="sidebar-dash-label">Dashboard &amp; Métricas</span>
+          <span class="sidebar-dash-kbd">Ctrl+D</span>
+        </button>
       </div>
 
       <!-- Fixed Filters Section -->
@@ -168,6 +178,11 @@
                 <span>📊</span> Kanban
               </button>
             </div>
+
+            <!-- Dashboard Tab Button -->
+            <button type="button" class="btn-secondary btn-open-dashboard" id="btnOpenDashboard" title="Abrir Dashboard de Estatísticas dos Desenvolvedores (Ctrl+D)">
+              <span>📊</span> Dashboard
+            </button>
 
             <!-- New Ticket Button -->
             <button class="btn-primary" id="btnOpenCreateTicketModal" title="Abrir Novo Chamado (Ctrl+N)">
@@ -425,6 +440,171 @@
     </main>
 
   </div>
+
+  <!-- Full-Screen Analytics Dashboard Workspace (Aba 📊 Dashboard) -->
+  <section class="dashboard-workspace" id="dashboardWorkspace" aria-label="Dashboard de Estatísticas">
+    <div class="dash-header">
+      <div class="dash-header-left">
+        <button type="button" class="btn-drawer-back-to-list" id="btnDashboardBackToList" title="Voltar à Lista de Demandas (Ctrl+1)">
+          <span class="back-icon">←</span>
+          <span>Demandas</span>
+        </button>
+        <div class="dash-title-wrap">
+          <div class="dash-title-row">
+            <span class="dash-title-icon">📊</span>
+            <h2 class="dash-title">Dashboard &amp; Estatísticas dos Desenvolvedores</h2>
+          </div>
+          <div class="dash-subtitle" id="dashLastSyncInfo">Carregando indicadores...</div>
+        </div>
+      </div>
+
+      <div class="dash-header-filters">
+        <select class="dash-filter-select" id="dashFilterPeriod" title="Filtrar por período">
+          <option value="all">📅 Todo o período</option>
+          <option value="today">🕒 Hoje</option>
+          <option value="7d">📆 Últimos 7 dias</option>
+          <option value="30d">🗓️ Últimos 30 dias</option>
+          <option value="month">📅 Este mês</option>
+        </select>
+
+        <select class="dash-filter-select" id="dashFilterDev" title="Filtrar por desenvolvedor">
+          <option value="all">Todos os Desenvolvedores</option>
+        </select>
+
+        <select class="dash-filter-select" id="dashFilterProduct" title="Filtrar por produto">
+          <option value="all">Todos os Produtos</option>
+        </select>
+
+        <select class="dash-filter-select" id="dashFilterType" title="Filtrar por tipo de demanda">
+          <option value="all">Todos os Tipos</option>
+        </select>
+
+        <div class="dash-search-wrap">
+          <span class="dash-search-icon">🔍</span>
+          <input type="text" class="dash-search-input" id="dashSearchInput" placeholder="Buscar dev, #chamado, título...">
+        </div>
+
+        <button type="button" class="btn-secondary dash-btn-compact dash-btn-toggle-ignored" id="btnDashToggleIgnored" style="display: none;" title="Alternar exibição de chamados marcados como Ignorados no painel local">
+          <span>👁️</span> Ignorados: Incluídos
+        </button>
+
+        <button type="button" class="btn-secondary dash-btn-compact" id="btnDashClearFilters" style="display: none;" title="Limpar filtros da Dashboard">
+          ✖ Limpar
+        </button>
+
+        <button type="button" class="btn-secondary dash-btn-compact" id="btnDashboardSync" title="Sincronizar demandas da API">
+          <span>🔄</span> Atualizar
+        </button>
+
+        <button type="button" class="icon-btn-ghost btn-drawer-close" id="btnCloseDashboardTab" title="Fechar aba Dashboard (Ctrl+W)">✕</button>
+      </div>
+    </div>
+
+    <div class="dash-body" id="dashBody">
+      <!-- 1. KPI Cards -->
+      <div class="dash-kpi-grid" id="dashKpiGrid"></div>
+
+      <!-- 2. Resumo Executivo Escrito -->
+      <section class="dash-section-card dash-written-card">
+        <div class="dash-section-header">
+          <div>
+            <h3 class="dash-section-title">📝 Resumo Executivo &amp; Análise Escrita</h3>
+            <p class="dash-section-subtitle">Leitura textual consolidada da fila, revisões, devoluções, atrasos e entregas por desenvolvedor</p>
+          </div>
+          <button type="button" class="btn-secondary dash-btn-compact" id="btnCopyDashWrittenReport" title="Copiar relatório escrito completo para a área de transferência">
+            <span>📋</span> Copiar Relatório Escrito
+          </button>
+        </div>
+        <div id="dashWrittenSummary"></div>
+      </section>
+
+      <!-- 3. Gráficos de Pizza (SVG Donut Charts) -->
+      <section class="dash-section-block">
+        <div class="dash-block-heading">
+          <h3>🥧 Gráficos de Pizza &amp; Distribuição</h3>
+          <span>Passe o mouse sobre qualquer fatia para inspecionar os números</span>
+        </div>
+        <div class="dash-charts-grid dash-pie-grid" id="dashPieChartsGrid"></div>
+      </section>
+
+      <!-- 4. Gráficos de Barras -->
+      <section class="dash-section-block">
+        <div class="dash-block-heading">
+          <h3>📊 Gráficos de Barras por Desenvolvedor</h3>
+          <span>Comparativo de volume, fila em aberto, revisão, devolvidos e atrasos</span>
+        </div>
+        <div class="dash-charts-grid dash-bar-grid" id="dashBarChartsGrid"></div>
+      </section>
+
+      <!-- 5. Tabela Analítica Escrita por Desenvolvedor -->
+      <section class="dash-section-card dash-table-card">
+        <div class="dash-section-header">
+          <div>
+            <h3 class="dash-section-title">📋 Tabela Detalhada por Desenvolvedor</h3>
+            <p class="dash-section-subtitle">Clique nos cabeçalhos para ordenar · Clique no nome para filtrar a Dashboard ou em ↗ para abrir na lista</p>
+          </div>
+        </div>
+        <div class="dash-table-scroll">
+          <table class="dash-dev-table" id="dashDevStatsTable">
+            <thead>
+              <tr>
+                <th data-dash-sort="name">Desenvolvedor <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="total">Total <span class="dash-sort-ind">▼</span></th>
+                <th class="num-col" data-dash-sort="queued">Na Fila <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="inProgress">Em Progresso <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="pausedWaiting">Pausados / N2 <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="review">Em Revisão <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="returned">Devolvidos <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="overdue">Atrasados <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="done">Finalizados <span class="dash-sort-ind"></span></th>
+                <th class="num-col" data-dash-sort="completionRate">Conclusão % <span class="dash-sort-ind"></span></th>
+              </tr>
+            </thead>
+            <tbody id="dashDevStatsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 6. Listas Escritas de Chamados por Categoria (Clicáveis) -->
+      <section class="dash-lists-grid" id="dashTicketListsGrid">
+        <div class="dash-section-card dash-tickets-list-card">
+          <div class="dash-section-header">
+            <div>
+              <h3 class="dash-section-title">↩️ Chamados Devolvidos</h3>
+              <p class="dash-section-subtitle">Por desenvolvedor (clique para abrir)</p>
+            </div>
+            <span class="dash-list-badge badge-pink" id="dashReturnedListCount">0</span>
+          </div>
+          <div class="dash-ticket-list-scroll" id="dashReturnedList"></div>
+        </div>
+
+        <div class="dash-section-card dash-tickets-list-card">
+          <div class="dash-section-header">
+            <div>
+              <h3 class="dash-section-title">⏰ Chamados Atrasados</h3>
+              <p class="dash-section-subtitle">Prazo de entrega vencido</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button type="button" class="dash-mini-toggle-btn" id="btnToggleOverdueReview" style="display: none;" title="Mostrar também chamados Em Revisão com prazo vencido"></button>
+              <span class="dash-list-badge badge-red" id="dashOverdueListCount">0</span>
+            </div>
+          </div>
+          <div class="dash-ticket-list-scroll" id="dashOverdueList"></div>
+        </div>
+
+        <div class="dash-section-card dash-tickets-list-card">
+          <div class="dash-section-header">
+            <div>
+              <h3 class="dash-section-title">🔍 Chamados em Revisão</h3>
+              <p class="dash-section-subtitle">Aguardando validação</p>
+            </div>
+            <span class="dash-list-badge badge-amber" id="dashReviewListCount">0</span>
+          </div>
+          <div class="dash-ticket-list-scroll" id="dashReviewList"></div>
+        </div>
+      </section>
+    </div>
+  </section>
 
   <!-- Slide-over / Expanded Demand Details Workspace (Centralizado na Tela) -->
   <div class="drawer-overlay" id="drawerOverlay"></div>
@@ -2114,6 +2294,7 @@
   <script src="js/ui/drawer.js"></script>
   <script src="js/ui/calendar.js"></script>
   <script src="js/ui/autodrive-modal.js"></script>
+  <script src="js/ui/dashboard.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

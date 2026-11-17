@@ -190,7 +190,7 @@ async function syncDemands() {
   try {
     const res = await window.conciliadorAPI.fetchAllDemands(500);
     const previousCount = window.appStore.demands.length;
-    await window.appStore.setDemands(res.demands);
+    await window.appStore.setDemands(res.demands, res.total);
 
     // Synchronize product list from server
     try {
@@ -228,6 +228,9 @@ async function syncDemands() {
       window.appTabs?.syncWithStoreDemands?.();
     } else {
       window.appTabs?.restorePersistedTabs();
+    }
+    if (window.appTabs?.activeTabId === 'dashboard' && typeof window.renderDashboardWorkspace === 'function') {
+      window.renderDashboardWorkspace();
     }
   } catch (err) {
     console.error('Error syncing demands:', err);
@@ -1148,7 +1151,11 @@ function setupEventListeners() {
     // Ctrl+F or Ctrl+K -> focus search
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'k')) {
       e.preventDefault();
-      document.getElementById('inputSearch')?.focus();
+      if (window.appTabs?.activeTabId === 'dashboard') {
+        document.getElementById('dashSearchInput')?.focus();
+      } else {
+        document.getElementById('inputSearch')?.focus();
+      }
     }
     // Ctrl+R -> sync
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {

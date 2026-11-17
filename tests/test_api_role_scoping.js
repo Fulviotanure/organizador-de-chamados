@@ -143,3 +143,64 @@ const apiCode = fs.readFileSync(path.join(__dirname, '../src/js/api.js'), 'utf8'
   });
 }
 
+// Test 5: Multi-page pagination in fetchAllDemands fetches all 815 demands across pages
+{
+  console.log('Test 5: Multi-page pagination in fetchAllDemands');
+  const requestedPages = [];
+  const makeTickets = (startNum, count) => Array.from({ length: count }, (_, idx) => ({
+    id: `t-${startNum + idx}`,
+    number: startNum + idx,
+    title: `Chamado #${startNum + idx}`,
+    status: 'done'
+  }));
+
+  const context = {
+    window: {},
+    fetch: (url) => {
+      requestedPages.push(url);
+      if (url.includes('page=1&limit=500')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            data: makeTickets(316, 500),
+            total: 815,
+            page: 1
+          })
+        });
+      }
+      if (url.includes('page=2&limit=500')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            data: makeTickets(1, 315),
+            total: 815,
+            page: 2
+          })
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: [], total: 815 }) });
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(apiCode, context);
+  const api = context.window.conciliadorAPI;
+  api.setToken('valid-token');
+
+  (async () => {
+    const res = await api.fetchAllDemands(500);
+    assert.strictEqual(requestedPages.length, 2, 'Must request both page=1 and page=2');
+    assert.ok(requestedPages[0].includes('page=1&limit=500'));
+    assert.ok(requestedPages[1].includes('page=2&limit=500'));
+    assert.strictEqual(res.total, 815);
+    assert.strictEqual(res.demands.length, 815, 'Must aggregate all 815 demands across pages');
+    assert.strictEqual(res.demands[0].number, 316);
+    assert.strictEqual(res.demands[res.demands.length - 1].number, 315);
+    console.log('✅ Multi-page fetchAllDemands pagination test passed!');
+  })().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+

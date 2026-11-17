@@ -147,23 +147,58 @@ class ConciliadorAPI {
   async fetchAllDemands(limit = 500) {
     if (!this.token) throw new Error('Não autenticado');
 
-    const response = await this.fetchWithAuth(`${API_BASE_URL}/tickets?page=1&limit=${limit}`, {
-      method: 'GET'
-    });
+    const safeLimit = Number(limit) > 0 ? Number(limit) : 500;
+    const maxPages = 20;
+    const seenIds = new Set();
+    const allDemands = [];
+    let apiTotal = 0;
 
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('UNAUTHORIZED');
+    for (let page = 1; page <= maxPages; page++) {
+      const response = await this.fetchWithAuth(`${API_BASE_URL}/tickets?page=${page}&limit=${safeLimit}`, {
+        method: 'GET'
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('UNAUTHORIZED');
+        }
+        if (page === 1) {
+          throw new Error(`Erro ao buscar demandas: HTTP ${response.status}`);
+        }
+        console.warn(`[ConciliadorAPI] Falha ao buscar página ${page} de demandas: HTTP ${response.status}`);
+        break;
       }
-      throw new Error(`Erro ao buscar demandas: HTTP ${response.status}`);
+
+      const json = await response.json();
+      const pageData = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+      if (Number(json.total) > 0) {
+        apiTotal = Number(json.total);
+      }
+
+      let addedInPage = 0;
+      pageData.forEach(item => {
+        if (!item) return;
+        const key = item.id !== undefined && item.id !== null ? String(item.id) : null;
+        if (key && seenIds.has(key)) return;
+        if (key) seenIds.add(key);
+        allDemands.push(item);
+        addedInPage++;
+      });
+
+      if (pageData.length === 0 || addedInPage === 0) {
+        break;
+      }
+      if (apiTotal > 0) {
+        if (allDemands.length >= apiTotal) break;
+      } else if (pageData.length < safeLimit) {
+        break;
+      }
     }
 
-    const json = await response.json();
-    // Normalize status names to friendly labels if needed
     return {
-      demands: json.data || [],
-      total: json.total || 0,
-      page: json.page || 1
+      demands: allDemands,
+      total: apiTotal || allDemands.length,
+      page: 1
     };
   }
 

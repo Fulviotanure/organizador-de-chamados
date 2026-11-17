@@ -50,6 +50,17 @@ class TabManager {
       this.openCreateTicketTab(true);
     });
 
+    // Dashboard Tab Buttons
+    ['btnTabBarDashboard', 'btnOpenDashboard', 'btnSidebarDashboard'].forEach(btnId => {
+      const btnEl = document.getElementById(btnId);
+      if (btnEl && !btnEl.dataset?.tabBound) {
+        if (btnEl.dataset) btnEl.dataset.tabBound = 'true';
+        btnEl.addEventListener('click', () => {
+          this.openDashboardTab(true);
+        });
+      }
+    });
+
     // Mouse wheel horizontal scrolling over tab bar
     this.tabsContainerEl?.addEventListener('wheel', (e) => {
       if (e.deltaY !== 0) {
@@ -97,11 +108,43 @@ class TabManager {
     this.render();
   }
 
-  // Retorna ID do ticket ativo no workspace, ou null se estiver na lista geral ou em novo chamado
+  // Retorna ID do ticket ativo no workspace, ou null se estiver na lista geral, dashboard ou em novo chamado
   getActiveTicketId() {
-    if (this.activeTabId === 'demands-list' || this.activeTabId === 'new-ticket') return null;
+    if (this.activeTabId === 'demands-list' || this.activeTabId === 'new-ticket' || this.activeTabId === 'dashboard') return null;
     const tab = this.tabs.find(t => t.id === this.activeTabId);
     return tab?.ticketId || null;
+  }
+
+  // Abre ou foca na aba de Dashboard Analítica
+  openDashboardTab(switchToTab = true) {
+    let tab = this.tabs.find(t => t.id === 'dashboard' || t.type === 'dashboard');
+    if (tab) {
+      if (switchToTab) {
+        this.switchToTab(tab.id);
+      } else if (this.activeTabId === tab.id && typeof window.renderDashboardWorkspace === 'function') {
+        window.renderDashboardWorkspace();
+      }
+      return tab;
+    }
+
+    tab = {
+      id: 'dashboard',
+      type: 'dashboard',
+      title: 'Dashboard',
+      icon: '📊',
+      isPinned: false,
+      isDirty: false
+    };
+
+    this.tabs.push(tab);
+    this.render();
+
+    if (switchToTab) {
+      this.switchToTab('dashboard');
+    }
+
+    this.persistOpenTabs();
+    return tab;
   }
 
   // Abre ou foca na aba de Abertura de Novo Chamado
@@ -201,6 +244,11 @@ class TabManager {
 
     if (this.activeTabId === tabId) {
       this.syncWorkspaceVisibility();
+      if (targetTab.type === 'dashboard' || targetTab.id === 'dashboard') {
+        if (typeof window.renderDashboardWorkspace === 'function') {
+          window.renderDashboardWorkspace();
+        }
+      }
       return;
     }
 
@@ -232,6 +280,10 @@ class TabManager {
       await this.restoreTicketSession(targetTab.ticketId);
     } else if (targetTab.type === 'create-ticket' || targetTab.id === 'new-ticket') {
       this.restoreCreateTicketSession();
+    } else if (targetTab.type === 'dashboard' || targetTab.id === 'dashboard') {
+      if (typeof window.renderDashboardWorkspace === 'function') {
+        window.renderDashboardWorkspace();
+      }
     }
 
     // Rola a aba para a área visível do container
@@ -252,6 +304,36 @@ class TabManager {
     if (tab.isPinned) {
       // Aba fixa da lista geral não fecha
       return false;
+    }
+
+    // Fechamento da aba de Dashboard
+    if (tab.type === 'dashboard' || tab.id === 'dashboard') {
+      const currentIndex = this.tabs.findIndex(t => t.id === tab.id);
+      if (currentIndex === -1) return false;
+
+      const wasActive = this.activeTabId === tab.id;
+      let nextTabId = 'demands-list';
+      if (wasActive) {
+        if (currentIndex > 1) {
+          nextTabId = this.tabs[currentIndex - 1].id;
+        } else if (this.tabs.length > currentIndex + 1) {
+          nextTabId = this.tabs[currentIndex + 1].id;
+        }
+      }
+
+      this.tabs.splice(currentIndex, 1);
+
+      if (wasActive) {
+        await this.switchToTab(nextTabId);
+      } else {
+        this.render();
+        this.persistOpenTabs();
+      }
+
+      if (this.activeTabId === 'demands-list') {
+        this.syncWorkspaceVisibility();
+      }
+      return true;
     }
 
     // Fechamento específico da aba de Novo Chamado
@@ -661,16 +743,20 @@ class TabManager {
   syncWorkspaceVisibility() {
     const isList = this.activeTabId === 'demands-list';
     const isCreateTicket = this.activeTabId === 'new-ticket';
+    const isDashboard = this.activeTabId === 'dashboard';
     const drawer = document.getElementById('demandDrawer');
     const overlay = document.getElementById('drawerOverlay');
     const createOverlay = document.getElementById('createTicketModalOverlay');
+    const dashboardWorkspace = document.getElementById('dashboardWorkspace');
 
     if (isList) {
       document.body.classList.remove('ticket-workspace-active');
       document.body.classList.remove('create-ticket-workspace-active');
+      document.body.classList.remove('dashboard-workspace-active');
       drawer?.classList.remove('open');
       createOverlay?.classList.remove('open');
       overlay?.classList.remove('open');
+      dashboardWorkspace?.classList.remove('open');
 
       // Fecha popovers flutuantes
       document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
@@ -680,19 +766,38 @@ class TabManager {
       window.selectedTicket = null;
     } else if (isCreateTicket) {
       document.body.classList.remove('ticket-workspace-active');
+      document.body.classList.remove('dashboard-workspace-active');
       document.body.classList.add('create-ticket-workspace-active');
       drawer?.classList.remove('open');
       createOverlay?.classList.add('open');
       overlay?.classList.remove('open');
+      dashboardWorkspace?.classList.remove('open');
 
       // Fecha popovers flutuantes do drawer
       document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
       document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
       window.selectedTicket = null;
+    } else if (isDashboard) {
+      document.body.classList.remove('ticket-workspace-active');
+      document.body.classList.remove('create-ticket-workspace-active');
+      document.body.classList.add('dashboard-workspace-active');
+      drawer?.classList.remove('open');
+      createOverlay?.classList.remove('open');
+      overlay?.classList.remove('open');
+      dashboardWorkspace?.classList.add('open');
+
+      // Fecha popovers flutuantes
+      document.getElementById('calDrawerDeliveryPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calDrawerClientPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calFloatingPopover')?.style.setProperty('display', 'none');
+      document.getElementById('calClientPopover')?.style.setProperty('display', 'none');
+      window.selectedTicket = null;
     } else {
       document.body.classList.remove('create-ticket-workspace-active');
+      document.body.classList.remove('dashboard-workspace-active');
       document.body.classList.add('ticket-workspace-active');
       createOverlay?.classList.remove('open');
+      dashboardWorkspace?.classList.remove('open');
       drawer?.classList.add('open');
       overlay?.classList.remove('open'); // Sem overlay bloqueador em modo tela cheia
     }
@@ -1138,6 +1243,16 @@ class TabManager {
         `;
       }
 
+      if (tab.type === 'dashboard' || tab.id === 'dashboard') {
+        return `
+          <div class="tab-item tab-item-dashboard ${isActive ? 'active' : ''}" data-tab-id="${tab.id}" title="Dashboard Analítica de Desenvolvedores e Chamados (Ctrl+D)">
+            <span class="tab-icon">📊</span>
+            <span class="tab-title">Dashboard</span>
+            <button type="button" class="tab-close-btn" data-close-tab="${tab.id}" title="Fechar esta aba (Ctrl+W)">✕</button>
+          </div>
+        `;
+      }
+
       const dotColor = this.getStatusColor(tab.status);
       const isDirtyClass = tab.isDirty ? 'is-dirty' : '';
 
@@ -1224,6 +1339,15 @@ class TabManager {
           e.stopPropagation();
           this.switchToTab(this.tabs[targetIndex].id);
         }
+        return;
+      }
+
+      // 4. Ctrl + D: Abre ou foca na aba de Dashboard
+      if (isCtrlOrCmd && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.isAnyModalOpen()) return;
+        this.openDashboardTab(true);
         return;
       }
     });
@@ -1332,9 +1456,11 @@ class TabManager {
     try {
       const ticketIds = this.tabs.filter(t => t.type === 'ticket').map(t => t.ticketId);
       const hasCreateTicketTab = this.tabs.some(t => t.id === 'new-ticket' || t.type === 'create-ticket');
+      const hasDashboardTab = this.tabs.some(t => t.id === 'dashboard' || t.type === 'dashboard');
       const data = {
         activeTabId: this.activeTabId,
         hasCreateTicketTab: hasCreateTicketTab,
+        hasDashboardTab: hasDashboardTab,
         ticketIds: ticketIds
       };
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
@@ -1363,6 +1489,18 @@ class TabManager {
           type: 'create-ticket',
           title: 'Novo Chamado',
           icon: '➕',
+          isPinned: false,
+          isDirty: false
+        });
+      }
+
+      // Restaura aba de Dashboard se estava aberta
+      if (data.hasDashboardTab && !this.tabs.some(t => t.id === 'dashboard')) {
+        this.tabs.push({
+          id: 'dashboard',
+          type: 'dashboard',
+          title: 'Dashboard',
+          icon: '📊',
           isPinned: false,
           isDirty: false
         });
@@ -1411,6 +1549,10 @@ class TabManager {
 
     if (hasChanges) {
       this.render();
+    }
+
+    if (this.activeTabId === 'dashboard' && typeof window.renderDashboardWorkspace === 'function') {
+      window.renderDashboardWorkspace();
     }
   }
 

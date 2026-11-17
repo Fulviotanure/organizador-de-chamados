@@ -362,7 +362,7 @@ try {
     // Test 21: Verify JavaScript syntax across all source files in src/js
     console.log('Integration Test 21: JS syntax integrity across all source files');
     const { execSync } = require('child_process');
-    const jsFiles = ['app.js', 'store.js', 'api.js', 'ui/drawer.js', 'ui/tabs.js', 'ui/table-kanban.js', 'ui/calendar.js', 'ui/dialogs.js', 'ui/icons.js', 'ui/layouts-browser.js'];
+    const jsFiles = ['app.js', 'store.js', 'api.js', 'ui/drawer.js', 'ui/tabs.js', 'ui/table-kanban.js', 'ui/calendar.js', 'ui/dialogs.js', 'ui/icons.js', 'ui/layouts-browser.js', 'ui/dashboard.js'];
     jsFiles.forEach(file => {
       const fullPath = path.join(__dirname, '..', 'src', 'js', file);
       if (fs.existsSync(fullPath)) {
@@ -844,6 +844,199 @@ console.log('Integration Test 34: Post-update What\'s New modal single-display p
   const opened2 = await launch2.ctx.checkAndShowWhatsNewModal();
   assert.strictEqual(opened2, false, 'Modal must NEVER open again on subsequent launches for same version');
   assert.strictEqual(launch2.getDlgEl('whatsNewModalOverlay').style.display, 'none', 'Modal must stay hidden on subsequent launches');
+}
+
+// Test 35: Dashboard tab metrics, returned/overdue detection, charts and written summary
+console.log('Integration Test 35: Dashboard metrics, pie/bar charts, written summary & lists');
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const styleCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+  const storeJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'store.js'), 'utf8');
+  const dashJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'dashboard.js'), 'utf8');
+
+  assert.ok(indexHtml.includes('id="dashboardWorkspace"'), 'index.html must include dashboardWorkspace');
+  assert.ok(indexHtml.includes('id="btnOpenDashboard"'), 'index.html must include btnOpenDashboard');
+  assert.ok(indexHtml.includes('id="btnSidebarDashboard"'), 'index.html must include btnSidebarDashboard');
+  assert.ok(indexHtml.includes('id="btnTabBarDashboard"'), 'index.html must include btnTabBarDashboard');
+  assert.ok(indexHtml.includes('id="btnDashToggleIgnored"'), 'index.html must include btnDashToggleIgnored');
+  assert.ok(indexHtml.includes('src="js/ui/dashboard.js"'), 'index.html must load dashboard.js');
+  assert.ok(styleCss.includes('body.dashboard-workspace-active #dashboardWorkspace'), 'style.css must style dashboard-workspace-active');
+  assert.ok(styleCss.includes('.dash-donut-svg'), 'style.css must style donut pie charts');
+  assert.ok(styleCss.includes('.dash-hbar-track'), 'style.css must style horizontal bar charts');
+
+  const RealDate = Date;
+  const fixedNow = new RealDate(2026, 10, 17, 12, 0, 0); // 2026-11-17
+  class MockDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(fixedNow.getTime());
+      else super(...args);
+    }
+    static now() { return fixedNow.getTime(); }
+  }
+
+  const dashEls = new Map();
+  function getDashEl(id) {
+    if (!dashEls.has(id)) {
+      dashEls.set(id, {
+        id,
+        value: 'all',
+        innerHTML: '',
+        textContent: '',
+        style: { display: '' },
+        classList: { toggle: () => {}, add: () => {}, remove: () => {} },
+        addEventListener: () => {},
+        querySelectorAll: () => [],
+        querySelector: () => null
+      });
+    }
+    return dashEls.get(id);
+  }
+
+  const dashLocalStore = new Map();
+  const dashCtx = {
+    console,
+    Date: MockDate,
+    setTimeout,
+    clearTimeout,
+    escapeHtml: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+    localStorage: {
+      getItem: (k) => dashLocalStore.has(k) ? dashLocalStore.get(k) : null,
+      setItem: (k, v) => dashLocalStore.set(k, String(v))
+    },
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => getDashEl(id),
+      querySelectorAll: () => [],
+      addEventListener: () => {}
+    },
+    window: {
+      addEventListener: () => {}
+    }
+  };
+  dashCtx.window.document = dashCtx.document;
+  dashCtx.window.localStorage = dashCtx.localStorage;
+  vm.createContext(dashCtx);
+  vm.runInContext(storeJs, dashCtx);
+
+  const store = dashCtx.window.appStore;
+  await store.markTicketReturned('t-ret-manual', 'Ajustar layout');
+
+  store.demands = [
+    // Dev 1: Cairo (1 queued overdue, 1 in_progress returned via reviewer+started, 1 review, 1 done today)
+    {
+      id: 't-1', number: 101, title: 'Chamado Fila Atrasado', status: 'queued',
+      assignedToId: 'dev-1', assignedTo: { id: 'dev-1', name: 'Cairo Felipe' },
+      deliveryDueDate: '2026-11-10T23:59:59.000Z', createdAt: '2026-11-08T10:00:00.000Z',
+      ticketType: { name: 'Erro', color: '#ef4444' }, product: { name: 'Conciliador' }
+    },
+    {
+      id: 't-2', number: 102, title: 'Chamado Devolvido em Progresso', status: 'in_progress',
+      assignedToId: 'dev-1', assignedTo: { id: 'dev-1', name: 'Cairo Felipe' },
+      reviewerId: 'rev-1', reviewer: { id: 'rev-1', name: 'Fulvio Tanure' },
+      developmentStartedAt: '2026-11-15T10:00:00.000Z', activeTimeMs: 1200000,
+      deliveryDueDate: '2026-11-20T23:59:59.000Z', createdAt: '2026-11-14T10:00:00.000Z',
+      ticketType: { name: 'Novo Layout', color: '#a855f7' }, product: { name: 'Conciliador' }
+    },
+    {
+      id: 't-3', number: 103, title: 'Chamado Em Revisão', status: 'review',
+      assignedToId: 'dev-1', assignedTo: { id: 'dev-1', name: 'Cairo Felipe' },
+      reviewerId: 'rev-1', reviewer: { id: 'rev-1', name: 'Fulvio Tanure' },
+      deliveryDueDate: '2026-11-12T23:59:59.000Z', createdAt: '2026-11-11T10:00:00.000Z',
+      ticketType: { name: 'Melhoria', color: '#0ea5e9' }, product: { name: 'Conciliador Web' }
+    },
+    {
+      id: 't-4', number: 104, title: 'Chamado Finalizado Hoje', status: 'done',
+      assignedToId: 'dev-1', assignedTo: { id: 'dev-1', name: 'Cairo Felipe' },
+      closedAt: '2026-11-17T11:30:00.000Z', createdAt: '2026-11-12T10:00:00.000Z',
+      ticketType: { name: 'Inclusao', color: '#22c55e' }, product: { name: 'Conciliador' }
+    },
+    // Dev 2: Lucas (1 queued returned manually, 1 done with ajuste label, 1 ignored)
+    {
+      id: 't-ret-manual', number: 105, title: 'Devolvido Manualmente', status: 'queued',
+      assignedToId: 'dev-2', assignedTo: { id: 'dev-2', name: 'Lucas' },
+      deliveryDueDate: '2026-11-16T23:59:59.000Z', createdAt: '2026-11-14T10:00:00.000Z',
+      ticketType: { name: 'Erro', color: '#ef4444' }, product: { name: 'Conciliador' }
+    },
+    {
+      id: 't-6', number: 106, title: 'Finalizado c/ Ajuste', status: 'done',
+      assignedToId: 'dev-2', assignedTo: { id: 'dev-2', name: 'Lucas' },
+      closedAt: '2026-11-05T11:30:00.000Z', createdAt: '2026-11-01T10:00:00.000Z',
+      labels: [{ label: { name: 'efetuar ajuste drive' } }],
+      ticketType: { name: 'Migração', color: '#eab308' }, product: { name: 'Importer' }
+    },
+    {
+      id: 't-ign', number: 107, title: 'Ignorado não deve contar', status: 'queued',
+      assignedToId: 'dev-2', assignedTo: { id: 'dev-2', name: 'Lucas' },
+      deliveryDueDate: '2026-11-01T23:59:59.000Z'
+    }
+  ];
+  store.ignoredTickets = { 't-ign': true };
+
+  // Verify returned & overdue heuristics
+  assert.strictEqual(store.isTicketReturned(store.demands[1]), true, 'in_progress with devStarted + reviewer must count as returned');
+  assert.strictEqual(store.isTicketReturned(store.demands[4]), true, 'Manually returned ticket must count as returned');
+  assert.strictEqual(store.isTicketReturned(store.demands[5]), true, 'Ticket with ajuste label must count as returned');
+  assert.strictEqual(store.isTicketReturned(store.demands[0]), false, 'Fresh queued ticket must not count as returned');
+  assert.strictEqual(store.isTicketOverdue(store.demands[0], false), true, 'Queued past due date is overdue for dev');
+  assert.strictEqual(store.isTicketOverdue(store.demands[2], false), false, 'Review ticket is not overdue for dev when includeReview=false');
+  assert.strictEqual(store.isTicketOverdue(store.demands[2], true), true, 'Review ticket past due date is overdue when includeReview=true');
+
+  // Full Importer mode (default: excludeIgnored = false) includes ignored ticket in total
+  const statsFull = store.getDashboardStats({ period: 'all', developer: 'all' });
+  assert.strictEqual(statsFull.totals.total, 7, 'Default Dashboard mode must include all Importer tickets including locally ignored');
+  assert.strictEqual(statsFull.totals.ignoredCount, 1, 'Must track ignoredCount');
+  assert.strictEqual(statsFull.totals.minNumber, 101);
+  assert.strictEqual(statsFull.totals.maxNumber, 107);
+  assert.strictEqual(statsFull.totals.overdueDev, 3, 'Includes ignored overdue ticket when excludeIgnored=false');
+
+  // Panel-only mode (excludeIgnored = true) omits locally ignored tickets
+  const stats = store.getDashboardStats({ period: 'all', developer: 'all', excludeIgnored: true });
+  assert.strictEqual(stats.totals.total, 6, 'Ignored ticket must be excluded when excludeIgnored=true');
+  assert.strictEqual(stats.totals.ignoredCount, 1, 'Must still report ignoredCount when excludeIgnored=true');
+  assert.strictEqual(stats.totals.queued, 2);
+  assert.strictEqual(stats.totals.inProgress, 1);
+  assert.strictEqual(stats.totals.openTotal, 3);
+  assert.strictEqual(stats.totals.review, 1);
+  assert.strictEqual(stats.totals.done, 2);
+  assert.strictEqual(stats.totals.doneToday, 1);
+  assert.strictEqual(stats.totals.overdueDev, 2, 't-1 and t-ret-manual are overdue for devs');
+  assert.strictEqual(stats.totals.overdueReview, 1, 't-3 is overdue in review');
+  assert.strictEqual(stats.totals.returned, 3, 't-2, t-ret-manual and t-6 are returned');
+
+  const cairoStats = stats.byDeveloper.find(d => d.name === 'Cairo Felipe');
+  assert.ok(cairoStats, 'Cairo Felipe stats must exist');
+  assert.strictEqual(cairoStats.total, 4);
+  assert.strictEqual(cairoStats.openTotal, 2);
+  assert.strictEqual(cairoStats.review, 1);
+  assert.strictEqual(cairoStats.returned, 1);
+  assert.strictEqual(cairoStats.overdue, 1);
+  assert.strictEqual(cairoStats.done, 1);
+
+  const lucasStats = stats.byDeveloper.find(d => d.name === 'Lucas');
+  assert.ok(lucasStats, 'Lucas stats must exist');
+  assert.strictEqual(lucasStats.total, 2);
+  assert.strictEqual(lucasStats.returned, 2);
+  assert.strictEqual(lucasStats.overdue, 1);
+  assert.strictEqual(lucasStats.done, 1);
+
+  // Run dashboard.js rendering inside VM
+  vm.runInContext(dashJs, dashCtx);
+  dashCtx.window.renderDashboardWorkspace();
+
+  assert.ok(getDashEl('dashKpiGrid').innerHTML.includes('Chamados Devolvidos'), 'KPI grid must render returned KPI');
+  assert.ok(getDashEl('dashWrittenSummary').innerHTML.includes('Cairo Felipe'), 'Written summary must include developer analysis');
+  assert.ok(getDashEl('dashWrittenSummary').innerHTML.includes('Lucas'), 'Written summary must include Lucas');
+  assert.ok(getDashEl('dashPieChartsGrid').innerHTML.includes('<svg'), 'Pie charts grid must render SVG donut charts');
+  assert.ok(getDashEl('dashBarChartsGrid').innerHTML.includes('dash-hbar-track'), 'Bar charts grid must render stacked bar chart');
+  assert.ok(getDashEl('dashBarChartsGrid').innerHTML.includes('dash-group-bar-row'), 'Bar charts grid must render comparison bar chart');
+  assert.ok(getDashEl('dashDevStatsTableBody').innerHTML.includes('Cairo Felipe'), 'Dev table must render Cairo Felipe');
+  assert.ok(getDashEl('dashReturnedList').innerHTML.includes('#105'), 'Returned list must render ticket #105');
+  assert.ok(getDashEl('dashOverdueList').innerHTML.includes('#101'), 'Overdue list must render ticket #101');
+  assert.ok(getDashEl('dashReviewList').innerHTML.includes('#103'), 'Review list must render ticket #103');
+
+  const writtenTxt = dashCtx.window.buildDashboardWrittenReportText(stats);
+  assert.ok(writtenTxt.includes('Devolvidos por desenvolvedor:'), 'Written report text must detail returned per dev');
+  assert.ok(writtenTxt.includes('Atrasados por desenvolvedor:'), 'Written report text must detail overdue per dev');
 }
 
 console.log('\n✅ All drawer integration tests passed successfully!');
