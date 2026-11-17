@@ -261,7 +261,114 @@ function setupAppDialogHandlers() {
       showAppAlert(msg, 'Aviso do Sistema', 'info');
     };
   }
+
+  setupWhatsNewHandlers();
 }
+
+const WHATS_NEW_CURRENT_VERSION = '1.0.64';
+let hasShownWhatsNewInSession = false;
+let cachedWhatsNewVersion = null;
+let whatsNewHandlersBound = false;
+
+async function resolveCurrentAppVersion() {
+  if (cachedWhatsNewVersion) return cachedWhatsNewVersion;
+  let version = WHATS_NEW_CURRENT_VERSION;
+  try {
+    if (window.electronAPI && typeof window.electronAPI.getAppVersion === 'function') {
+      const appVer = await window.electronAPI.getAppVersion();
+      if (appVer) version = String(appVer).trim();
+    }
+  } catch (e) {}
+  cachedWhatsNewVersion = version;
+  return version;
+}
+
+async function markWhatsNewVersionAsSeen(version) {
+  const ver = String(version || WHATS_NEW_CURRENT_VERSION).trim();
+  hasShownWhatsNewInSession = true;
+  if (window.appStore) {
+    window.appStore.lastSeenWhatsNewVersion = ver;
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('cc_lastSeenWhatsNewVersion', ver);
+    }
+  } catch (e) {}
+  if (window.electronAPI && typeof window.electronAPI.saveStorage === 'function') {
+    try {
+      await window.electronAPI.saveStorage('lastSeenWhatsNewVersion', ver);
+    } catch (e) {}
+  }
+}
+
+async function closeWhatsNewModal() {
+  const modal = document.getElementById('whatsNewModalOverlay');
+  const wasVisible = !!(modal && modal.style.display !== 'none');
+  if (modal) modal.style.display = 'none';
+  if (wasVisible) {
+    const ver = await resolveCurrentAppVersion();
+    await markWhatsNewVersionAsSeen(ver);
+  }
+}
+
+async function checkAndShowWhatsNewModal() {
+  if (hasShownWhatsNewInSession) return false;
+  const ver = await resolveCurrentAppVersion();
+
+  let alreadySeen = false;
+  if (window.appStore && window.appStore.lastSeenWhatsNewVersion === ver) {
+    alreadySeen = true;
+  }
+  if (!alreadySeen) {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('cc_lastSeenWhatsNewVersion') === ver) {
+        alreadySeen = true;
+      }
+    } catch (e) {}
+  }
+  if (!alreadySeen && window.electronAPI && typeof window.electronAPI.loadStorage === 'function') {
+    try {
+      const stored = await window.electronAPI.loadStorage('lastSeenWhatsNewVersion', null);
+      if (stored && String(stored).trim() === ver) {
+        alreadySeen = true;
+      }
+    } catch (e) {}
+  }
+
+  if (alreadySeen) {
+    await markWhatsNewVersionAsSeen(ver);
+    return false;
+  }
+
+  // Marca imediatamente como visto para não reabrir em futuras inicializações mesmo se o app for fechado abruptamente
+  await markWhatsNewVersionAsSeen(ver);
+
+  const modal = document.getElementById('whatsNewModalOverlay');
+  const badge = document.getElementById('whatsNewVersionBadge');
+  if (badge) badge.textContent = `v${ver}`;
+  if (!modal) return false;
+
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('btnConfirmWhatsNewModal')?.focus?.(), 60);
+  return true;
+}
+
+function setupWhatsNewHandlers() {
+  if (whatsNewHandlersBound) return;
+  whatsNewHandlersBound = true;
+
+  document.getElementById('btnCloseWhatsNewModal')?.addEventListener('click', () => closeWhatsNewModal());
+  document.getElementById('btnConfirmWhatsNewModal')?.addEventListener('click', () => closeWhatsNewModal());
+  document.getElementById('whatsNewModalOverlay')?.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'whatsNewModalOverlay') {
+      closeWhatsNewModal();
+    }
+  });
+}
+
+window.checkAndShowWhatsNewModal = checkAndShowWhatsNewModal;
+window.closeWhatsNewModal = closeWhatsNewModal;
+window.setupWhatsNewHandlers = setupWhatsNewHandlers;
 
 window.showAppAlert = showAppAlert;
 window.showAppConfirm = showAppConfirm;

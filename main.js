@@ -339,7 +339,7 @@ ipcMain.handle('storage-save', (event, key, value) => {
     return scheduleStorageFlush(true);
   }
   store[key] = value;
-  return scheduleStorageFlush(false);
+  return scheduleStorageFlush(key === 'lastSeenWhatsNewVersion');
 });
 
 ipcMain.handle('storage-get-all', () => {

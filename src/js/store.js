@@ -43,6 +43,7 @@ class AppStore {
     // Resizable table columns widths & persistent layout cache
     this.tableColumnWidths = {};
     this.layoutCache = {};
+    this.lastSeenWhatsNewVersion = null;
 
     // Static master definitions
     this.products = this.getProducts();
@@ -67,17 +68,20 @@ class AppStore {
         const storedColWidths = await window.electronAPI.loadStorage('tableColumnWidths', {});
         const storedLayoutCache = await window.electronAPI.loadStorage('layoutCache', {});
         const storedActiveFilter = await window.electronAPI.loadStorage('activeFilterId', null);
+        const storedLastSeenWhatsNew = await window.electronAPI.loadStorage('lastSeenWhatsNewVersion', null);
 
         // Fallback redundante com localStorage para máxima resiliência entre reinicializações
         let localIgnored = {};
         let localIgnoredCache = {};
         let localActiveFilter = null;
+        let localLastSeenWhatsNew = null;
         try {
           const rawIgnored = localStorage.getItem('cc_ignoredTickets');
           if (rawIgnored) localIgnored = JSON.parse(rawIgnored);
           const rawCache = localStorage.getItem('cc_ignoredTicketsCache');
           if (rawCache) localIgnoredCache = JSON.parse(rawCache);
           localActiveFilter = localStorage.getItem('cc_activeFilterId');
+          localLastSeenWhatsNew = localStorage.getItem('cc_lastSeenWhatsNewVersion');
         } catch (e) {}
 
         this.token = storedToken;
@@ -90,6 +94,7 @@ class AppStore {
         this.demands = storedDemands || [];
         this.tableColumnWidths = storedColWidths || {};
         this.layoutCache = storedLayoutCache || {};
+        this.lastSeenWhatsNewVersion = storedLastSeenWhatsNew || localLastSeenWhatsNew || null;
 
         // Re-injetar qualquer chamado ignorado salvo no cache que não esteja em this.demands
         if (this.ignoredTicketsCache && typeof this.ignoredTicketsCache === 'object') {
@@ -277,11 +282,14 @@ class AppStore {
     } else {
       this.fixedFilters = this.getDefaultFixedFilters();
       let localActiveFilter = null;
+      let localLastSeenWhatsNew = null;
       try {
         if (typeof localStorage !== 'undefined') {
           localActiveFilter = localStorage.getItem('cc_activeFilterId');
+          localLastSeenWhatsNew = localStorage.getItem('cc_lastSeenWhatsNewVersion');
         }
       } catch (e) {}
+      this.lastSeenWhatsNewVersion = localLastSeenWhatsNew || null;
       if (localActiveFilter && this.fixedFilters.some(f => f.id === localActiveFilter)) {
         this.activeFilterId = localActiveFilter;
       } else {
@@ -763,34 +771,58 @@ class AppStore {
     return allDevs;
   }
 
+  _matchesActiveDeveloperDemand(d, developerIdOrName) {
+    if (!d || !developerIdOrName) return false;
+    const s = (d.status || '').toLowerCase();
+    // Concluídos saem do calendário
+    if (s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado') {
+      return false;
+    }
+
+    // Só conta chamados na fila ("queued") ou em curso ("in_progress" / "progress")
+    const isQueueOrInProgress = s === 'queued' || s === 'in_progress' || s === 'progress';
+    if (!isQueueOrInProgress) {
+      return false;
+    }
+
+    return (d.assignedToId && d.assignedToId === developerIdOrName) ||
+           (d.assignedTo?.id && d.assignedTo.id === developerIdOrName) ||
+           (d.assignedTo?.name && d.assignedTo.name.toLowerCase() === String(developerIdOrName).toLowerCase());
+  }
+
   getDeveloperWorkloadByDate(developerIdOrName) {
     if (!developerIdOrName) return {};
     const workload = {};
 
-    this.demands.forEach(d => {
-      const s = (d.status || '').toLowerCase();
-      // Concluídos saem do calendário
-      if (s === 'done' || s === 'closed' || s === 'finished' || s === 'completed' || s === 'concluido' || s === 'finalizado') {
-        return;
-      }
-
-      // Só conta chamados na fila ("queued") ou em curso ("in_progress" / "progress")
-      const isQueueOrInProgress = s === 'queued' || s === 'in_progress' || s === 'progress';
-      if (!isQueueOrInProgress) {
-        return;
-      }
-
-      const matchesDev = (d.assignedToId && d.assignedToId === developerIdOrName) ||
-                         (d.assignedTo?.id && d.assignedTo.id === developerIdOrName) ||
-                         (d.assignedTo?.name && d.assignedTo.name.toLowerCase() === String(developerIdOrName).toLowerCase());
-
-      if (matchesDev && d.deliveryDueDate) {
+    (this.demands || []).forEach(d => {
+      if (this._matchesActiveDeveloperDemand(d, developerIdOrName) && d.deliveryDueDate) {
         const dayStr = d.deliveryDueDate.slice(0, 10);
         workload[dayStr] = (workload[dayStr] || 0) + 1;
       }
     });
 
     return workload;
+  }
+
+  getDeveloperOverdueDemands(developerIdOrName) {
+    if (!developerIdOrName) return [];
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    return (this.demands || [])
+      .filter(d => {
+        if (!d || this.isIgnored(d.id)) return false;
+        if (!this._matchesActiveDeveloperDemand(d, developerIdOrName)) return false;
+        if (!d.deliveryDueDate || typeof d.deliveryDueDate !== 'string') return false;
+        const dueDay = d.deliveryDueDate.slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(dueDay) && dueDay < todayStr;
+      })
+      .sort((a, b) => {
+        const dateDiff = new Date(a.deliveryDueDate) - new Date(b.deliveryDueDate);
+        if (!isNaN(dateDiff) && dateDiff !== 0) return dateDiff;
+        return (a.number || 0) - (b.number || 0);
+      });
   }
 
   _normalizeFilterArray(val) {

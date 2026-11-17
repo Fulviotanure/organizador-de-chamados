@@ -1,6 +1,120 @@
 // UI Module: Developer Agenda, Delivery & Client Calendars, Rich Text Editor & Create Ticket Modal
 // Drawer Calendars & Pickers
 
+function escapeCalendarAttr(str) {
+  if (typeof escapeHtml === 'function') {
+    return escapeHtml(str);
+  }
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildDeveloperOverdueDaysMap(devId, todayStr) {
+  const map = new Map();
+  if (!devId || !todayStr) return map;
+
+  const overdueDemands = (window.appStore && typeof window.appStore.getDeveloperOverdueDemands === 'function')
+    ? window.appStore.getDeveloperOverdueDemands(devId)
+    : [];
+
+  if (!Array.isArray(overdueDemands) || overdueDemands.length === 0) {
+    return map;
+  }
+
+  const orangeDaysCount = Math.ceil(overdueDemands.length / 5);
+  const [tYear, tMonth, tDay] = todayStr.split('-').map(Number);
+  const cursor = new Date(tYear, tMonth - 1, tDay);
+
+  let iterations = 0;
+  while (map.size < orangeDaysCount && iterations < 365) {
+    iterations++;
+    const y = cursor.getFullYear();
+    const m = cursor.getMonth();
+    const d = cursor.getDate();
+    const dayOfWeek = cursor.getDay();
+    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+    const isHol = isHoliday(y, m, d);
+
+    if (!isWeekend && !isHol) {
+      const idx = map.size;
+      const key = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const daySlice = overdueDemands.slice(idx * 5, (idx + 1) * 5);
+      map.set(key, {
+        dayIndex: idx + 1,
+        totalOrangeDays: orangeDaysCount,
+        totalOverdue: overdueDemands.length,
+        daySlice,
+        allOverdue: overdueDemands
+      });
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return map;
+}
+
+function formatOverdueDayTooltip(day, mStr, year, devName, count, overdueInfo) {
+  const formatTicketItem = (t) => {
+    const num = t.number ? `#${t.number}` : `#${t.id}`;
+    let duePart = '';
+    if (t.deliveryDueDate && typeof t.deliveryDueDate === 'string') {
+      const [, m, d] = t.deliveryDueDate.slice(0, 10).split('-');
+      if (d && m) duePart = ` (${d}/${m})`;
+    }
+    const titlePart = t.title ? ` - ${t.title}` : '';
+    return `${num}${duePart}${titlePart}`;
+  };
+
+  const lines = [
+    `${day}/${mStr}/${year}: ⚠️ ${overdueInfo.totalOverdue} chamado(s) atrasado(s) (${devName || 'Dev'})${count > 0 ? ` | +${count} agendado(s) no dia` : ''}`
+  ];
+
+  if (overdueInfo.totalOrangeDays > 1) {
+    lines.push(`Lote ${overdueInfo.dayIndex}/${overdueInfo.totalOrangeDays} (${overdueInfo.daySlice.length} atrasado(s)): ${overdueInfo.daySlice.map(formatTicketItem).join(' | ')}`);
+    lines.push(`Todos os atrasados (${overdueInfo.totalOverdue}): ${overdueInfo.allOverdue.map(t => `#${t.number || t.id}`).join(', ')}`);
+  } else {
+    lines.push(`Chamados atrasados: ${overdueInfo.daySlice.map(formatTicketItem).join(' | ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+function resolveBusinessDayStatus({ day, mStr, year, count, devName, overdueInfo, detailedLabels = false }) {
+  if (overdueInfo) {
+    return {
+      statusClass: 'cal-day-overdue',
+      titleText: formatOverdueDayTooltip(day, mStr, year, devName, count, overdueInfo)
+    };
+  }
+  if (count === 0) {
+    return {
+      statusClass: 'cal-day-free',
+      titleText: detailedLabels
+        ? `${day}/${mStr}/${year}: Livre (0 chamados com entrega neste dia)`
+        : `${day}/${mStr}/${year}: Livre (0 chamados)`
+    };
+  }
+  if (count >= 1 && count <= 5) {
+    return {
+      statusClass: 'cal-day-busy',
+      titleText: detailedLabels
+        ? `${day}/${mStr}/${year}: ${count} chamado(s) em aberto (${devName})`
+        : `${day}/${mStr}/${year}: ${count} chamado(s) (${devName})`
+    };
+  }
+  return {
+    statusClass: 'cal-day-full',
+    titleText: detailedLabels
+      ? `${day}/${mStr}/${year}: ${count} chamados (Mais de 5 - lotado)`
+      : `${day}/${mStr}/${year}: ${count} chamados (lotado)`
+  };
+}
+
 function renderDrawerDeveloperCalendar() {
   const container = document.getElementById('calDrawerDualMonthsContainer');
   const headerNameEl = document.getElementById('calDrawerAgendaHeader');
@@ -11,7 +125,7 @@ function renderDrawerDeveloperCalendar() {
   const dev = devs.find(d => d.id === devId);
 
   if (headerNameEl) {
-    headerNameEl.innerHTML = dev ? `Agenda de <strong>${dev.name.split(' ')[0] || dev.name}</strong>` : 'Agenda Geral de Entregas';
+    headerNameEl.innerHTML = dev ? `Agenda de <strong>${escapeCalendarAttr(dev.name.split(' ')[0] || dev.name)}</strong>` : 'Agenda Geral de Entregas';
   }
 
   if (!container) return;
@@ -24,6 +138,7 @@ function renderDrawerDeveloperCalendar() {
 
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const overdueDaysMap = buildDeveloperOverdueDaysMap(devId, todayStr);
 
   const m1Year = drawerDeliveryCalYear;
   const m1Month = drawerDeliveryCalMonth;
@@ -70,18 +185,18 @@ function renderDrawerDeveloperCalendar() {
       }
 
       const count = workload[dayStr] || 0;
-      let statusClass = 'cal-day-free';
-      let titleText = `${day}/${mStr}/${year}: Livre (0 chamados)`;
+      const overdueInfo = overdueDaysMap.get(dayStr);
+      const { statusClass, titleText } = resolveBusinessDayStatus({
+        day,
+        mStr,
+        year,
+        count,
+        devName: dev?.name || 'Dev',
+        overdueInfo,
+        detailedLabels: false
+      });
 
-      if (count >= 1 && count <= 5) {
-        statusClass = 'cal-day-busy';
-        titleText = `${day}/${mStr}/${year}: ${count} chamado(s) (${dev?.name || 'Dev'})`;
-      } else if (count > 5) {
-        statusClass = 'cal-day-full';
-        titleText = `${day}/${mStr}/${year}: ${count} chamados (lotado)`;
-      }
-
-      daysHtml += `<div class="cal-day-cell ${statusClass}" data-day="${dayStr}" title="${titleText}"><span>${day}</span></div>`;
+      daysHtml += `<div class="cal-day-cell ${statusClass}" data-day="${dayStr}" title="${escapeCalendarAttr(titleText)}"><span>${day}</span></div>`;
     }
 
     const navArrows = isSecondMonth ? `
@@ -107,7 +222,7 @@ function renderDrawerDeveloperCalendar() {
 
   container.innerHTML = generateMonthHtml(m1Year, m1Month, false) + generateMonthHtml(m2Year, m2Month, true);
 
-  container.querySelectorAll('.cal-day-free, .cal-day-busy, .cal-day-full').forEach(cell => {
+  container.querySelectorAll('.cal-day-free, .cal-day-busy, .cal-day-full, .cal-day-overdue').forEach(cell => {
     cell.addEventListener('click', () => {
       selectDrawerDeliveryCalendarDate(cell.dataset.day);
     });
@@ -214,6 +329,13 @@ function setupDrawerDeliveryCalendar() {
   btnClear?.addEventListener('click', (e) => {
     e.stopPropagation();
     selectDrawerDeliveryCalendarDate(null);
+  });
+
+  const devSelect = document.getElementById('drawerEditAssignedTo');
+  devSelect?.addEventListener('change', () => {
+    if (popover.style.display !== 'none') {
+      renderDrawerDeveloperCalendar();
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -699,7 +821,7 @@ function renderDeveloperCalendar(devId) {
 
   if (headerEl) {
     headerEl.innerHTML = dev
-      ? `Agenda de <strong id="calDevNameHeader">${escapeHtml(dev.name.split(' ')[0] || dev.name)}</strong>: chamados em aberto com entrega em cada dia.`
+      ? `Agenda de <strong id="calDevNameHeader">${escapeCalendarAttr(dev.name.split(' ')[0] || dev.name)}</strong>: chamados em aberto com entrega em cada dia.`
       : 'Agenda Geral de Entregas (Selecione um desenvolvedor para ver carga de trabalho)';
   }
 
@@ -714,6 +836,7 @@ function renderDeveloperCalendar(devId) {
 
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const overdueDaysMap = buildDeveloperOverdueDaysMap(devId, todayStr);
 
   // Month 1 & Month 2 (Dual Month Display)
   const m1Year = calCurrentYear;
@@ -783,22 +906,19 @@ function renderDeveloperCalendar(devId) {
 
       // Dias úteis futuros (Segunda a Sexta):
       const count = workload[dayStr] || 0;
-      let statusClass = 'cal-day-free';
-      let titleText = `${day}/${mStr}/${year}: Livre (0 chamados ativos)`;
-
-      if (count === 0) {
-        statusClass = 'cal-day-free';
-        titleText = `${day}/${mStr}/${year}: Livre (0 chamados com entrega neste dia)`;
-      } else if (count >= 1 && count <= 5) {
-        statusClass = 'cal-day-busy';
-        titleText = `${day}/${mStr}/${year}: ${count} chamado(s) em aberto (${dev.name})`;
-      } else {
-        statusClass = 'cal-day-full';
-        titleText = `${day}/${mStr}/${year}: ${count} chamados (Mais de 5 - lotado)`;
-      }
+      const overdueInfo = overdueDaysMap.get(dayStr);
+      const { statusClass, titleText } = resolveBusinessDayStatus({
+        day,
+        mStr,
+        year,
+        count,
+        devName: dev?.name || 'Dev',
+        overdueInfo,
+        detailedLabels: true
+      });
 
       daysHtml += `
-        <div class="cal-day-cell ${statusClass} ${isSelected ? 'cal-day-selected' : ''}" data-day="${dayStr}" title="${titleText}">
+        <div class="cal-day-cell ${statusClass} ${isSelected ? 'cal-day-selected' : ''}" data-day="${dayStr}" title="${escapeCalendarAttr(titleText)}">
           <span>${day}</span>
         </div>
       `;
@@ -830,7 +950,7 @@ function renderDeveloperCalendar(devId) {
   container.innerHTML = generateMonthHtml(m1Year, m1Month, false) + generateMonthHtml(m2Year, m2Month, true);
 
   // Wire click events for active business days
-  container.querySelectorAll('.cal-day-free, .cal-day-busy, .cal-day-full').forEach(cell => {
+  container.querySelectorAll('.cal-day-free, .cal-day-busy, .cal-day-full, .cal-day-overdue').forEach(cell => {
     cell.addEventListener('click', () => {
       selectCalendarDate(cell.dataset.day);
     });

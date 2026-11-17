@@ -75,6 +75,10 @@ async function initApplication() {
         openUserSettingsModal(true);
       }, 1200);
     }
+
+    if (typeof checkAndShowWhatsNewModal === 'function') {
+      checkAndShowWhatsNewModal();
+    }
   }
 
   setupAutoRefresh();
@@ -135,6 +139,9 @@ async function doLogin(email, password, remember = true) {
     renderFixedFiltersList();
     populateDeveloperSelects();
     await syncDemands();
+    if (typeof checkAndShowWhatsNewModal === 'function') {
+      checkAndShowWhatsNewModal();
+    }
   } catch (err) {
     if (errBox) {
       errBox.innerText = 'Falha ao autenticar: ' + err.message;
@@ -1162,6 +1169,7 @@ function setupEventListeners() {
 
     // Esc -> fecha apenas modais flutuantes e popovers (fechar abas requer Ctrl+W ou clique explícito)
     if (e.key === 'Escape') {
+      if (typeof closeWhatsNewModal === 'function') closeWhatsNewModal();
       closeUserSettingsModal();
       closeImageLightbox();
       closeAutoDriveModal();

@@ -532,6 +532,320 @@ try {
   console.log('Note on drawer.js VM run:', e.message);
 }
 
+// Test 33: Orange calendar marking for developer overdue demands (1 day per 5 overdue demands)
+console.log('Integration Test 33: Orange calendar marking for developer overdue demands');
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const styleCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+  const storeJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'store.js'), 'utf8');
+  const calJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'calendar.js'), 'utf8');
+
+  assert.ok(styleCss.includes('.box-overdue'), 'style.css must define .box-overdue');
+  assert.ok(styleCss.includes('.cal-day-overdue'), 'style.css must define .cal-day-overdue');
+  assert.ok(indexHtml.includes('class="legend-box box-overdue"'), 'index.html must include overdue legend item');
+  assert.ok(storeJs.includes('getDeveloperOverdueDemands'), 'store.js must define getDeveloperOverdueDemands');
+  assert.ok(calJs.includes('buildDeveloperOverdueDaysMap'), 'calendar.js must define buildDeveloperOverdueDaysMap');
+
+  const RealDate = Date;
+  const fixedNow = new RealDate(2026, 10, 18, 12, 0, 0); // 2026-11-18 (Wednesday)
+  class MockDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        super(fixedNow.getTime());
+      } else {
+        super(...args);
+      }
+    }
+    static now() {
+      return fixedNow.getTime();
+    }
+  }
+
+  const calDom = new Map();
+  function makeCellFromAttrs(classAttr, dayAttr, titleAttr) {
+    const listeners = {};
+    const classSet = new Set(classAttr.split(/\s+/).filter(Boolean));
+    return {
+      className: classAttr,
+      dataset: { day: dayAttr },
+      title: titleAttr,
+      classList: {
+        toggle: (c, force) => {
+          if (force !== undefined) {
+            if (force) classSet.add(c); else classSet.delete(c);
+          } else if (classSet.has(c)) {
+            classSet.delete(c);
+          } else {
+            classSet.add(c);
+          }
+        },
+        contains: (c) => classSet.has(c)
+      },
+      addEventListener: (ev, fn) => { listeners[ev] = fn; },
+      click: () => { if (listeners.click) listeners.click(); }
+    };
+  }
+  function parseAllCalCells(html) {
+    const cells = [];
+    const divRegex = /<div\s+class="([^"]*)"[^>]*data-day="([^"]*)"[^>]*title="([^"]*)"/g;
+    let match;
+    while ((match = divRegex.exec(html)) !== null) {
+      const [, cls, day, title] = match;
+      cells.push(makeCellFromAttrs(cls, day, title));
+    }
+    return cells;
+  }
+  function filterCells(cells, selector) {
+    const wantedClasses = selector.split(',').map(s => s.trim().replace(/^\./, ''));
+    return cells.filter(cell => wantedClasses.some(w => cell.classList.contains(w)));
+  }
+  function getCalEl(id) {
+    if (!calDom.has(id)) {
+      const el = {
+        id,
+        value: '',
+        _innerHTML: '',
+        _parsedCells: [],
+        textContent: '',
+        dataset: {},
+        style: { display: 'none', setProperty: () => {} },
+        classList: { toggle: () => {}, add: () => {}, remove: () => {}, contains: () => false },
+        addEventListener: () => {},
+        querySelectorAll: (sel) => {
+          if (id === 'calDualMonthsContainer' || id === 'calDrawerDualMonthsContainer') {
+            return filterCells(el._parsedCells, sel);
+          }
+          return [];
+        }
+      };
+      Object.defineProperty(el, 'innerHTML', {
+        get: () => el._innerHTML,
+        set: (v) => {
+          el._innerHTML = String(v);
+          if (id === 'calDualMonthsContainer' || id === 'calDrawerDualMonthsContainer') {
+            el._parsedCells = parseAllCalCells(el._innerHTML);
+          }
+        }
+      });
+      calDom.set(id, el);
+    }
+    return calDom.get(id);
+  }
+
+  const calContext = {
+    console,
+    Date: MockDate,
+    setTimeout,
+    clearTimeout,
+    calCurrentYear: 2026,
+    calCurrentMonth: 10, // Nov 2026
+    calSelectedDate: null,
+    currentCalDevId: null,
+    drawerDeliveryCalYear: 2026,
+    drawerDeliveryCalMonth: 10,
+    drawerClientCalYear: 2026,
+    drawerClientCalMonth: 10,
+    commonCalCurrentYear: 2026,
+    commonCalCurrentMonth: 10,
+    commonCalSelectedDate: null,
+    escapeHtml: (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+    document: {
+      getElementById: (id) => getCalEl(id),
+      querySelectorAll: () => [],
+      addEventListener: () => {}
+    },
+    window: {
+      addEventListener: () => {}
+    }
+  };
+  calContext.window.document = calContext.document;
+  vm.createContext(calContext);
+  vm.runInContext(storeJs, calContext);
+  vm.runInContext(calJs, calContext);
+
+  const store = calContext.window.appStore;
+  const devId = 'dev-overdue-1';
+  store.getKnownDevelopers = () => [{ id: devId, name: 'Fulvio Tanure' }];
+
+  // Populate demands: 3 overdue active, plus non-overdue / done / review / other dev / ignored
+  store.demands = [
+    { id: 'd-103', number: 103, title: 'Terceiro atrasado', status: 'queued', assignedToId: devId, deliveryDueDate: '2026-11-17T23:59:59.000Z' },
+    { id: 'd-101', number: 101, title: 'Primeiro atrasado', status: 'in_progress', assignedToId: devId, deliveryDueDate: '2026-11-10T23:59:59.000Z' },
+    { id: 'd-102', number: 102, title: 'Segundo atrasado', status: 'progress', assignedTo: { id: devId, name: 'Fulvio Tanure' }, deliveryDueDate: '2026-11-12T23:59:59.000Z' },
+    { id: 'd-done', number: 104, title: 'Concluido antigo', status: 'done', assignedToId: devId, deliveryDueDate: '2026-11-05T23:59:59.000Z' },
+    { id: 'd-review', number: 105, title: 'Em revisao antigo', status: 'review', assignedToId: devId, deliveryDueDate: '2026-11-06T23:59:59.000Z' },
+    { id: 'd-ign', number: 106, title: 'Ignorado atrasado', status: 'queued', assignedToId: devId, deliveryDueDate: '2026-11-08T23:59:59.000Z' },
+    { id: 'd-other', number: 107, title: 'Outro dev atrasado', status: 'queued', assignedToId: 'dev-other', deliveryDueDate: '2026-11-09T23:59:59.000Z' },
+    // Scheduled deliveries on today (2026-11-18) -> 2 scheduled today (not overdue)
+    { id: 'd-today1', number: 108, title: 'Hoje 1', status: 'queued', assignedToId: devId, deliveryDueDate: '2026-11-18T23:59:59.000Z' },
+    { id: 'd-today2', number: 109, title: 'Hoje 2', status: 'in_progress', assignedToId: devId, deliveryDueDate: '2026-11-18T23:59:59.000Z' },
+    { id: 'd-future', number: 110, title: 'Futuro', status: 'queued', assignedToId: devId, deliveryDueDate: '2026-11-24T23:59:59.000Z' }
+  ];
+  store.ignoredTickets = { 'd-ign': true };
+
+  const overdue3 = store.getDeveloperOverdueDemands(devId);
+  assert.strictEqual(overdue3.length, 3, 'Must return exactly 3 active non-ignored overdue demands');
+  assert.deepStrictEqual(overdue3.map(d => d.number), [101, 102, 103], 'Must sort overdue demands by deliveryDueDate asc');
+
+  // Render Create Ticket calendar (3 overdue -> 1 orange day: 2026-11-18)
+  calContext.renderDeveloperCalendar(devId);
+  const createEl = getCalEl('calDualMonthsContainer');
+  const createCells3 = createEl.querySelectorAll('.cal-day-overdue');
+  assert.strictEqual(createCells3.length, 1, '3 overdue demands must mark exactly 1 orange day');
+  assert.strictEqual(createCells3[0].dataset.day, '2026-11-18', 'First orange day must be today (2026-11-18)');
+  assert.ok(createCells3[0].title.includes('3 chamado(s) atrasado(s)'), 'Tooltip must report overdue count');
+  assert.ok(createCells3[0].title.includes('+2 agendado(s) no dia'), 'Tooltip must still note scheduled deliveries on that day');
+  assert.ok(createCells3[0].title.includes('#101 (10/11) - Primeiro atrasado'), 'Tooltip must list #101');
+  assert.ok(createCells3[0].title.includes('#102 (12/11) - Segundo atrasado'), 'Tooltip must list #102');
+  assert.ok(createCells3[0].title.includes('#103 (17/11) - Terceiro atrasado'), 'Tooltip must list #103');
+
+  // Clicking orange day in Create Ticket calendar selects the date
+  createCells3[0].click();
+  assert.strictEqual(getCalEl('newTicketDeliveryDateInput').value, '18/11/2026', 'Clicking orange day in Create calendar must select 18/11/2026');
+
+  // Render Drawer calendar with same devId
+  getCalEl('drawerEditAssignedTo').value = devId;
+  calContext.renderDrawerDeveloperCalendar();
+  const drawerEl = getCalEl('calDrawerDualMonthsContainer');
+  const drawerCells3 = drawerEl.querySelectorAll('.cal-day-overdue');
+  assert.strictEqual(drawerCells3.length, 1, 'Drawer calendar must also mark 1 orange day for 3 overdue demands');
+  assert.strictEqual(drawerCells3[0].dataset.day, '2026-11-18');
+  assert.ok(drawerCells3[0].title.includes('#101 (10/11)'), 'Drawer tooltip must list overdue tickets');
+
+  // Clicking orange day in Drawer calendar selects the date
+  drawerCells3[0].click();
+  assert.strictEqual(getCalEl('drawerEditDeliveryDueDate').value, '18/11/2026', 'Clicking orange day in Drawer calendar must select 18/11/2026');
+
+  // Add 4 more overdue demands -> total 7 overdue -> 2 orange days (2026-11-18 and 2026-11-19)
+  for (let i = 4; i <= 7; i++) {
+    store.demands.push({
+      id: `d-${100 + i + 10}`,
+      number: 200 + i,
+      title: `Atrasado ${i}`,
+      status: 'queued',
+      assignedToId: devId,
+      deliveryDueDate: `2026-11-1${i}T23:59:59.000Z`
+    });
+  }
+  calContext.renderDeveloperCalendar(devId);
+  const createCells7 = createEl.querySelectorAll('.cal-day-overdue');
+  assert.strictEqual(createCells7.length, 2, '7 overdue demands must mark 2 orange days');
+  assert.deepStrictEqual(createCells7.map(c => c.dataset.day), ['2026-11-18', '2026-11-19']);
+  assert.ok(createCells7[0].title.includes('Lote 1/2 (5 atrasado(s))'), 'First orange day must show batch 1/2');
+  assert.ok(createCells7[1].title.includes('Lote 2/2 (2 atrasado(s))'), 'Second orange day must show batch 2/2');
+  assert.ok(createCells7[1].title.includes('Todos os atrasados (7)'), 'Tooltip must list total overdue tickets');
+
+  // Add 4 more overdue demands -> total 11 overdue -> 3 orange days skipping 2026-11-20 (holiday) & weekend (21, 22) -> 2026-11-18, 2026-11-19, 2026-11-23
+  for (let i = 8; i <= 11; i++) {
+    store.demands.push({
+      id: `d-extra-${i}`,
+      number: 300 + i,
+      title: `Atrasado extra ${i}`,
+      status: 'queued',
+      assignedToId: devId,
+      deliveryDueDate: '2026-11-01T23:59:59.000Z'
+    });
+  }
+  calContext.renderDrawerDeveloperCalendar();
+  const drawerCells11 = drawerEl.querySelectorAll('.cal-day-overdue');
+  assert.strictEqual(drawerCells11.length, 3, '11 overdue demands must mark 3 orange days');
+  assert.deepStrictEqual(drawerCells11.map(c => c.dataset.day), ['2026-11-18', '2026-11-19', '2026-11-23'], 'Must skip holiday (20/11) and weekend (21-22/11)');
+}
+
+// Test 34: Post-update What's New modal displays once on first launch and never reopens after closed
+console.log('Integration Test 34: Post-update What\'s New modal single-display persistence');
+{
+  const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const styleCss = fs.readFileSync(path.join(__dirname, '..', 'src', 'css', 'style.css'), 'utf8');
+  const mainJs = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const dialogsJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'ui', 'dialogs.js'), 'utf8');
+  const appJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'app.js'), 'utf8');
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+
+  assert.strictEqual(pkgJson.version, '1.0.64', 'package.json version must be 1.0.64');
+  assert.ok(indexHtml.includes('Versão v1.0.64'), 'index.html must show Versão v1.0.64');
+  assert.ok(indexHtml.includes('id="whatsNewModalOverlay"'), 'index.html must include whatsNewModalOverlay');
+  assert.ok(indexHtml.includes('Marcação Laranja de Atrasos no Calendário de Entrega'), 'What\'s New modal must highlight overdue orange calendar feature');
+  assert.ok(styleCss.includes('.whats-new-modal-card'), 'style.css must style .whats-new-modal-card');
+  assert.ok(mainJs.includes("key === 'lastSeenWhatsNewVersion'"), 'main.js must flush lastSeenWhatsNewVersion immediately');
+  assert.ok(appJs.includes('checkAndShowWhatsNewModal'), 'app.js must call checkAndShowWhatsNewModal');
+
+  // Simulate persistent storage across app restarts
+  const persistedDiskStorage = new Map();
+  const persistedLocalStorage = new Map();
+
+  function buildDialogsContext() {
+    const els = new Map();
+    function getDlgEl(id) {
+      if (!els.has(id)) {
+        const listeners = {};
+        els.set(id, {
+          id,
+          textContent: '',
+          style: { display: id === 'whatsNewModalOverlay' ? 'none' : '' },
+          focus: () => {},
+          addEventListener: (ev, fn) => { listeners[ev] = fn; },
+          click: async () => { if (listeners.click) return listeners.click({ target: els.get(id) }); }
+        });
+      }
+      return els.get(id);
+    }
+
+    const ctx = {
+      console,
+      setTimeout,
+      clearTimeout,
+      requestAnimationFrame: (cb) => cb(),
+      escapeHtml: (s) => String(s || ''),
+      localStorage: {
+        getItem: (k) => persistedLocalStorage.has(k) ? persistedLocalStorage.get(k) : null,
+        setItem: (k, v) => persistedLocalStorage.set(k, String(v))
+      },
+      document: {
+        getElementById: (id) => getDlgEl(id),
+        addEventListener: () => {}
+      },
+      window: {
+        appStore: { lastSeenWhatsNewVersion: persistedDiskStorage.get('lastSeenWhatsNewVersion') || null },
+        electronAPI: {
+          getAppVersion: async () => '1.0.64',
+          loadStorage: async (k, def) => persistedDiskStorage.has(k) ? persistedDiskStorage.get(k) : def,
+          saveStorage: async (k, v) => { persistedDiskStorage.set(k, v); return { success: true }; }
+        }
+      }
+    };
+    ctx.window.document = ctx.document;
+    vm.createContext(ctx);
+    vm.runInContext(dialogsJs, ctx);
+    ctx.setupWhatsNewHandlers();
+    return { ctx, getDlgEl };
+  }
+
+  // Launch 1 after update: modal opens once
+  const launch1 = buildDialogsContext();
+  const opened1 = await launch1.ctx.checkAndShowWhatsNewModal();
+  assert.strictEqual(opened1, true, 'Modal must open on first launch after update');
+  assert.strictEqual(launch1.getDlgEl('whatsNewModalOverlay').style.display, 'flex', 'Modal overlay must be visible');
+  assert.strictEqual(launch1.getDlgEl('whatsNewVersionBadge').textContent, 'v1.0.64', 'Badge must show v1.0.64');
+  assert.strictEqual(persistedDiskStorage.get('lastSeenWhatsNewVersion'), '1.0.64', 'Version must be persisted on disk');
+  assert.strictEqual(persistedLocalStorage.get('cc_lastSeenWhatsNewVersion'), '1.0.64', 'Version must be persisted in localStorage');
+
+  // Close modal via confirm button
+  await launch1.getDlgEl('btnConfirmWhatsNewModal').click();
+  assert.strictEqual(launch1.getDlgEl('whatsNewModalOverlay').style.display, 'none', 'Modal must hide when closed');
+
+  // Calling again in same session must not reopen
+  const openedAgainSameSession = await launch1.ctx.checkAndShowWhatsNewModal();
+  assert.strictEqual(openedAgainSameSession, false, 'Modal must not reopen in the same session');
+  assert.strictEqual(launch1.getDlgEl('whatsNewModalOverlay').style.display, 'none');
+
+  // Launch 2 (reopening the app cleanly): modal must NOT open again
+  const launch2 = buildDialogsContext();
+  const opened2 = await launch2.ctx.checkAndShowWhatsNewModal();
+  assert.strictEqual(opened2, false, 'Modal must NEVER open again on subsequent launches for same version');
+  assert.strictEqual(launch2.getDlgEl('whatsNewModalOverlay').style.display, 'none', 'Modal must stay hidden on subsequent launches');
+}
+
 console.log('\n✅ All drawer integration tests passed successfully!');
 })().catch(err => {
   console.error('Fatal test error:', err);
