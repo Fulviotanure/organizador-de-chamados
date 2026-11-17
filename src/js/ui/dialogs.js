@@ -265,7 +265,7 @@ function setupAppDialogHandlers() {
   setupWhatsNewHandlers();
 }
 
-const WHATS_NEW_CURRENT_VERSION = '1.0.64';
+const WHATS_NEW_CURRENT_VERSION = '1.0.65';
 let hasShownWhatsNewInSession = false;
 let cachedWhatsNewVersion = null;
 let whatsNewHandlersBound = false;

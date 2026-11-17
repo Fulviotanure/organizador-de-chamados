@@ -762,10 +762,11 @@ console.log('Integration Test 34: Post-update What\'s New modal single-display p
   const appJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'app.js'), 'utf8');
   const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 
-  assert.strictEqual(pkgJson.version, '1.0.64', 'package.json version must be 1.0.64');
-  assert.ok(indexHtml.includes('Versão v1.0.64'), 'index.html must show Versão v1.0.64');
+  assert.strictEqual(pkgJson.version, '1.0.65', 'package.json version must be 1.0.65');
+  assert.ok(indexHtml.includes('Versão v1.0.65'), 'index.html must show Versão v1.0.65');
   assert.ok(indexHtml.includes('id="whatsNewModalOverlay"'), 'index.html must include whatsNewModalOverlay');
   assert.ok(indexHtml.includes('Marcação Laranja de Atrasos no Calendário de Entrega'), 'What\'s New modal must highlight overdue orange calendar feature');
+  assert.ok(indexHtml.includes('Nova Aba de Dashboard'), 'What\'s New modal must highlight new Dashboard tab');
   assert.ok(styleCss.includes('.whats-new-modal-card'), 'style.css must style .whats-new-modal-card');
   assert.ok(mainJs.includes("key === 'lastSeenWhatsNewVersion'"), 'main.js must flush lastSeenWhatsNewVersion immediately');
   assert.ok(appJs.includes('checkAndShowWhatsNewModal'), 'app.js must call checkAndShowWhatsNewModal');
@@ -808,7 +809,7 @@ console.log('Integration Test 34: Post-update What\'s New modal single-display p
       window: {
         appStore: { lastSeenWhatsNewVersion: persistedDiskStorage.get('lastSeenWhatsNewVersion') || null },
         electronAPI: {
-          getAppVersion: async () => '1.0.64',
+          getAppVersion: async () => '1.0.65',
           loadStorage: async (k, def) => persistedDiskStorage.has(k) ? persistedDiskStorage.get(k) : def,
           saveStorage: async (k, v) => { persistedDiskStorage.set(k, v); return { success: true }; }
         }
@@ -826,9 +827,9 @@ console.log('Integration Test 34: Post-update What\'s New modal single-display p
   const opened1 = await launch1.ctx.checkAndShowWhatsNewModal();
   assert.strictEqual(opened1, true, 'Modal must open on first launch after update');
   assert.strictEqual(launch1.getDlgEl('whatsNewModalOverlay').style.display, 'flex', 'Modal overlay must be visible');
-  assert.strictEqual(launch1.getDlgEl('whatsNewVersionBadge').textContent, 'v1.0.64', 'Badge must show v1.0.64');
-  assert.strictEqual(persistedDiskStorage.get('lastSeenWhatsNewVersion'), '1.0.64', 'Version must be persisted on disk');
-  assert.strictEqual(persistedLocalStorage.get('cc_lastSeenWhatsNewVersion'), '1.0.64', 'Version must be persisted in localStorage');
+  assert.strictEqual(launch1.getDlgEl('whatsNewVersionBadge').textContent, 'v1.0.65', 'Badge must show v1.0.65');
+  assert.strictEqual(persistedDiskStorage.get('lastSeenWhatsNewVersion'), '1.0.65', 'Version must be persisted on disk');
+  assert.strictEqual(persistedLocalStorage.get('cc_lastSeenWhatsNewVersion'), '1.0.65', 'Version must be persisted in localStorage');
 
   // Close modal via confirm button
   await launch1.getDlgEl('btnConfirmWhatsNewModal').click();
