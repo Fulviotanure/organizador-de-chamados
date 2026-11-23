@@ -1,6 +1,6 @@
 {
   "name": "organizador-de-chamados",
-  "version": "1.0.65",
+  "version": "1.0.66",
   "description": "Chamados Conciliador Contábil",
   "main": "main.js",
   "scripts": {

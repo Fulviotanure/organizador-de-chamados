@@ -4459,15 +4459,13 @@ function getWorkflowButtonsHtml(status, isQuick = false) {
   return '';
 }
 
-// Renderiza os botões dinâmicos de fluxo no final do chamado (junto de salvar alterações e interações) e no card
+// Renderiza os botões dinâmicos de fluxo no final do chamado e no card de informações
 function renderDrawerWorkflowButtons(ticket) {
   const bottomContainer = document.getElementById('drawerBottomWorkflowActionsContainer');
-  const commentContainer = document.getElementById('drawerCommentWorkflowActionsContainer');
   const quickContainer = document.getElementById('drawerQuickWorkflowActionsContainer');
 
   const targets = [
     { el: bottomContainer, isQuick: false },
-    { el: commentContainer, isQuick: false },
     { el: quickContainer, isQuick: true }
   ];
 
